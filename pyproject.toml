@@ -27,11 +27,12 @@ dependencies = [
 python = ["3.9", "3.10", "3.11"]
 
 [tool.hatch.envs.style.scripts]
-check = [
+lint = [
   "ruff check .",
-  "mypy src/labone",
   "black --check --diff .",
-  "isort --check-only --diff .",
+]
+typing = [
+  "mypy src/labone"
 ]
 
 [project]

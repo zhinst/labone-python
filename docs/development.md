@@ -19,7 +19,8 @@ hatch run test:pytest
 ### Code style tests
 
 ```bash
-hatch run style:check
+hatch run style:lint
+hatch run style:typing
 ```
 
 ### Building the package
