@@ -8,11 +8,17 @@ path = "src/labone/_version.py"
 
 [tool.hatch.envs.test]
 dependencies = [
-  "pytest",
+  "pytest"
 ]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.9", "3.10", "3.11"]
+
+[tool.hatch.envs.test.scripts]
+unit = [
+  "pytest tests -vv",
+]
+
 
 [tool.hatch.envs.style]
 detached = true

@@ -14,6 +14,7 @@ pip install -r requirements.txt
 
 ```bash
 hatch run test:pytest
+hatch run test:unit
 ```
 
 ### Code style tests
