@@ -1,0 +1,22 @@
+# Misc.
+dist
+build
+.vscode
+__pycache__
+.DS_Store
+
+# Coverage
+.coverage*
+htmlcov
+
+# No jupyter notebooks
+*.ipynb
+
+# Version fil
+_version.py
+
+# Testing
+.ruff_cache
+.pytest_cache
+.mypy_cache
+.hypothesis
