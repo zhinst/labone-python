@@ -1,87 +1,117 @@
-[tool.hatch]
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
-
-[tool.hatch.version]
-path = "src/labone/_version.py"
-
-[tool.hatch.envs.test]
-dependencies = [
-  "pytest"
-]
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.9", "3.10", "3.11"]
-
-[tool.hatch.envs.test.scripts]
-unit = [
-  "pytest tests -vv",
-]
-
-
-[tool.hatch.envs.style]
-detached = true
-dependencies = [
-  "ruff",
-  "black",
-  "isort",
-  "mypy"
-]
-
-[[tool.hatch.envs.style.matrix]]
-python = ["3.9", "3.10", "3.11"]
-
-[tool.hatch.envs.style.scripts]
-lint = [
-  "ruff check .",
-  "black --check --diff .",
-]
-typing = [
-  "mypy src/labone"
-]
 
 [project]
 name = "labone"
 dynamic = ["version"]
 description = "Python API for Zurich Instruments LabOne software."
-license = {text = "MIT"}
-requires-python = ">=3.9"
+license = { text = "MIT" }
+requires-python = ">=3.8"
 authors = [
-    { name = "Zurich Instruments Development Team", email = "info@zhinst.com" },
+  { name = "Zurich Instruments Development Team", email = "info@zhinst.com" },
 ]
-keywords = [
-    "zhinst",
-]
+keywords = ["zhinst"]
 classifiers = [
-    "Development Status :: 1 - Planning",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering",
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering",
 ]
 dependencies = []
 
-[tool.black]
-line-length = 88
-target-version = ['py39']
-include = '\.pyi?$'
-required-version = "23.7.0"
-extend-exclude = '''
-/(
-  | .mypy-cache
-  | .tox
-  | venv*
-  | docs
-  | build
-  | dist
-)/
-'''
+[project.urls]
+Issues = "https://github.com/zhinst/labone-python/issues"
+Source = "https://github.com/zhinst/labone-python"
 
-[tool.isort]
-profile = "black"
-src_paths = ["src", "tests"]
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/labone/_version.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/.github", "/docs"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/labone"]
+
+[tool.hatch.envs.default]
+dependencies = ["coverage[toml]>=6.5", "pytest", "pycapnp", "pytest_asyncio"]
+
+# Temporary solution until pycapnp has release its new version
+[tool.hatch.envs.default.env-vars]
+PIP_EXTRA_INDEX_URL = "https://docs.zhinst.com/pypi/"
+
+[[tool.hatch.envs.default.matrix]]
+python = ["3.8", "3.9", "3.10", "3.11"]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = ["- coverage combine", "coverage report", "coverage html"]
+cov = ["test-cov", "cov-report"]
+
+[[tool.hatch.envs.lint.matrix]]
+python = ["3.8", "3.9", "3.10", "3.11"]
+
+[tool.hatch.envs.lint]
+detached = true
+dependencies = ["black>=23.1.0", "mypy>=1.0.0", "ruff>=0.0.243"]
+
+[tool.hatch.envs.lint.scripts]
+typing = "mypy --install-types --non-interactive {args:src/labone}"
+style = ["ruff {args:.}", "black --check --diff {args:.}"]
+fmt = ["black {args:.}", "ruff --fix {args:.}", "style"]
+all = ["style", "typing"]
+
+[tool.black]
+target-version = ["py39"]
+
+[tool.ruff]
+target-version = "py39"
+select = ["ALL"]
+ignore = [
+  # Type annotation for self
+  "ANN101",
+  # Missing docstring in `__init__`
+  "D107",
+]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.mccabe]
+# Flag errors (`C901`) whenever the complexity level exceeds 15.
+max-complexity = 15
+
+[tool.ruff.isort]
+
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252", "ANN", "D", "SLF001", "PT011"]
+
+[tool.coverage.run]
+source_pkgs = ["labone"]
+branch = true
+parallel = true
+omit = ["src/labone/__about__.py"]
+
+[tool.coverage.paths]
+labone = ["src/labone", "*/labone/src/labone"]
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+[[tool.mypy.overrides]]
+module = "capnp.*"
+ignore_missing_imports = true
