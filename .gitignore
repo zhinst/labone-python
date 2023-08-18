@@ -5,3 +5,14 @@ build
 .pytest_cache
 .mypy_cache
 __pycache__
+.DS_Store
+
+# coverage
+.coverage*
+htmlcov
+
+# no jupyter notebooks
+*.ipynb
+
+# version fil
+_version.py
