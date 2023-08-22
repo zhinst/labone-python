@@ -82,6 +82,10 @@ ignore = [
   "ANN101",
   # Missing docstring in `__init__`
   "D107",
+  # Missing type annotation for `*args`
+  "ANN002",
+  # Missing type annotation for `**kwargs`
+  "ANN003",
 ]
 
 [tool.ruff.pydocstyle]

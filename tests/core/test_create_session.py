@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from labone.core import connection_layer, session
-from labone.core.resources import (  # type: ignore[attr-defined]
-    session_protocol_capnp,
-)
+from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 
 
 @patch("labone.core.session.create_session_client_stream", autospec=True)
