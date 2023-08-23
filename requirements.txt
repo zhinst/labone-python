@@ -1,3 +1,2 @@
 hatch
-pytest_asyncio
 pycapnp
