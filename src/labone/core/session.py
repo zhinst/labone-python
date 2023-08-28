@@ -9,7 +9,6 @@ import capnp
 from typing_extensions import Literal, NotRequired, TypeAlias, TypedDict
 
 from labone.core import errors
-from labone.core._error_handlers import convert_dynamic_schema_error
 from labone.core.connection_layer import (
     KernelInfo,
     ServerInfo,
@@ -126,9 +125,17 @@ class ListNodesFlags(IntFlag):
     EXCLUDE_VECTORS = 1 << 24
 
 
-def _argument_error_msg_prefix(arg: str) -> str:
-    """Error message prefix for conveying from which argument the error came from."""
-    return f"Invalid '{arg}' value: "
+def _request_field_type_description(
+    request: capnp.lib.capnp._Request,  # noqa: SLF001
+    field: str,
+) -> str:
+    """Get given `capnp` request field type description.
+
+    Args:
+        request: Capnp request.
+        field: Field name of the request.
+    """
+    return request.schema.fields[field].proto.slot.type.which()
 
 
 async def _send_and_wait_request(
@@ -259,8 +266,8 @@ class Session:
                 matching `path` does not fit into given `flags` criteria.
 
         Raises:
-            TypeError: If `path` is not a string.
-            LabOneCoreError: If invalid `flags` value is given.
+            TypeError: If `path` is not a string or `flags` is not an integer.
+            ValueError: If `flags` value is out-of-bounds.
             LabOneConnectionError: If there is a problem in the connection.
 
         Examples:
@@ -295,8 +302,15 @@ class Session:
             raise TypeError(msg)  # noqa: TRY200, B904
         try:
             request.flags = int(flags)
-        except Exception as error:  # noqa: BLE001
-            convert_dynamic_schema_error(error, _argument_error_msg_prefix("flags"))
+        except capnp.KjException as error:
+            field_type = _request_field_type_description(request, "flags")
+            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
+            raise ValueError(
+                msg,
+            ) from error
+        except (TypeError, ValueError) as error:
+            msg = "`flags` must be an integer."
+            raise TypeError(msg) from error
         response = await _send_and_wait_request(request)
         return list(response.paths)
 
@@ -324,8 +338,8 @@ class Session:
                 matching `path` does not fit into given `flags` criteria.
 
         Raises:
-            TypeError: If `path` is not a string.
-            LabOneCoreError: If invalid `flags` value is given.
+            TypeError: If `path` is not a string or `flags` is not an integer.
+            ValueError: If `flags` value is out-of-bounds.
             LabOneConnectionError: If there is a problem in the connection.
 
         Example:
@@ -380,7 +394,14 @@ class Session:
             raise TypeError(msg)  # noqa: TRY200, B904
         try:
             request.flags = int(flags)
-        except Exception as error:  # noqa: BLE001
-            convert_dynamic_schema_error(error, _argument_error_msg_prefix("flags"))
+        except capnp.KjException as error:
+            field_type = _request_field_type_description(request, "flags")
+            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
+            raise ValueError(
+                msg,
+            ) from error
+        except (TypeError, ValueError) as error:
+            msg = "`flags` must be an integer."
+            raise TypeError(msg) from error
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)

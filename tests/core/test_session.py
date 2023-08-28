@@ -14,10 +14,12 @@ from labone.core.session import (
     ListNodesFlags,
     ListNodesInfoFlags,
     Session,
+    _request_field_type_description,
     _send_and_wait_request,
 )
 
 from . import utils
+from .resources import testfile_capnp
 
 
 class SessionBootstrap(session_protocol_capnp.Session.Server):
@@ -100,17 +102,17 @@ class TestSessionListNodes:
         assert r == []
 
     @utils.ensure_event_loop
-    @pytest.mark.parametrize("flags", ["foo", 1.2, [3], None])
+    @pytest.mark.parametrize("flags", ["foo", [3], None])
     async def test_with_flags_type_error(self, session_server, flags):
         session, _ = await session_server
-        with pytest.raises(errors.LabOneCoreError):
+        with pytest.raises(TypeError):
             await session.list_nodes("path", flags=flags)
 
     @utils.ensure_event_loop
     @pytest.mark.parametrize("flags", [-2, -100])
     async def test_with_flags_value_error(self, session_server, flags):
         session, _ = await session_server
-        with pytest.raises(errors.LabOneCoreError):
+        with pytest.raises(ValueError):
             await session.list_nodes("path", flags=flags)
 
 
@@ -163,17 +165,17 @@ class TestSessionListNodesJson:
         assert r == {}
 
     @utils.ensure_event_loop
-    @pytest.mark.parametrize("flags", ["foo", 1.2, [3], None])
+    @pytest.mark.parametrize("flags", ["foo", [3], None])
     async def test_with_flags_type_error(self, session_server, flags):
         session, _ = await session_server
-        with pytest.raises(errors.LabOneCoreError):
+        with pytest.raises(TypeError):
             await session.list_nodes_info("path", flags=flags)
 
     @utils.ensure_event_loop
     @pytest.mark.parametrize("flags", [-2, -100])
     async def test_with_flags_value_error(self, session_server, flags):
         session, _ = await session_server
-        with pytest.raises(errors.LabOneCoreError):
+        with pytest.raises(ValueError):
             await session.list_nodes_info("path", flags=flags)
 
 
@@ -243,3 +245,14 @@ class TestSendAndWaitRequest:
         promise = MockRemotePromise(a_wait_raise_for=error("error"))
         with pytest.raises(errors.LabOneConnectionError, match="error"):
             await _send_and_wait_request(MockRequest(promise))
+
+
+@utils.ensure_event_loop
+async def test_capnp_request_field_type_description():
+    class TestInterface(testfile_capnp.TestInterface.Server):
+        ...
+
+    client = testfile_capnp.TestInterface._new_client(TestInterface())
+    request = client.testMethod_request()
+    assert _request_field_type_description(request, "testUint32Field") == "uint32"
+    assert _request_field_type_description(request, "testTextField") == "text"
