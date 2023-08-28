@@ -43,7 +43,13 @@ exclude = ["/.github", "/docs"]
 packages = ["src/labone"]
 
 [tool.hatch.envs.default]
-dependencies = ["coverage[toml]>=6.5", "pytest", "pycapnp", "pytest_asyncio", "typing_extensions"]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "pycapnp",
+  "pytest_asyncio",
+  "typing_extensions",
+]
 
 # Temporary solution until pycapnp has release its new version
 [tool.hatch.envs.default.env-vars]
@@ -86,6 +92,8 @@ ignore = [
   "ANN002",
   # Missing type annotation for `**kwargs`
   "ANN003",
+  # Too many return statements
+  "PLR0911",
 ]
 
 [tool.ruff.pydocstyle]
