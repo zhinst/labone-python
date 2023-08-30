@@ -42,6 +42,9 @@ class SessionBootstrap(session_protocol_capnp.Session.Server):
     async def setValue(self, _context, **_):  # noqa: N802
         return self._mock.setValue(_context.params, _context.results)
 
+    async def subscribe(self, _context, **_):
+        return self._mock.subscribe(_context.params, _context.results)
+
 
 @pytest.fixture()
 async def session_server() -> tuple[Session, MagicMock]:
@@ -334,3 +337,83 @@ class TestSetValue:
         server.setValue.side_effect = mock_method
         response = await session.set_value(value)
         assert response == value
+
+
+class TestSessionSubscribe:
+    class SubscriptionServer:
+        def __init__(self, error=None):
+            self.server_handle = None
+            self.path = None
+            self.client_id = None
+            self.error = error
+
+        def subscribe(self, params, results):
+            self.path = params.subscription.path
+            self.client_id = params.subscription.subscriberId
+            self.server_handle = params.subscription.streamingHandle
+            if self.error:
+                results.result.from_dict({"err": {"code": 1, "message": self.error}})
+            else:
+                results.result.from_dict({"ok": {}})
+
+    @utils.ensure_event_loop
+    async def test_subscribe_meta_data(self, session_server):
+        session, server = await session_server
+        path = "/dev1234/demods/0/sample"
+        subscription_server = self.SubscriptionServer()
+        server.subscribe.side_effect = subscription_server.subscribe
+        queue = await session.subscribe(path)
+        assert subscription_server.path == path
+        assert subscription_server.client_id == session._client_id.bytes
+        assert queue.qsize() == 0
+        assert queue.path == path
+
+    @utils.ensure_event_loop
+    async def test_subscribe_error(self, session_server):
+        session, server = await session_server
+        path = "/dev1234/demods/0/sample"
+        subscription_server = self.SubscriptionServer(error="test error")
+        server.subscribe.side_effect = subscription_server.subscribe
+
+        with pytest.raises(errors.LabOneCoreError, match="test error"):
+            await session.subscribe(path)
+
+    @utils.ensure_event_loop
+    async def test_subscribe_invalid_argument_dict(self, session_server):
+        session, _ = await session_server
+        with pytest.raises(TypeError):
+            await session.subscribe({"I": "am", "not": "a", "path": 1})
+
+    @utils.ensure_event_loop
+    async def test_subscribe_invalid_argument_int(self, session_server):
+        session, _ = await session_server
+        with pytest.raises(TypeError):
+            await session.subscribe(2)
+
+    @pytest.mark.parametrize("num_values", range(0, 20, 4))
+    @utils.ensure_event_loop
+    async def test_subscribe_send_value_ok(self, session_server, num_values):
+        session, server = await session_server
+        path = "/dev1234/demods/0/sample"
+        subscription_server = self.SubscriptionServer()
+        server.subscribe.side_effect = subscription_server.subscribe
+        queue = await session.subscribe(path)
+
+        values = []
+        for i in range(num_values):
+            value = session_protocol_capnp.AnnotatedValue.new_message()
+            value.metadata.path = path
+            value.value.int64 = i
+            values.append(value)
+        value = session_protocol_capnp.AnnotatedValue.new_message()
+        value.metadata.path = "dummy"
+        value.value.int64 = 1
+        await subscription_server.server_handle.sendValues(values)
+        assert queue.qsize() == num_values
+        for i in range(num_values):
+            assert queue.get_nowait() == AnnotatedValue(
+                value=i,
+                path=path,
+                timestamp=0,
+                extra_header=None,
+            )
