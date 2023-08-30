@@ -49,6 +49,8 @@ dependencies = [
   "pycapnp",
   "pytest_asyncio",
   "typing_extensions",
+  "numpy",
+  "hypothesis"
 ]
 
 # Temporary solution until pycapnp has release its new version
