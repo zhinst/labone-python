@@ -1,18 +1,22 @@
+# Misc.
 dist
 build
 .vscode
-.ruff_cache
-.pytest_cache
-.mypy_cache
 __pycache__
 .DS_Store
 
-# coverage
+# Coverage
 .coverage*
 htmlcov
 
-# no jupyter notebooks
+# No jupyter notebooks
 *.ipynb
 
-# version fil
+# Version fil
 _version.py
+
+# Testing
+.ruff_cache
+.pytest_cache
+.mypy_cache
+.hypothesis
