@@ -68,4 +68,4 @@ def unwrap(
         return result.ok
     except capnp.KjException:
         pass
-    raise _ZI_ERROR_MAP.get(result.err.code, errors.LabOneCoreError)(result.err.msg)
+    raise _ZI_ERROR_MAP.get(result.err.code, errors.LabOneCoreError)(result.err.message)
