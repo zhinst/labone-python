@@ -8,7 +8,8 @@ from enum import IntFlag
 import capnp
 from typing_extensions import Literal, NotRequired, TypeAlias, TypedDict
 
-from labone.core import errors
+from labone.core import errors, result
+from labone.core import value as annotated_value
 from labone.core.connection_layer import (
     KernelInfo,
     ServerInfo,
@@ -405,3 +406,25 @@ class Session:
             raise TypeError(msg) from error
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)
+
+    async def set_value(
+        self,
+        value: annotated_value.AnnotatedValue,
+    ) -> annotated_value.AnnotatedValue:
+        """Set the value of a node.
+
+        TODO: Tests
+
+        Args:
+            value: Annotated value of the node.
+                TODO: To accept list of `AnnotatedValue`s
+
+        Raises:
+            LabOneConnectionError: If there is a problem in the connection.
+        """
+        request = self._session.setValue_request()
+        request.path = value.path
+        request.value = value.value
+        response = await _send_and_wait_request(request)
+        res = result.unwrap(response.result)
+        return annotated_value.AnnotatedValue.from_capnp(res)
