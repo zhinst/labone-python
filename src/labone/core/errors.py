@@ -1,8 +1,21 @@
 """LabOne Error classes for the core component of the API."""
+from asyncio import QueueEmpty
 
 
 class LabOneCoreError(RuntimeError):
     """Base class for all LabOne core errors."""
+
+
+class LabOneTimeoutError(LabOneCoreError, TimeoutError):
+    """Raised when a timeout occurs."""
+
+
+class LabOneReadOnlyError(LabOneCoreError):
+    """Raised when attempting to write a node that is read-only."""
+
+
+class LabOneWriteOnlyError(LabOneCoreError):
+    """Raised when attempting to read a node that is write-only."""
 
 
 ##################################################################
@@ -59,6 +72,18 @@ class UnsupportedApiLevelError(LabOneConnectionError):
     """Raised when the API level of the device is not supported."""
 
 
-# Generic problem interpreting the incoming request
 class BadRequestError(LabOneConnectionError):
     """Raised when the request cannot be interpreted."""
+
+
+##################################################################
+## Streaming Errors                                             ##
+##################################################################
+
+
+class StreamingError(LabOneCoreError):
+    """Base class for all LabOne streaming errors."""
+
+
+class EmptyDisconnectedDataQueueError(StreamingError, QueueEmpty):
+    """Raised when the data queue is empty and disconnected."""
