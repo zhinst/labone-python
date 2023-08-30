@@ -50,7 +50,7 @@ dependencies = [
   "pytest_asyncio",
   "typing_extensions",
   "numpy",
-  "hypothesis"
+  "hypothesis",
 ]
 
 # Temporary solution until pycapnp has release its new version
@@ -71,7 +71,7 @@ python = ["3.8", "3.9", "3.10", "3.11"]
 
 [tool.hatch.envs.lint]
 detached = true
-dependencies = ["black>=23.1.0", "mypy>=1.0.0", "ruff>=0.0.243"]
+dependencies = ["black>=23.1.0", "mypy>=1.0.0", "ruff>=0.0.243", "numpy>=1.20"]
 
 [tool.hatch.envs.lint.scripts]
 typing = "mypy --install-types --non-interactive {args:src/labone}"
@@ -90,6 +90,10 @@ ignore = [
   "ANN101",
   # Missing docstring in `__init__`
   "D107",
+  # Missing type annotation for `cls` in classmethod
+  "ANN102",
+  # Missing docstring in magic method
+  "D105",
   # Missing type annotation for `*args`
   "ANN002",
   # Missing type annotation for `**kwargs`
