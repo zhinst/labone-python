@@ -2,10 +2,10 @@
 
 This project uses [Hatch](https://hatch.pypa.io/latest/) for development management.
 
-## Installing requirements
+## Create hatch environments
 
 ```bash
-pip install -r requirements.txt
+hatch env create
 ```
 
 ## Running tests
@@ -13,15 +13,14 @@ pip install -r requirements.txt
 ### Package tests
 
 ```bash
-hatch run test:pytest
-hatch run test:unit
+hatch run test
 ```
 
 ### Code style tests
 
 ```bash
-hatch run style:lint
-hatch run style:typing
+hatch run lint:style
+hatch run lint:typing
 ```
 
 ### Building the package
