@@ -1,7 +1,9 @@
 """Tests for `labone.core.session.Session` functionality that requires a server."""
 
+import asyncio
 import json
 import random
+from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -17,6 +19,7 @@ from labone.core.session import (
     _request_field_type_description,
     _send_and_wait_request,
 )
+from labone.core.value import AnnotatedValue
 
 from . import utils
 from .resources import testfile_capnp
@@ -33,6 +36,9 @@ class SessionBootstrap(session_protocol_capnp.Session.Server):
 
     async def listNodesJson(self, _context, **_):  # noqa: N802
         return self._mock.listNodesJson(_context.params, _context.results)
+
+    async def setValue(self, _context, **_):  # noqa: N802
+        return self._mock.setValue(_context.params, _context.results)
 
 
 @pytest.fixture()
@@ -250,9 +256,79 @@ class TestSendAndWaitRequest:
 @utils.ensure_event_loop
 async def test_capnp_request_field_type_description():
     class TestInterface(testfile_capnp.TestInterface.Server):
-        ...
+        pass
 
     client = testfile_capnp.TestInterface._new_client(TestInterface())
     request = client.testMethod_request()
     assert _request_field_type_description(request, "testUint32Field") == "uint32"
     assert _request_field_type_description(request, "testTextField") == "text"
+
+
+def session_proto_value_to_python(builder):
+    """`labone.core.resources.session_protocol_capnp:Value` to a Python value."""
+    return getattr(builder, builder.which())
+
+
+@dataclass
+class ServerRecords:
+    params: list[Any] = field(default_factory=list)
+
+
+class TestSetValue:
+    """Integration tests for Session node set values functionality."""
+
+    @pytest.fixture()
+    async def session_recorder(self, session_server) -> tuple[Session, ServerRecords]:
+        session, server = await session_server
+        recorder = ServerRecords()
+
+        def mock_method(params, _):
+            param_builder = params.as_builder()
+            recorder.params.append(param_builder)
+
+        server.setValue.side_effect = mock_method
+        return session, recorder
+
+    @utils.ensure_event_loop
+    async def test_server_receives_correct_values_single(self, session_recorder):
+        session, recorder = await session_recorder
+        value = AnnotatedValue(value=12, path="/foo/bar")
+        await session.set_value(value)
+        assert len(recorder.params) == 1
+        assert recorder.params[0].path == "/foo/bar"
+        assert session_proto_value_to_python(recorder.params[0].value) == 12
+
+    @utils.ensure_event_loop
+    async def test_server_receives_correct_values_gather(self, session_recorder):
+        session, recorder = await session_recorder
+
+        await asyncio.gather(
+            session.set_value(
+                AnnotatedValue(value=12, path="/foo/bar"),
+            ),
+            session.set_value(
+                AnnotatedValue(value="text", path="/bar/foo"),
+            ),
+            session.set_value(
+                AnnotatedValue(value=False, path="/bar/foobar"),
+            ),
+        )
+        assert len(recorder.params) == 3
+        assert recorder.params[0].path == "/foo/bar"
+        assert session_proto_value_to_python(recorder.params[0].value) == 12
+        assert recorder.params[1].path == "/bar/foo"
+        assert session_proto_value_to_python(recorder.params[1].value) == "text"
+        assert recorder.params[2].path == "/bar/foobar"
+        assert session_proto_value_to_python(recorder.params[2].value) == 0
+
+    @utils.ensure_event_loop
+    async def test_server_response(self, session_server):
+        session, server = await session_server
+        value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
+
+        def mock_method(_, results):
+            results.result.ok = value.to_capnp()
+
+        server.setValue.side_effect = mock_method
+        response = await session.set_value(value)
+        assert response == value
