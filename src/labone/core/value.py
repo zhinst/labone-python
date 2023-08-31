@@ -182,6 +182,7 @@ Value = Union[
     SHFDemodSample,
     TriggerSample,
     CntSample,
+    None,
 ]
 
 
@@ -257,6 +258,8 @@ def _capnp_value_to_python_value(
         return CntSample.from_capnp(capnp_value.cntSample), None
     if capnp_type == "triggerSample":
         return TriggerSample.from_capnp(capnp_value.triggerSample), None
+    if capnp_type == "none":
+        return None, None
     msg = f"Unknown capnp type: {capnp_type}"
     raise ValueError(msg)
 

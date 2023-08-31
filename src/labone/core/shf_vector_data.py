@@ -186,7 +186,7 @@ class ShfScopeVectorExtraHeader:
             )
         msg = str(
             f"Unsupported extra header version: {version} for "
-            "ShfScopeVectorExtraHeader",
+            "ShfDemodulatorVectorExtraHeader",
         )
         raise NotImplementedError(msg)
 
@@ -249,14 +249,14 @@ class ShfDemodulatorVectorExtraHeader:
         Raises:
             NotImplementedError: If the version is not supported.
         """
+        # To be correct, these values should be read from
+        # /dev.../system/properties/timebase and
+        # /dev.../system/properties/maxdemodrate
+        # Here we have read them once and hardcoded for simplicity
+        timebase = 2.5e-10
+        max_demod_rate = 5e7
         if version.minor >= 2:  # noqa: PLR2004
             timestamp_diff = struct.unpack("I", binary[8:12])[0]
-            # To be correct, these values should be read from
-            # /dev.../system/properties/timebase and
-            # /dev.../system/properties/maxdemodrate
-            # Here we have read them once and hardcoded for simplicity
-            timebase = 2.5e-10
-            max_demod_rate = 5e7
             timestamp_diff *= 1 / (timebase * max_demod_rate)
             return ShfDemodulatorVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
@@ -273,6 +273,8 @@ class ShfDemodulatorVectorExtraHeader:
                 signal_source=struct.unpack("H", binary[50:52])[0],
             )
         if version.minor >= 1:
+            timestamp_diff = struct.unpack("I", binary[8:12])[0]
+            timestamp_diff *= 1 / (timebase * max_demod_rate)
             return ShfDemodulatorVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
                 timestamp_diff=timestamp_diff,
@@ -312,6 +314,9 @@ def _parse_extra_header_version(extra_header_info: int) -> _HeaderVersion:
     Returns:
         The header version.
     """
+    if extra_header_info == 0:
+        msg = "Vector data does not contain extra header."
+        raise ValueError(msg)
     version = extra_header_info >> 16
     return _HeaderVersion(major=(version & 0xE0) >> 5, minor=version & 0x1F)
 
@@ -357,7 +362,7 @@ def _deserialize_shf_result_logger_vector(
     extra_header_info: int,
     header_length: int,
     element_type: int,
-) -> tuple[np.ndarray, ExtraHeader]:
+) -> tuple[np.ndarray, ShfResultLoggerVectorExtraHeader]:
     """Deserialize the vector data for result logger vector.
 
     Args:
@@ -390,7 +395,7 @@ def _deserialize_shf_scope_vector(
     raw_data: bytes,
     extra_header_info: int,
     header_length: int,
-) -> tuple[np.ndarray, ExtraHeader]:
+) -> tuple[np.ndarray, ShfScopeVectorExtraHeader]:
     """Deserialize the vector data for waveform vectors.
 
     Args:
@@ -423,7 +428,7 @@ def _deserialize_shf_demodulator_vector(
     raw_data: bytes,
     extra_header_info: int,
     header_length: int,
-) -> tuple[SHFDemodSample, ExtraHeader]:
+) -> tuple[SHFDemodSample, ShfDemodulatorVectorExtraHeader]:
     """Deserialize the vector data for waveform vectors.
 
     Args:
