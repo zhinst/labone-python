@@ -9,13 +9,13 @@ import capnp
 from typing_extensions import Literal, NotRequired, TypeAlias, TypedDict
 
 from labone.core import errors, result
-from labone.core import value as annotated_value
 from labone.core.connection_layer import (
     KernelInfo,
     ServerInfo,
     create_session_client_stream,
 )
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
+from labone.core.value import AnnotatedValue
 
 NodeType: TypeAlias = Literal[
     "Integer (64 bit)",
@@ -407,24 +407,24 @@ class Session:
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)
 
-    async def set_value(
-        self,
-        value: annotated_value.AnnotatedValue,
-    ) -> annotated_value.AnnotatedValue:
+    async def set_value(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
-
-        TODO: Tests
 
         Args:
             value: Annotated value of the node.
-                TODO: To accept list of `AnnotatedValue`s
+
+        Returns:
+            Acknowledged value from the device.
 
         Raises:
+            TypeError: If the node path is of wrong type.
+            LabOneCoreError: If the node value type is not supported.
             LabOneConnectionError: If there is a problem in the connection.
         """
+        # T O D O: To accept list of `AnnotatedValue`s
+        capnp_value = value.to_capnp()
         request = self._session.setValue_request()
-        request.path = value.path
-        request.value = value.value
+        request.path = capnp_value.metadata.path
+        request.value = capnp_value.value
         response = await _send_and_wait_request(request)
-        res = result.unwrap(response.result)
-        return annotated_value.AnnotatedValue.from_capnp(res)
+        return AnnotatedValue.from_capnp(result.unwrap(response.result))
