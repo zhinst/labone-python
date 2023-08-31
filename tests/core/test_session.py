@@ -1,10 +1,12 @@
 """Tests for `labone.core.session.Session` functionality that requires a server."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import random
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 from unittest.mock import MagicMock
 
 import capnp
@@ -22,7 +24,7 @@ from labone.core.session import (
 from labone.core.value import AnnotatedValue
 
 from . import utils
-from .resources import testfile_capnp
+from .resources import testfile_capnp  # type: ignore[attr-defined]
 
 
 class SessionBootstrap(session_protocol_capnp.Session.Server):
@@ -60,7 +62,7 @@ async def session_server() -> tuple[Session, MagicMock]:
 
 class TestSessionListNodes:
     @staticmethod
-    def mock_return_value(val: list) -> callable:
+    def mock_return_value(val: list) -> Callable:
         def mock_method(_, results):
             results.paths = val
 
@@ -124,7 +126,7 @@ class TestSessionListNodes:
 
 class TestSessionListNodesJson:
     @staticmethod
-    def mock_return_value(val: dict) -> callable:
+    def mock_return_value(val: dict) -> Callable:
         def mock_method(_, results):
             results.nodeProps = json.dumps(val)
 
