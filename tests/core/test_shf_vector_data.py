@@ -89,7 +89,7 @@ def test_invalid_header_version(value_type):
 
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
-@pytest.mark.parametrize("scaling", [x * 0.25 for x in range(0, 5)])
+@pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
 @pytest.mark.parametrize("header_version", [1, 2])
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
 def test_shf_scope_vector(vector_length, scaling, header_version, x, y):
@@ -135,7 +135,7 @@ def test_shf_scope_vector(vector_length, scaling, header_version, x, y):
 
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
-@pytest.mark.parametrize("scaling", [x * 0.25 for x in range(0, 5)])
+@pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
 @pytest.mark.parametrize("timestamp_diff", range(0, 100, 25))
 @pytest.mark.parametrize("header_version", [1, 2])
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
