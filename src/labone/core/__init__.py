@@ -6,8 +6,10 @@ a python only interface to the rest of the API.
 """
 from labone.core.connection_layer import DeviceKernelInfo, ServerInfo, ZIKernelInfo
 from labone.core.session import ListNodesFlags, ListNodesInfoFlags, Session
+from labone.core.value import AnnotatedValue
 
 __all__ = [
+    "AnnotatedValue",
     "Session",
     "ListNodesFlags",
     "ListNodesInfoFlags",
