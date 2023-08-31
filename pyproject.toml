@@ -24,7 +24,12 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Topic :: Scientific/Engineering",
 ]
-dependencies = []
+dependencies = [
+  "numpy",
+  "hypothesis",
+  "typing_extensions",
+  "pycapnp",
+]
 
 [project.urls]
 Issues = "https://github.com/zhinst/labone-python/issues"
@@ -46,11 +51,6 @@ packages = ["src/labone"]
 dependencies = [
   "coverage[toml]>=6.5",
   "pytest",
-  "pycapnp",
-  "pytest_asyncio",
-  "typing_extensions",
-  "numpy",
-  "hypothesis",
 ]
 
 # Temporary solution until pycapnp has release its new version
@@ -80,10 +80,10 @@ fmt = ["black {args:.}", "ruff --fix {args:.}", "style"]
 all = ["style", "typing"]
 
 [tool.black]
-target-version = ["py39"]
+target-version = ["py38"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py38"
 select = ["ALL"]
 ignore = [
   # Type annotation for self
