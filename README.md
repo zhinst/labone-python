@@ -1,13 +1,15 @@
-# Python API for Zurich Instruments LabOne software
+# LabOne
 
-Python API for LabOne.
+LabOne is a Python library for Zurich Instruments LabOne software.
 
 > **Warning**
 The name of the project and package are still work in progress.
 
-## Contributing
+## Installation
 
-See [Contributing](CONTRIBUTING.md)
+```bash
+pip install labone
+```
 
 # Demo Usage
 
@@ -35,3 +37,7 @@ connection = await Session.create(
 await connection.list_nodes_info("*")
 await connection.set_value(AnnotatedValue(path="/node/path", value=123))
 ```
+
+## Contributing
+
+See [Contributing](CONTRIBUTING.md)
