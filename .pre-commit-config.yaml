@@ -8,9 +8,3 @@ repos:
         types: [python]
         pass_filenames: false
         verbose: true
-      - id: linter
-        name: linter
-        entry: hatch run lint:typing
-        language: python
-        types: [python]
-        pass_filenames: false
