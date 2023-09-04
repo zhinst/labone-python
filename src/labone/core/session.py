@@ -1,4 +1,18 @@
-"""Capnp session client."""
+"""Module for a session to a LabOne Kernel.
+
+A Kernel is a remote server that provides access to a defined set of nodes.
+It can be a device kernel that provides access to the device nodes but it
+can also be a kernel that provides additional functionality, e.g. the
+Data Server (zi) kernel.
+
+Every Kernel provides the same capnp interface and can therefore be handled
+in the same way. The only difference is the set of nodes that are available
+on the kernel.
+
+The number of sessions to a kernel is not limited. However, due to the
+asynchronous interface, it is often not necessary to have multiple sessions
+to the same kernel.
+"""
 from __future__ import annotations
 
 import json
@@ -150,7 +164,7 @@ async def _send_and_wait_request(
         raise errors.LabOneConnectionError(msg) from error
 
 
-class Session:
+class KernelSession:
     """Capnp session client.
 
     TODO document
@@ -178,7 +192,7 @@ class Session:
         *,
         kernel_info: KernelInfo,
         server_info: ServerInfo,
-    ) -> Session:
+    ) -> KernelSession:
         """Create a new session to a LabOne kernel.
 
         Since the creation of a new session happens asynchronously, this method
@@ -215,7 +229,7 @@ class Session:
             server_info=server_info,
         )
         connection = await capnp.AsyncIoStream.create_connection(sock=sock)
-        return Session(
+        return KernelSession(
             connection=connection,
             kernel_info=kernel_info_extended,
             server_info=server_info_extended,

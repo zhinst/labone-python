@@ -16,9 +16,9 @@ from labone.core.connection_layer import ServerInfo, ZIKernelInfo
 from labone.core.helper import request_field_type_description
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.session import (
+    KernelSession,
     ListNodesFlags,
     ListNodesInfoFlags,
-    Session,
     _send_and_wait_request,
 )
 from labone.core.value import AnnotatedValue
@@ -47,7 +47,7 @@ class SessionBootstrap(session_protocol_capnp.Session.Server):
 
 
 @pytest.fixture()
-async def session_server() -> tuple[Session, MagicMock]:
+async def session_server() -> tuple[KernelSession, MagicMock]:
     """Fixture for `labone.core.Session` and the server it is connected to.
 
     Returns:
@@ -55,7 +55,7 @@ async def session_server() -> tuple[Session, MagicMock]:
     """
     mock_session_server = MagicMock()
     server = await utils.CapnpServer.create(SessionBootstrap(mock_session_server))
-    session = Session(
+    session = KernelSession(
         connection=server.connection,
         kernel_info=ZIKernelInfo(),
         server_info=ServerInfo(host="localhost", port=8004),
@@ -283,7 +283,10 @@ class TestSetValue:
     """Integration tests for Session node set values functionality."""
 
     @pytest.fixture()
-    async def session_recorder(self, session_server) -> tuple[Session, ServerRecords]:
+    async def session_recorder(
+        self,
+        session_server,
+    ) -> tuple[KernelSession, ServerRecords]:
         session, server = await session_server
         recorder = ServerRecords()
 

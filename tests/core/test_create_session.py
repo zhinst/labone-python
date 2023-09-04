@@ -22,7 +22,7 @@ async def test_session_create_ok_zi(capnp_mock, create_session_client_stream):
     capnp_mock.AsyncIoStream.create_connection = AsyncMock()
     kernel_info = connection_layer.ZIKernelInfo()
     server_info = connection_layer.ServerInfo(host="localhost", port=8004)
-    created_session = await session.Session.create(
+    created_session = await session.KernelSession.create(
         kernel_info=kernel_info,
         server_info=server_info,
     )
