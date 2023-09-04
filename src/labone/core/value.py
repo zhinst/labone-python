@@ -93,7 +93,7 @@ class AnnotatedValue:
         try:
             message.metadata.path = self.path
         except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(message, "path")
+            field_type = request_field_type_description(message.metadata, "path")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
         message.value = _value_from_python_types(self.value)

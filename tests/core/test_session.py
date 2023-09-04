@@ -42,6 +42,9 @@ class SessionBootstrap(session_protocol_capnp.Session.Server):
     async def setValue(self, _context, **_):  # noqa: N802
         return self._mock.setValue(_context.params, _context.results)
 
+    async def getValues(self, _context, **_):  # noqa: N802
+        return self._mock.getValues(_context.params, _context.results)
+
     async def subscribe(self, _context, **_):
         return self._mock.subscribe(_context.params, _context.results)
 
@@ -340,6 +343,129 @@ class TestSetValue:
         server.setValue.side_effect = mock_method
         response = await session.set_value(value)
         assert response == value
+
+    @utils.ensure_event_loop
+    async def test_illegal_input_list_int(self, session_server):
+        session, _ = await session_server
+        value = AnnotatedValue(value=123, path=["/bar/foobar", "/foo/bar"], timestamp=0)
+        with pytest.raises(TypeError):
+            await session.set_value(value)
+
+
+class TestGetValues:
+    """Integration tests for Session node get values functionality."""
+
+    @pytest.fixture()
+    async def session_recorder(
+        self,
+        session_server,
+    ) -> tuple[KernelSession, ServerRecords]:
+        session, server = await session_server
+        recorder = ServerRecords()
+
+        def mock_method(params, _):
+            param_builder = params.as_builder()
+            recorder.params.append(param_builder)
+
+        server.getValues.side_effect = mock_method
+        return session, recorder
+
+    @utils.ensure_event_loop
+    async def test_server_receives_correct_values_single(self, session_recorder):
+        session, recorder = await session_recorder
+        result = await session.get_values(["/foo/bar"])
+        assert len(recorder.params) == 1
+        assert recorder.params[0].paths[0] == "/foo/bar"
+        assert result == []
+
+    @utils.ensure_event_loop
+    async def test_server_receives_correct_values_multiple(self, session_recorder):
+        session, recorder = await session_recorder
+        result = await session.get_values(["/foo/bar", "/bar/foo"])
+        assert len(recorder.params) == 1
+        assert recorder.params[0].paths[0] == "/foo/bar"
+        assert recorder.params[0].paths[1] == "/bar/foo"
+        assert result == []
+
+    @utils.ensure_event_loop
+    async def test_server_response_ok_single(self, session_server):
+        session, server = await session_server
+        value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
+
+        def mock_method(_, results):
+            builder = results.init("result", 1)
+            builder[0].ok = value.to_capnp()
+
+        server.getValues.side_effect = mock_method
+        response = await session.get_values(["/foo/bar"])
+        assert response[0] == value
+
+    @utils.ensure_event_loop
+    async def test_server_response_ok_multiple(self, session_server):
+        session, server = await session_server
+        value0 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
+        value1 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
+
+        def mock_method(_, results):
+            builder = results.init("result", 2)
+            builder[0].ok = value0.to_capnp()
+            builder[1].ok = value1.to_capnp()
+
+        server.getValues.side_effect = mock_method
+        response = await session.get_values(["/foo/bar"])
+        assert response[0] == value0
+        assert response[1] == value1
+
+    @utils.ensure_event_loop
+    async def test_server_response_err_single(self, session_server):
+        session, server = await session_server
+
+        def mock_method(_, results):
+            builder = results.init("result", 1)
+            builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
+
+        server.getValues.side_effect = mock_method
+        with pytest.raises(errors.LabOneCoreError, match="test error"):
+            await session.get_values(["/foo/bar"])
+
+    @utils.ensure_event_loop
+    async def test_server_response_err_multiple(self, session_server):
+        session, server = await session_server
+
+        def mock_method(_, results):
+            builder = results.init("result", 2)
+            builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
+            builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
+
+        server.getValues.side_effect = mock_method
+        with pytest.raises(errors.LabOneCoreError, match="test error"):
+            await session.get_values(["/foo/bar"])
+
+    @utils.ensure_event_loop
+    async def test_server_response_err_mix(self, session_server):
+        session, server = await session_server
+        value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
+
+        def mock_method(_, results):
+            builder = results.init("result", 2)
+            builder[0].ok = value.to_capnp()
+            builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
+
+        server.getValues.side_effect = mock_method
+        with pytest.raises(errors.LabOneCoreError, match="test2 error"):
+            await session.get_values(["/foo/bar"])
+
+    @utils.ensure_event_loop
+    async def test_illegal_input_string(self, session_server):
+        session, _ = await session_server
+        with pytest.raises(TypeError):
+            await session.get_values("/foo/bar")
+
+    @utils.ensure_event_loop
+    async def test_illegal_input_list_int(self, session_server):
+        session, _ = await session_server
+        with pytest.raises(TypeError):
+            await session.get_values([1, 2, 3])
 
 
 class TestSessionSubscribe:
