@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
-from enum import IntEnum
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
+
+from labone.core.helper import VectorElementType, VectorValueType
 
 if TYPE_CHECKING:
     from labone.core.resources import (  # type: ignore[attr-defined]
@@ -343,25 +344,12 @@ def _deserialize_shf_waveform_vector(
     return data_real + 1j * data_imag
 
 
-_ZI_VECTOR_TO_NUMPY_TYPE = {
-    0: np.uint8,
-    1: np.uint16,
-    2: np.uint32,
-    3: np.uint64,
-    4: np.single,
-    5: np.double,
-    6: str,
-    7: np.csingle,
-    8: np.cdouble,
-}
-
-
 def _deserialize_shf_result_logger_vector(
     *,
     raw_data: bytes,
     extra_header_info: int,
     header_length: int,
-    element_type: int,
+    element_type: VectorElementType,
 ) -> tuple[np.ndarray, ShfResultLoggerVectorExtraHeader]:
     """Deserialize the vector data for result logger vector.
 
@@ -385,7 +373,7 @@ def _deserialize_shf_result_logger_vector(
     # Parse raw data
     data = np.frombuffer(
         raw_data[header_length:],
-        dtype=_ZI_VECTOR_TO_NUMPY_TYPE[element_type],
+        dtype=element_type.to_numpy_type(),
     )
     return data, extra_header
 
@@ -454,23 +442,6 @@ def _deserialize_shf_demodulator_vector(
     return SHFDemodSample(data_x, data_y), extra_header
 
 
-class VectorValueType(IntEnum):
-    """Mapping of the vector value type.
-
-    VectorValueType specifies the type of the vector. It uses (a subset) of
-    values from `ZIValueType_enum` from the C++ client. The most commonly used
-    types are "VECTOR_DATA" and "BYTE_ARRAY". Some vectors use a different
-    format, e.g. for SHF devices.
-    """
-
-    BYTE_ARRAY = 7
-    VECTOR_DATA = 67
-    SHF_GENERATOR_WAVEFORM_VECTOR_DATA = 69
-    SHF_RESULT_LOGGER_VECTOR_DATA = 70
-    SHF_SCOPE_VECTOR_DATA = 71
-    SHF_DEMODULATOR_VECTOR_DATA = 72
-
-
 def get_header_length(vector_data: session_protocol_capnp.VectorData) -> int:
     """Get the length of the extra header.
 
@@ -525,7 +496,7 @@ def parse_shf_vector_data_struct(
             raw_data=raw_data,
             extra_header_info=extra_header_info,
             header_length=header_length,
-            element_type=vector_data.vectorElementType,
+            element_type=VectorElementType(vector_data.vectorElementType),
         )
     if value_type == VectorValueType.SHF_GENERATOR_WAVEFORM_VECTOR_DATA:
         return _deserialize_shf_waveform_vector(raw_data), None

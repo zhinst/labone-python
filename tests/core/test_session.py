@@ -13,12 +13,12 @@ import capnp
 import pytest
 from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
+from labone.core.helper import request_field_type_description
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.session import (
     ListNodesFlags,
     ListNodesInfoFlags,
     Session,
-    _request_field_type_description,
     _send_and_wait_request,
 )
 from labone.core.value import AnnotatedValue
@@ -259,14 +259,14 @@ class TestSendAndWaitRequest:
 
 
 @utils.ensure_event_loop
-async def test_capnp_request_field_type_description():
+async def test_capnprequest_field_type_description():
     class TestInterface(testfile_capnp.TestInterface.Server):
         pass
 
     client = testfile_capnp.TestInterface._new_client(TestInterface())
     request = client.testMethod_request()
-    assert _request_field_type_description(request, "testUint32Field") == "uint32"
-    assert _request_field_type_description(request, "testTextField") == "text"
+    assert request_field_type_description(request, "testUint32Field") == "uint32"
+    assert request_field_type_description(request, "testTextField") == "text"
 
 
 def session_proto_value_to_python(builder):

@@ -14,6 +14,7 @@ from labone.core.connection_layer import (
     ServerInfo,
     create_session_client_stream,
 )
+from labone.core.helper import request_field_type_description
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.result import unwrap
 from labone.core.subscription import DataQueue, StreamingHandle
@@ -122,19 +123,6 @@ class ListNodesFlags(IntFlag):
     GET_ONLY = 1 << 7
     EXCLUDE_STREAMING = 1 << 20
     EXCLUDE_VECTORS = 1 << 24
-
-
-def _request_field_type_description(
-    request: capnp.lib.capnp._Request,  # noqa: SLF001
-    field: str,
-) -> str:
-    """Get given `capnp` request field type description.
-
-    Args:
-        request: Capnp request.
-        field: Field name of the request.
-    """
-    return request.schema.fields[field].proto.slot.type.which()
 
 
 async def _send_and_wait_request(
@@ -302,7 +290,7 @@ class Session:
         try:
             request.flags = int(flags)
         except capnp.KjException as error:
-            field_type = _request_field_type_description(request, "flags")
+            field_type = request_field_type_description(request, "flags")
             msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
             raise ValueError(
                 msg,
@@ -394,7 +382,7 @@ class Session:
         try:
             request.flags = int(flags)
         except capnp.KjException as error:
-            field_type = _request_field_type_description(request, "flags")
+            field_type = request_field_type_description(request, "flags")
             msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
             raise ValueError(
                 msg,
@@ -465,7 +453,7 @@ class Session:
         try:
             subscription.path = path
         except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = _request_field_type_description(subscription, "path")
+            field_type = request_field_type_description(subscription, "path")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
         request = self._session.subscribe_request()

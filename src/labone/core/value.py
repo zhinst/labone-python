@@ -9,17 +9,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import IntEnum
 from typing import Any, Union
 
 import capnp
 import numpy as np
 
+from labone.core.helper import (
+    VectorElementType,
+    VectorValueType,
+    request_field_type_description,
+)
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.shf_vector_data import (
     ExtraHeader,
     SHFDemodSample,
-    VectorValueType,
     get_header_length,
     parse_shf_vector_data_struct,
 )
@@ -90,7 +93,7 @@ class AnnotatedValue:
         try:
             message.metadata.path = self.path
         except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = message.metadata.schema.fields["path"].proto.slot.type.which()
+            field_type = request_field_type_description(message, "path")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
         message.value = _value_from_python_types(self.value)
@@ -202,7 +205,7 @@ def _capnp_vector_to_value(
         Numpy array containing the vector data and the extra header if present.
     """
     raw_data = vector_data.data
-    element_type = _VectorElementType(vector_data.vectorElementType)
+    element_type = VectorElementType(vector_data.vectorElementType)
     generic_vector_types = [VectorValueType.VECTOR_DATA, VectorValueType.BYTE_ARRAY]
     if vector_data.valueType not in generic_vector_types:
         # For the time being we need to manually untangle the shf vector types.
@@ -221,7 +224,7 @@ def _capnp_vector_to_value(
             )
             return parse_vector, None
 
-    if element_type == _VectorElementType.STRING:
+    if element_type == VectorElementType.STRING:
         # Special case for strings which are send as byte arrays
         return raw_data.decode(), None
 
@@ -263,86 +266,6 @@ def _capnp_value_to_python_value(
     raise ValueError(msg)
 
 
-class _VectorElementType(IntEnum):
-    """Type of the elements in a vector supported by the capnp interface.
-
-    Since the vector data is transmitted as a byte array the type of the
-    elements in the vector must be specified. This enum contains all supported
-    types by the capnp interface.
-    """
-
-    UINT8 = 0
-    UINT16 = 1
-    UINT32 = 2
-    UINT64 = 3
-    FLOAT = 4
-    DOUBLE = 5
-    STRING = 6
-    COMPLEX_FLOAT = 7
-    COMPLEX_DOUBLE = 8
-
-    @classmethod
-    def from_numpy_type(
-        cls,
-        numpy_type: np.dtype,
-    ) -> _VectorElementType:
-        """Construct a VectorElementType from a numpy type.
-
-        Args:
-            numpy_type: The numpy type to be converted.
-
-        Returns:
-            The VectorElementType corresponding to the numpy type.
-
-        Raises:
-            ValueError: If the numpy type has no corresponding
-                VectorElementType.
-        """
-        if np.issubdtype(numpy_type, np.uint8):
-            return cls.UINT8
-        if np.issubdtype(numpy_type, np.uint16):
-            return cls.UINT16
-        if np.issubdtype(numpy_type, np.uint32):
-            return cls.UINT32
-        if np.issubdtype(numpy_type, np.uint64):
-            return cls.UINT64
-        if np.issubdtype(numpy_type, np.single):
-            return cls.FLOAT
-        if np.issubdtype(numpy_type, np.double):
-            return cls.DOUBLE
-        if np.issubdtype(numpy_type, np.csingle):
-            return cls.COMPLEX_FLOAT
-        if np.issubdtype(numpy_type, np.cdouble):
-            return cls.COMPLEX_DOUBLE
-        msg = f"Invalid vector element type: {numpy_type}."
-        raise ValueError(msg)
-
-    def to_numpy_type(self) -> np.dtype:
-        """Convert to numpy type.
-
-        This should always work since all relevant types are supported by
-        numpy.
-
-        Returns:
-            The numpy type corresponding to the VectorElementType.
-        """
-        return _CAPNP_TO_NUMPY_TYPE[self]  # type: ignore[return-value]
-
-
-# Static Mapping from VectorElementType to numpy type.
-_CAPNP_TO_NUMPY_TYPE = {
-    _VectorElementType.UINT8: np.uint8,
-    _VectorElementType.UINT16: np.uint16,
-    _VectorElementType.UINT32: np.uint32,
-    _VectorElementType.UINT64: np.uint64,
-    _VectorElementType.FLOAT: np.single,
-    _VectorElementType.DOUBLE: np.double,
-    _VectorElementType.STRING: str,
-    _VectorElementType.COMPLEX_FLOAT: np.csingle,
-    _VectorElementType.COMPLEX_DOUBLE: np.cdouble,
-}
-
-
 def _value_from_python_types(
     value: Any,  # noqa: ANN401
 ) -> capnp.lib.capnp._DynamicStructBuilder:  # noqa: SLF001
@@ -375,14 +298,14 @@ def _value_from_python_types(
         request_value.vectorData = session_protocol_capnp.VectorData(
             valueType=VectorValueType.BYTE_ARRAY.value,
             extraHeaderInfo=0,
-            vectorElementType=_VectorElementType.UINT8.value,
+            vectorElementType=VectorElementType.UINT8.value,
             data=value,
         )
     elif isinstance(value, np.ndarray):
         vector_data = session_protocol_capnp.VectorData(
             valueType=VectorValueType.VECTOR_DATA.value,
             extraHeaderInfo=0,
-            vectorElementType=_VectorElementType.from_numpy_type(value.dtype).value,
+            vectorElementType=VectorElementType.from_numpy_type(value.dtype).value,
             data=value.tobytes(),
         )
         request_value.vectorData = vector_data
