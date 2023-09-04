@@ -429,6 +429,52 @@ class KernelSession:
         response = await _send_and_wait_request(request)
         return AnnotatedValue.from_capnp(result.unwrap(response.result))
 
+    async def get_values(
+        self,
+        paths: list[str],
+    ) -> list[AnnotatedValue]:
+        """Get the values of multiple nodes.
+
+         Fetch multiple node values from the device. The returned list is in the
+         same order as the input list.
+
+         The nodes can either be passed as absolute path, starting with a leading
+         slash and the device id (e.g. "/dev123/demods/0/enable") or as relative
+         path (e.g. "demods/0/enable"). In the latter case the device id is
+         automatically added to the path by the server. Note that the
+         orchestrator/ZI kernel always requires absolute paths (/zi/about/version).
+
+         If an error occurs while fetching the values no value is returned but
+        the first first exception instead.
+
+        Args:
+             paths: List of node paths.
+
+        Returns:
+             List of annotated values of the nodes.
+
+        Raises:
+             TypeError: If `paths` is not a list of strings.
+             LabOneConnectionError: If there is a problem in the connection.
+             errors.LabOneTimeoutError: If the operation timed out.
+             errors.LabOneWriteOnlyError: If a read operation was attempted on a
+                 write-only node.
+             errors.LabOneCoreError: If something else went wrong.
+        """
+        request = self._session.getValues_request()
+        try:
+            request.paths = paths
+        except (AttributeError, TypeError, capnp.KjException) as error:
+            field_type = request_field_type_description(request, "paths")
+            msg = f"`paths` attribute must be of type {field_type}."
+            raise TypeError(msg) from error
+        request.client = self._client_id.bytes
+        response = await _send_and_wait_request(request)
+        return [
+            AnnotatedValue.from_capnp(result.unwrap(raw_result))
+            for raw_result in response.result
+        ]
+
     async def subscribe(self, path: str) -> DataQueue:
         """Register a new subscription to a node.
 
