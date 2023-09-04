@@ -15,7 +15,6 @@ from typing import Any, Union
 import capnp
 import numpy as np
 
-from labone.core import errors
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.shf_vector_data import (
     ExtraHeader,
@@ -90,7 +89,7 @@ class AnnotatedValue:
         message = session_protocol_capnp.AnnotatedValue.new_message()
         try:
             message.metadata.path = self.path
-        except capnp.KjException as error:
+        except (AttributeError, TypeError, capnp.KjException) as error:
             field_type = message.metadata.schema.fields["path"].proto.slot.type.which()
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
@@ -389,7 +388,7 @@ def _value_from_python_types(
         request_value.vectorData = vector_data
     else:
         msg = f"The provided value has an invalid type: {type(value)}"
-        raise errors.LabOneCoreError(
+        raise ValueError(
             msg,
         )
     return request_value

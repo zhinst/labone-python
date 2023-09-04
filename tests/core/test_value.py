@@ -134,3 +134,15 @@ class TestAnnotatedValueValue:
         assert vec_data.extraHeaderInfo == 0
         assert vec_data.vectorElementType == _VectorElementType.COMPLEX_DOUBLE.value
         assert vec_data.data == inp.tobytes()
+
+    @given(arrays(dtype=(np.string_), shape=(1, 2)))
+    def test_value_from_python_types_vector_data_invalid(self, inp):
+        with pytest.raises(ValueError):
+            AnnotatedValue(value=inp, path="").to_capnp()
+
+    def test_value_from_python_types_invalid(self):
+        class FakeObject:
+            pass
+
+        with pytest.raises(ValueError):
+            AnnotatedValue(value=FakeObject, path="").to_capnp()
