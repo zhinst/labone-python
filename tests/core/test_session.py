@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from unittest.mock import MagicMock
@@ -244,6 +245,24 @@ class TestSendAndWaitRequest:
             await _send_and_wait_request(
                 MockRequest(send_raise_for=error("error")),
             )
+
+    @utils.ensure_event_loop
+    async def test_suppress_unwanted_traceback(self):
+        # Flaky test..
+        try:
+            await _send_and_wait_request(
+                MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
+            )
+        except errors.LabOneConnectionError:
+            assert "KjException" not in traceback.format_exc()
+
+        promise = MockRemotePromise(
+            a_wait_raise_for=RuntimeError("error"),
+        )
+        try:
+            await _send_and_wait_request(MockRequest(promise))
+        except errors.LabOneConnectionError:
+            assert "RuntimeError" not in traceback.format_exc()
 
     @utils.ensure_event_loop
     async def test_a_wait_kj_error(self):

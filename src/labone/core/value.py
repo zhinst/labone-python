@@ -92,10 +92,10 @@ class AnnotatedValue:
         message = session_protocol_capnp.AnnotatedValue.new_message()
         try:
             message.metadata.path = self.path
-        except (AttributeError, TypeError, capnp.KjException) as error:
+        except (AttributeError, TypeError, capnp.KjException):
             field_type = request_field_type_description(message.metadata, "path")
             msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
+            raise TypeError(msg) from None
         message.value = _value_from_python_types(self.value)
         return message
 

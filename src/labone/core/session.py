@@ -158,10 +158,10 @@ async def _send_and_wait_request(
     # TODO(markush): Raise more specific error types.  # noqa: TD003, FIX002
     except capnp.lib.capnp.KjException as error:
         msg = error.description
-        raise errors.LabOneConnectionError(msg) from error
+        raise errors.LabOneConnectionError(msg) from None
     except Exception as error:  # noqa: BLE001
         msg = str(error)
-        raise errors.LabOneConnectionError(msg) from error
+        raise errors.LabOneConnectionError(msg) from None
 
 
 class KernelSession:
@@ -303,15 +303,15 @@ class KernelSession:
             raise TypeError(msg)  # noqa: TRY200, B904
         try:
             request.flags = int(flags)
-        except capnp.KjException as error:
+        except capnp.KjException:
             field_type = request_field_type_description(request, "flags")
             msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
             raise ValueError(
                 msg,
-            ) from error
-        except (TypeError, ValueError) as error:
+            ) from None
+        except (TypeError, ValueError):
             msg = "`flags` must be an integer."
-            raise TypeError(msg) from error
+            raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
         return list(response.paths)
 
@@ -392,18 +392,18 @@ class KernelSession:
             request.pathExpression = path
         except Exception:  # noqa: BLE001
             msg = "`path` must be a string."
-            raise TypeError(msg)  # noqa: TRY200, B904
+            raise TypeError(msg) from None
         try:
             request.flags = int(flags)
-        except capnp.KjException as error:
+        except capnp.KjException:
             field_type = request_field_type_description(request, "flags")
             msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
             raise ValueError(
                 msg,
-            ) from error
-        except (TypeError, ValueError) as error:
+            ) from None
+        except (TypeError, ValueError):
             msg = "`flags` must be an integer."
-            raise TypeError(msg) from error
+            raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)
 
@@ -512,10 +512,10 @@ class KernelSession:
         )
         try:
             subscription.path = path
-        except (AttributeError, TypeError, capnp.KjException) as error:
+        except (AttributeError, TypeError, capnp.KjException):
             field_type = request_field_type_description(subscription, "path")
             msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
+            raise TypeError(msg) from None
         request = self._session.subscribe_request()
         request.subscription = subscription
         response = await _send_and_wait_request(request)
