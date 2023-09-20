@@ -29,6 +29,10 @@ class LabOneConnectionError(LabOneCoreError, ConnectionError):
     """
 
 
+class LabOneVersionMismatchError(LabOneConnectionError):
+    """Raised when LabOne instance is not compatible with the client."""
+
+
 class KernelNotFoundError(LabOneConnectionError):
     """Raised when the the specified kernel cannot be found.
 

@@ -36,31 +36,46 @@ interface Session @0xb9d445582da4a55c {
   #        Added None type to Value union.
   # 1.3.0: Added ClientId to setValue and getValue. This allows reordering of requests with different clientIds.
   # 1.4.0: Added "http" as protocol in the hello message
-  const capabilityVersion :Version = "1.4.0";
+  # 1.5.0: Added setValue and new getValue function that accept PathExpressions as input.
+  const capabilityVersion :Version = "1.5.0";
 
   getCapabilityVersion @7 () -> (version :Version);
 
   listNodes @0 (pathExpression :PathExpression, flags :UInt32, client :ClientId) -> (paths :Paths);
   # The "client" field is needed only when subscribedonly is used.
 
-  getValues @1 (paths :Paths, client :ClientId = .defaultClientId) -> (result :List(Result(AnnotatedValue, Error)));
+  getValue @10 (pathExpression :PathExpression, 
+                 lookupMode :LookupMode = directLookup,
+                 flags :UInt32 = 0,
+                 client :ClientId = .defaultClientId)
+            -> (result :List(Result(AnnotatedValue, Error)));
+  # Note 1: A pathExpressions can be anything that listNodes is able to resolve.
+  #         This means that e.g. wildcards are allowed. It is also possible to
+  #         pass multiple, comma separated paths as single pathExpression.
+  # Note 2: The lookupMode controlls if and how pathExpressions are resolved.
+  #         by default the pathExpression is expected to be a node path pointing
+  #         to an existing leaf node. If lookupMode is set to withExpansion,
+  #         the server tries to resolve the pathExpression with listNodes internally
+  #         and returns the value for all matching nodes.
 
-  setValues @9 (sets        :List(AnnotatedValue),
+  setValue @9 (pathExpression :PathExpression,
+                value        :Value,
+                lookupMode :LookupMode = directLookup,
                 completeWhen :ReturnFromSetWhen = deviceAck,
                 client :ClientId = .defaultClientId)
-            -> (result       :List(Result(AnnotatedValue, Error)));
-
-  setValue @8 (path         :Path,
-               value        :Value,
-               completeWhen :ReturnFromSetWhen = deviceAck,
-               client :ClientId = .defaultClientId)
-           -> (result       :Result(AnnotatedValue, Error));
+            -> (result :List(Result(AnnotatedValue, Error)));
   # Note 1: in certain cases, the HPK allows setting nodes with a type different
   #         from that of the value passed in. For example, it is allowed to set
   #         a double from an integer. The returned value is always of the type
   #         of the node. So it can happen that setValue returns a value of a type
   #         different from the one that was passed in.
   # Note 2: The AnnotatedValue is only returned if `completeWhen` is set to `deviceAck`.
+  # Note 3: The lookupMode controlls if and how pathExpressions are resolved.
+  #         by default the pathExpression is expected to be a node path pointing
+  #         to an existing leaf node. If lookupMode is set to withExpansion,
+  #         the server tries to resolve the pathExpression with listNodes internally
+  #         and sets the value to all matching nodes.
+
 
   subscribe @3 (subscription :Subscription) -> (result :Result(Void, Error));
   # Note 1: this function currently does not support wildcards in the path
@@ -99,6 +114,14 @@ interface Session @0xb9d445582da4a55c {
                          value        :Value,
                          completeWhen :ReturnFromSetWhen = deviceAck)
                      -> (result       :Result(Void, Error));
+  # DEPRECATED
+  # Server side path expansion was added in 1.5.0
+  deprecatedSetValue2 @8 (path         :Path,
+                          value        :Value,
+                          completeWhen :ReturnFromSetWhen = deviceAck,
+                          client :ClientId = .defaultClientId)
+                      -> (result       :Result(AnnotatedValue, Error));
+  deprecatedGetValues @1 (paths :Paths, client :ClientId = .defaultClientId) -> (result :List(Result(AnnotatedValue, Error)));
 }
 
 struct Void {}
@@ -183,6 +206,13 @@ enum ReturnFromSetWhen @0xdd2da53aac55edf9 {
 
   unusedAsync @2;
   unusedTransactional @3;
+}
+
+enum LookupMode @0xda5049b5e072f425 {
+  # The path expected to be a single node path.
+  directLookup @0;
+  # The server tries to resolve the path with listNodes internally.
+  withExpansion @1;
 }
 
 struct AnnotatedValue @0xf408ee376e837cdc {

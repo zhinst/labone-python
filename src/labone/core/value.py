@@ -15,6 +15,7 @@ import capnp
 import numpy as np
 
 from labone.core.helper import (
+    LabOneNodePath,
     VectorElementType,
     VectorValueType,
     request_field_type_description,
@@ -51,7 +52,7 @@ class AnnotatedValue:
     """
 
     value: Value
-    path: str
+    path: LabOneNodePath
     timestamp: int | None = None
     extra_header: Any = None
 
