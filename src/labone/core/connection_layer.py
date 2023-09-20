@@ -345,13 +345,13 @@ def _client_handshake(
             *sock.getpeername(),
             f"Invalid server kind: {hello_msg.kind}",
         )
-        raise errors.LabOneConnectionError(msg)
+        raise errors.LabOneVersionMismatchError(msg)
     if hello_msg.protocol != hello_msg_capnp.HelloMsg.Protocol.http:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
             f" Invalid protocol: {hello_msg.protocol}",
         )
-        raise errors.LabOneConnectionError(msg)
+        raise errors.LabOneVersionMismatchError(msg)
 
     try:
         capability_version = version.Version(hello_msg._get("schema"))  # noqa: SLF001
@@ -360,13 +360,13 @@ def _client_handshake(
             *sock.getpeername(),
             f"Unsupported LabOne Version: {hello_msg.l1Ver}",
         )
-        raise errors.LabOneConnectionError(msg) from err
+        raise errors.LabOneVersionMismatchError(msg) from err
     if capability_version < MIN_ORCHESTRATOR_CAPABILITY_VERSION:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
             f"Unsupported LabOne Version: {hello_msg.l1Ver}",
         )
-        raise errors.LabOneConnectionError(msg)
+        raise errors.LabOneVersionMismatchError(msg)
     if capability_version.major > CURRENT_KERNEL_CAPABILITY_VERSION.major:
         msg = str(
             "Unable to open connection to the data server at {host}:{port}. "
@@ -374,7 +374,7 @@ def _client_handshake(
             "with the version of this api. Please update the latest version "
             "of the python package.",
         )
-        raise errors.LabOneConnectionError(msg)
+        raise errors.LabOneVersionMismatchError(msg)
     return hello_msg
 
 
@@ -518,7 +518,7 @@ def _http_get_info_request(
                 f"The server at {host}:{port} is not compatible with the LabOne API. "
                 "Please update LabOne to the latest version."
             )
-            raise errors.LabOneConnectionError(msg) from err
+            raise errors.LabOneVersionMismatchError(msg) from err
     # Update the capability version of the kernel info
     capability_version_raw = response.headers.get("Zhinst-Kernel-Version", None)
     kernel_info_extended = kernel_info.with_capability_version(

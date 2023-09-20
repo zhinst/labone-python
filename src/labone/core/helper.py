@@ -7,6 +7,9 @@ from enum import IntEnum
 
 import capnp
 import numpy as np
+from typing_extensions import TypeAlias
+
+LabOneNodePath: TypeAlias = str
 
 
 def request_field_type_description(

@@ -28,8 +28,13 @@ from labone.core.connection_layer import (
     ServerInfo,
     create_session_client_stream,
 )
-from labone.core.helper import request_field_type_description
-from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
+from labone.core.helper import (
+    LabOneNodePath,
+    request_field_type_description,
+)
+from labone.core.resources import (  # type: ignore[attr-defined]
+    session_protocol_capnp,
+)
 from labone.core.result import unwrap
 from labone.core.subscription import DataQueue, StreamingHandle
 from labone.core.value import AnnotatedValue
@@ -70,7 +75,7 @@ class NodeInfo(TypedDict):
             The key exists only if the node `Type` is `Integer (enumerated)`.
     """
 
-    Node: str
+    Node: LabOneNodePath
     Description: str
     Properties: str
     Type: NodeType
@@ -161,6 +166,16 @@ async def _send_and_wait_request(
         return await request.send().a_wait()
     # TODO(markush): Raise more specific error types.  # noqa: TD003, FIX002
     except capnp.lib.capnp.KjException as error:
+        if (
+            "Method not implemented" in error.description
+            or "object has no attribute" in error.description
+        ):
+            msg = str(
+                "The requested method is not implemented by the server. "
+                "This most likely that the LabOne version is outdated. "
+                "Please update the LabOne software to the latest version.",
+            )
+            raise errors.LabOneVersionMismatchError(msg) from None
         msg = error.description
         raise errors.LabOneConnectionError(msg) from None
     except Exception as error:  # noqa: BLE001
@@ -274,9 +289,9 @@ class KernelSession:
 
     async def list_nodes(
         self,
-        path: str,
+        path: LabOneNodePath,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
-    ) -> list[str]:
+    ) -> list[LabOneNodePath]:
         """List the nodes found at a given path.
 
         Args:
@@ -344,9 +359,9 @@ class KernelSession:
 
     async def list_nodes_info(
         self,
-        path: str,
+        path: LabOneNodePath,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
-    ) -> dict[str, NodeInfo]:
+    ) -> dict[LabOneNodePath, NodeInfo]:
         """List the nodes and their information found at a given path.
 
         Args:
@@ -437,21 +452,16 @@ class KernelSession:
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
         """Set the value of a node.
 
-        Note that this function will change soon and support the following
-        interface:
-            set(self, values: list[AnnotatedValue]) -> list[Maybe[AnnotatedValue]]
-
-
         Args:
-            value: Annotated value of the node.
+            value: Value to be set. The annotated value must contain a
+                LabOne node path and a value. (The path can be relative or
+                absolute.)
 
         Returns:
             Acknowledged value from the device.
 
         Example:
-            >>> ack_value = await session.set(
-                    AnnotatedValue(path="/zi/debug/level", value=2)
-                )
+            >>> await session.set(AnnotatedValue(path="/zi/debug/level", value=2)
 
         Raises:
             TypeError: If the node path is of wrong type.
@@ -460,57 +470,47 @@ class KernelSession:
         """
         capnp_value = value.to_capnp()
         request = self._session.setValue_request()
-        request.path = capnp_value.metadata.path
+        request.pathExpression = capnp_value.metadata.path
         request.value = capnp_value.value
+        request.lookupMode = session_protocol_capnp.LookupMode.directLookup
+        request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        return AnnotatedValue.from_capnp(result.unwrap(response.result))
+        return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
 
-    async def get(
-        self,
-        paths: list[str],
-    ) -> list[AnnotatedValue]:
-        """Get the values of multiple nodes.
+    async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
+        """Set the value of all nodes matching the path expression.
 
-         Fetch multiple node values from the device. The returned list is in the
-         same order as the input list.
+        A path expression is a labone node path. The difference to a normal
+        node path is that it can contain wildcards and must not be a leaf node.
+        In short it is a path that can match multiple nodes. For more information
+        on path expressions see the `list_nodes()` function.
 
-         The nodes can either be passed as absolute path, starting with a leading
-         slash and the device id (e.g. "/dev123/demods/0/enable") or as relative
-         path (e.g. "demods/0/enable"). In the latter case the device id is
-         automatically added to the path by the server. Note that the
-         orchestrator/ZI kernel always requires absolute paths (/zi/about/version).
-
-         If an error occurs while fetching the values no value is returned but
+        If an error occurs while fetching the values no value is returned but
         the first first exception instead.
 
         Args:
-             paths: List of node paths.
+            value: Value to be set. The annotated value must contain a
+                LabOne path expression and a value.
 
         Returns:
-             List of annotated values of the nodes.
+            Acknowledged value from the device.
 
         Example:
-            >>> values = await session.get(
-                    ['/zi/devices/visible', '/zi/devices/connected']
+            >>> ack_values = await session.set_with_expression(
+                    AnnotatedValue(path="/zi/*/level", value=2)
                 )
-            >>> visible_device = values[0].value
-            >>> connected_device = values[0].value
+            >>> print(ack_values[0])
 
         Raises:
-             TypeError: If `paths` is not a list of strings.
-             LabOneConnectionError: If there is a problem in the connection.
-             errors.LabOneTimeoutError: If the operation timed out.
-             errors.LabOneWriteOnlyError: If a read operation was attempted on a
-                 write-only node.
-             errors.LabOneCoreError: If something else went wrong.
+            TypeError: If the node path is of wrong type.
+            LabOneCoreError: If the node value type is not supported.
+            LabOneConnectionError: If there is a problem in the connection.
         """
-        request = self._session.getValues_request()
-        try:
-            request.paths = paths
-        except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(request, "paths")
-            msg = f"`paths` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
+        capnp_value = value.to_capnp()
+        request = self._session.setValue_request()
+        request.pathExpression = capnp_value.metadata.path
+        request.value = capnp_value.value
+        request.lookupMode = session_protocol_capnp.LookupMode.withExpansion
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
         return [
@@ -518,7 +518,101 @@ class KernelSession:
             for raw_result in response.result
         ]
 
-    async def subscribe(self, path: str) -> DataQueue:
+    async def get(
+        self,
+        path: LabOneNodePath,
+    ) -> AnnotatedValue:
+        """Get the value of a node.
+
+         The node can either be passed as an absolute path, starting with a leading
+         slash and the device id (e.g. "/dev123/demods/0/enable") or as relative
+         path (e.g. "demods/0/enable"). In the latter case the device id is
+         automatically added to the path by the server. Note that the
+         orchestrator/ZI kernel always requires absolute paths (/zi/about/version).
+
+        Args:
+            path: LabOne node path (relative or absolute).
+
+        Returns:
+            Annotated value of the node.
+
+        Example:
+            >>> await session.get('/zi/devices/visible')
+
+        Raises:
+             TypeError: If `path` is not a string.
+             LabOneConnectionError: If there is a problem in the connection.
+             errors.LabOneTimeoutError: If the operation timed out.
+             errors.LabOneWriteOnlyError: If a read operation was attempted on a
+                 write-only node.
+             errors.LabOneCoreError: If something else went wrong.
+        """
+        request = self._session.getValue_request()
+        try:
+            request.pathExpression = path
+        except (AttributeError, TypeError, capnp.KjException) as error:
+            field_type = request_field_type_description(request, "pathExpression")
+            msg = f"`path` attribute must be of type {field_type}."
+            raise TypeError(msg) from error
+        request.lookupMode = session_protocol_capnp.LookupMode.directLookup
+        request.client = self._client_id.bytes
+        response = await _send_and_wait_request(request)
+        return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
+
+    async def get_with_expression(
+        self,
+        path_expression: LabOneNodePath,
+        flags: ListNodesFlags
+        | int = ListNodesFlags.ABSOLUTE
+        | ListNodesFlags.RECURSIVE
+        | ListNodesFlags.LEAVES_ONLY
+        | ListNodesFlags.EXCLUDE_STREAMING
+        | ListNodesFlags.GET_ONLY,
+    ) -> list[AnnotatedValue]:
+        """Get the value of all nodes matching the path expression.
+
+        A path expression is a labone node path. The difference to a normal
+        node path is that it can contain wildcards and must not be a leaf node.
+        In short it is a path that can match multiple nodes. For more information
+        on path expressions see the `list_nodes()` function.
+
+        If an error occurs while fetching the values no value is returned but
+        the first first exception instead.
+
+        Args:
+            path_expression: LabOne path expression.
+            flags: The flags used by the server (list_nodes()) to filter the
+                nodes.
+
+        Returns:
+            Annotated values from the nodes matching the path expression.
+
+        Example:
+            >>> values = await session.get_with_expression("/zi/*/level")
+            >>> print(values[0])
+
+        Raises:
+            TypeError: If the node path is of wrong type.
+            LabOneCoreError: If the node value type is not supported.
+            LabOneConnectionError: If there is a problem in the connection.
+        """
+        request = self._session.getValue_request()
+        try:
+            request.pathExpression = path_expression
+        except (AttributeError, TypeError, capnp.KjException) as error:
+            field_type = request_field_type_description(request, "pathExpression")
+            msg = f"`path` attribute must be of type {field_type}."
+            raise TypeError(msg) from error
+        request.lookupMode = session_protocol_capnp.LookupMode.withExpansion
+        request.flags = int(flags)
+        request.client = self._client_id.bytes
+        response = await _send_and_wait_request(request)
+        return [
+            AnnotatedValue.from_capnp(result.unwrap(raw_result))
+            for raw_result in response.result
+        ]
+
+    async def subscribe(self, path: LabOneNodePath) -> DataQueue:
         """Register a new subscription to a node.
 
         Registers a new subscription to a node on the kernel/server. All

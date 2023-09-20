@@ -29,6 +29,9 @@ from labone.core import errors
 from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.value import AnnotatedValue
 
+if t.TYPE_CHECKING:  # pragma: no cover
+    from labone.core.helper import LabOneNodePath
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +85,7 @@ class DataQueue(asyncio.Queue):
     def __init__(
         self,
         *,
-        path: str,
+        path: LabOneNodePath,
         register_function: t.Callable[[weakref.ReferenceType[DataQueue]], None],
     ) -> None:
         super().__init__()
@@ -174,7 +177,7 @@ class DataQueue(asyncio.Queue):
         return bool(self._connection_state)
 
     @property
-    def path(self) -> str:
+    def path(self) -> LabOneNodePath:
         """Path of the subscribed node."""
         return self._path
 
