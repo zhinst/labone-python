@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import random
+import socket
 import traceback
+import typing
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from unittest.mock import MagicMock
 
 import capnp
 import pytest
+import pytest_asyncio
 from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
 from labone.core.helper import request_field_type_description
@@ -23,7 +27,6 @@ from labone.core.session import (
 )
 from labone.core.value import AnnotatedValue
 
-from . import utils
 from .resources import testfile_capnp  # type: ignore[attr-defined]
 
 
@@ -49,21 +52,57 @@ class SessionBootstrap(session_protocol_capnp.Session.Server):
         return self._mock.subscribe(_context.params, _context.results)
 
 
-@pytest.fixture()
-async def session_server() -> tuple[KernelSession, MagicMock]:
+class CapnpServer:
+    """A capnp server."""
+
+    def __init__(self, connection: capnp.AsyncIoStream):
+        self._connection = connection
+
+    @property
+    def connection(self) -> capnp.AsyncIoStream:
+        """Connection to the server."""
+        return self._connection
+
+    @classmethod
+    async def create(
+        cls,
+        obj: capnp.lib.capnp._DynamicCapabilityServer,
+    ) -> CapnpServer:
+        """Create a server for the given object."""
+        read, write = socket.socketpair()
+        write = await capnp.AsyncIoStream.create_connection(sock=write)
+        _ = asyncio.create_task(cls._new_connection(write, obj))
+        return cls(await capnp.AsyncIoStream.create_connection(sock=read))
+
+    @staticmethod
+    async def _new_connection(
+        stream: capnp.AsyncIoStream,
+        obj: capnp.lib.capnp._DynamicCapabilityServer,
+    ):
+        """Establish a new connection."""
+        await capnp.TwoPartyServer(stream, bootstrap=obj).on_disconnect()
+
+
+class MockServer(typing.NamedTuple):
+    session: KernelSession
+    server: MagicMock
+
+
+@pytest_asyncio.fixture()
+async def mock_connection() -> tuple[KernelSession, MagicMock]:
     """Fixture for `labone.core.Session` and the server it is connected to.
 
     Returns:
         Session and a server mock, which is passed into `SessionBootstrap`.
     """
-    mock_session_server = MagicMock()
-    server = await utils.CapnpServer.create(SessionBootstrap(mock_session_server))
+    mock_server = MagicMock()
+    server = await CapnpServer.create(SessionBootstrap(mock_server))
     session = KernelSession(
         connection=server.connection,
         kernel_info=ZIKernelInfo(),
         server_info=ServerInfo(host="localhost", port=8004),
     )
-    return session, mock_session_server
+    return MockServer(session=session, server=mock_server)
 
 
 class TestSessionListNodes:
@@ -74,7 +113,7 @@ class TestSessionListNodes:
 
         return mock_method
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         ("from_server", "from_api"),
         [
@@ -83,51 +122,47 @@ class TestSessionListNodes:
             ([""], [""]),
         ],
     )
-    async def test_return_value(self, session_server, from_server, from_api):
-        session, server = await session_server
-        server.listNodes.side_effect = self.mock_return_value(from_server)
-        r = await session.list_nodes("path")
+    async def test_return_value(self, mock_connection, from_server, from_api):
+        mock_connection.server.listNodes.side_effect = self.mock_return_value(
+            from_server,
+        )
+        r = await mock_connection.session.list_nodes("path")
         assert r == from_api
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("path", [1, 1.1, ["a"], {"a": "b"}])
-    async def test_invalid_path_type(self, session_server, path):
-        session, _ = await session_server
+    async def test_invalid_path_type(self, mock_connection, path):
         with pytest.raises(TypeError):
-            await session.list_nodes(path)
+            await mock_connection.session.list_nodes(path)
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", list(ListNodesFlags))
-    async def test_with_flags_enum(self, session_server, flags):
-        session, server = await session_server
-        server.listNodes.side_effect = self.mock_return_value([])
-        r = await session.list_nodes("path", flags=flags)
+    async def test_with_flags_enum(self, mock_connection, flags):
+        mock_connection.server.listNodes.side_effect = self.mock_return_value([])
+        r = await mock_connection.session.list_nodes("path", flags=flags)
         assert r == []
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         "flags",
         [random.randint(0, 10000) for _ in range(5)],  # noqa: S311
     )
-    async def test_with_flags_int(self, session_server, flags):
-        session, server = await session_server
-        server.listNodes.side_effect = self.mock_return_value([])
-        r = await session.list_nodes("path", flags=flags)
+    async def test_with_flags_int(self, mock_connection, flags):
+        mock_connection.server.listNodes.side_effect = self.mock_return_value([])
+        r = await mock_connection.session.list_nodes("path", flags=flags)
         assert r == []
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", ["foo", [3], None])
-    async def test_with_flags_type_error(self, session_server, flags):
-        session, _ = await session_server
+    async def test_with_flags_type_error(self, mock_connection, flags):
         with pytest.raises(TypeError):
-            await session.list_nodes("path", flags=flags)
+            await mock_connection.session.list_nodes("path", flags=flags)
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", [-2, -100])
-    async def test_with_flags_value_error(self, session_server, flags):
-        session, _ = await session_server
+    async def test_with_flags_value_error(self, mock_connection, flags):
         with pytest.raises(ValueError):
-            await session.list_nodes("path", flags=flags)
+            await mock_connection.session.list_nodes("path", flags=flags)
 
 
 class TestSessionListNodesJson:
@@ -138,7 +173,7 @@ class TestSessionListNodesJson:
 
         return mock_method
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         ("from_server", "from_api"),
         [
@@ -146,64 +181,57 @@ class TestSessionListNodesJson:
             ({}, {}),
         ],
     )
-    async def test_return_value(self, session_server, from_server, from_api):
-        session, server = await session_server
-        server.listNodesJson.side_effect = self.mock_return_value(from_server)
-        r = await session.list_nodes_info("path")
+    async def test_return_value(self, mock_connection, from_server, from_api):
+        mock_connection.server.listNodesJson.side_effect = self.mock_return_value(
+            from_server,
+        )
+        r = await mock_connection.session.list_nodes_info("path")
         assert r == from_api
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("path", [1, 1.1, ["a"], {"a": "b"}])
-    async def test_invalid_path_type(self, session_server, path):
-        session, _ = await session_server
+    async def test_invalid_path_type(self, mock_connection, path):
         with pytest.raises(TypeError):
-            await session.list_nodes_info(path)
+            await mock_connection.session.list_nodes_info(path)
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", list(ListNodesInfoFlags))
-    async def test_with_flags_enum(self, session_server, flags):
-        session, server = await session_server
-        server.listNodesJson.side_effect = self.mock_return_value({})
-        r = await session.list_nodes_info("path", flags=flags)
+    async def test_with_flags_enum(self, mock_connection, flags):
+        mock_connection.server.listNodesJson.side_effect = self.mock_return_value({})
+        r = await mock_connection.session.list_nodes_info("path", flags=flags)
         assert r == {}
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         "flags",
         [random.randint(0, 10000) for _ in range(5)],  # noqa: S311
     )
-    async def test_with_flags_int(self, session_server, flags):
-        session, server = await session_server
-        server.listNodesJson.side_effect = self.mock_return_value({})
-        r = await session.list_nodes_info("path", flags=flags)
+    async def test_with_flags_int(self, mock_connection, flags):
+        mock_connection.server.listNodesJson.side_effect = self.mock_return_value({})
+        r = await mock_connection.session.list_nodes_info("path", flags=flags)
         assert r == {}
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", ["foo", [3], None])
-    async def test_with_flags_type_error(self, session_server, flags):
-        session, _ = await session_server
+    async def test_with_flags_type_error(self, mock_connection, flags):
         with pytest.raises(TypeError):
-            await session.list_nodes_info("path", flags=flags)
+            await mock_connection.session.list_nodes_info("path", flags=flags)
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", [-2, -100])
-    async def test_with_flags_value_error(self, session_server, flags):
-        session, _ = await session_server
+    async def test_with_flags_value_error(self, mock_connection, flags):
         with pytest.raises(ValueError):
-            await session.list_nodes_info("path", flags=flags)
+            await mock_connection.session.list_nodes_info("path", flags=flags)
 
 
-class MockRemotePromise:
-    """Mock of `capnp.lib.capnp._RemotePromise`"""
+async def mock_remote_response(response):
+    """Simple function that returns a promise that resolves to `response`."""
+    return response
 
-    def __init__(self, a_wait_response: Any = None, a_wait_raise_for: Any = None):
-        self._a_wait_response = a_wait_response
-        self._a_wait_raise_for = a_wait_raise_for
 
-    async def a_wait(self):
-        if self._a_wait_raise_for:
-            raise self._a_wait_raise_for
-        return self._a_wait_response
+async def mock_remote_error(error):
+    """Simple function that returns a promise that rejects with `error`."""
+    raise error
 
 
 class MockRequest:
@@ -224,20 +252,20 @@ class MockRequest:
 
 
 class TestSendAndWaitRequest:
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     async def test_success(self):
-        promise = MockRemotePromise(a_wait_response="foobar")
+        promise = mock_remote_response("foobar")
         response = await _send_and_wait_request(MockRequest(promise))
         assert response == "foobar"
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     async def test_send_kj_error(self):
         with pytest.raises(errors.LabOneConnectionError, match="error"):
             await _send_and_wait_request(
                 MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
             )
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_send_misc_error(self, error):
         with pytest.raises(errors.LabOneConnectionError, match="error"):
@@ -245,7 +273,7 @@ class TestSendAndWaitRequest:
                 MockRequest(send_raise_for=error("error")),
             )
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     async def test_suppress_unwanted_traceback(self):
         # Flaky test..
         try:
@@ -255,31 +283,27 @@ class TestSendAndWaitRequest:
         except errors.LabOneConnectionError:
             assert "KjException" not in traceback.format_exc()
 
-        promise = MockRemotePromise(
-            a_wait_raise_for=RuntimeError("error"),
-        )
+        promise = mock_remote_error(RuntimeError("error"))
         try:
             await _send_and_wait_request(MockRequest(promise))
         except errors.LabOneConnectionError:
             assert "RuntimeError" not in traceback.format_exc()
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     async def test_a_wait_kj_error(self):
-        promise = MockRemotePromise(
-            a_wait_raise_for=capnp.lib.capnp.KjException("error"),
-        )
+        promise = mock_remote_error(capnp.lib.capnp.KjException("error"))
         with pytest.raises(errors.LabOneConnectionError, match="error"):
             await _send_and_wait_request(MockRequest(promise))
 
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_a_wait_misc_error(self, error):
-        promise = MockRemotePromise(a_wait_raise_for=error("error"))
+        promise = mock_remote_error(error("error"))
         with pytest.raises(errors.LabOneConnectionError, match="error"):
             await _send_and_wait_request(MockRequest(promise))
 
 
-@utils.ensure_event_loop
+@pytest.mark.asyncio()
 async def test_capnprequest_field_type_description():
     class TestInterface(testfile_capnp.TestInterface.Server):
         pass
@@ -303,61 +327,50 @@ class ServerRecords:
 class TestSetValue:
     """Integration tests for Session node set values functionality."""
 
-    @pytest.fixture()
-    async def session_recorder(
-        self,
-        session_server,
-    ) -> tuple[KernelSession, ServerRecords]:
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_receives_correct_value(self, mock_connection):
         recorder = ServerRecords()
 
         def mock_method(params, _):
             param_builder = params.as_builder()
             recorder.params.append(param_builder)
 
-        server.setValue.side_effect = mock_method
-        return session, recorder
+        mock_connection.server.setValue.side_effect = mock_method
 
-    @utils.ensure_event_loop
-    async def test_server_receives_correct_value(self, session_recorder):
-        session, recorder = await session_recorder
         value = AnnotatedValue(value=12, path="/foo/bar")
         with pytest.raises(IndexError):
-            await session.set(value)
+            await mock_connection.session.set(value)
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/bar"
         assert session_proto_value_to_python(recorder.params[0].value) == 12
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].ok = value.to_capnp()
 
-        server.setValue.side_effect = mock_method
-        response = await session.set(value)
+        mock_connection.server.setValue.side_effect = mock_method
+        response = await mock_connection.session.set(value)
         assert response == value
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_single(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_single(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
 
-        server.setValue.side_effect = mock_method
+        mock_connection.server.setValue.side_effect = mock_method
 
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.set(value)
+            await mock_connection.session.set(value)
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_multiple(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_multiple(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
@@ -365,63 +378,52 @@ class TestSetValue:
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
             builder[1].from_dict({"err": {"code": 1, "message": "test2 error"}})
 
-        server.setValue.side_effect = mock_method
+        mock_connection.server.setValue.side_effect = mock_method
 
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.set(value)
+            await mock_connection.session.set(value)
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_int(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_int(self, mock_connection):
         value = AnnotatedValue(value=123, path=["/bar/foobar", "/foo/bar"], timestamp=0)
         with pytest.raises(TypeError):
-            await session.set(value)
+            await mock_connection.session.set(value)
 
 
 class TestSetValueWithPathExpression:
     """Integration tests for Session node set values functionality."""
 
-    @pytest.fixture()
-    async def session_recorder(
-        self,
-        session_server,
-    ) -> tuple[KernelSession, ServerRecords]:
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_receives_correct_value(self, mock_connection):
         recorder = ServerRecords()
 
         def mock_method(params, _):
             param_builder = params.as_builder()
             recorder.params.append(param_builder)
 
-        server.setValue.side_effect = mock_method
-        return session, recorder
+        mock_connection.server.setValue.side_effect = mock_method
 
-    @utils.ensure_event_loop
-    async def test_server_receives_correct_value(self, session_recorder):
-        session, recorder = await session_recorder
         value = AnnotatedValue(value=12, path="/foo/bar")
-        result = await session.set_with_expression(value)
+        result = await mock_connection.session.set_with_expression(value)
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/bar"
         assert session_proto_value_to_python(recorder.params[0].value) == 12
         assert result == []
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok_single(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok_single(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].ok = value.to_capnp()
 
-        server.setValue.side_effect = mock_method
-        response = await session.set_with_expression(value)
+        mock_connection.server.setValue.side_effect = mock_method
+        response = await mock_connection.session.set_with_expression(value)
         assert response[0] == value
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok_multiple(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok_multiple(self, mock_connection):
         value0 = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
         value1 = AnnotatedValue(value=124, path="/bar/foo", timestamp=0)
         value2 = AnnotatedValue(value=125, path="/bar/bar", timestamp=0)
@@ -432,29 +434,27 @@ class TestSetValueWithPathExpression:
             builder[1].ok = value1.to_capnp()
             builder[2].ok = value2.to_capnp()
 
-        server.setValue.side_effect = mock_method
-        response = await session.set_with_expression(value0)
+        mock_connection.server.setValue.side_effect = mock_method
+        response = await mock_connection.session.set_with_expression(value0)
         assert response[0] == value0
         assert response[1] == value1
         assert response[2] == value2
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_single(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_single(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
 
-        server.setValue.side_effect = mock_method
+        mock_connection.server.setValue.side_effect = mock_method
 
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.set_with_expression(value)
+            await mock_connection.session.set_with_expression(value)
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_multiple(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_multiple(self, mock_connection):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
@@ -462,14 +462,13 @@ class TestSetValueWithPathExpression:
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
             builder[1].from_dict({"err": {"code": 1, "message": "test2 error"}})
 
-        server.setValue.side_effect = mock_method
+        mock_connection.server.setValue.side_effect = mock_method
 
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.set_with_expression(value)
+            await mock_connection.session.set_with_expression(value)
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_mix(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_mix(self, mock_connection):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
@@ -477,60 +476,48 @@ class TestSetValueWithPathExpression:
             builder[0].ok = value.to_capnp()
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
-        server.setValue.side_effect = mock_method
+        mock_connection.server.setValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test2 error"):
-            await session.set_with_expression(value)
+            await mock_connection.session.set_with_expression(value)
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_int(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_int(self, mock_connection):
         value = AnnotatedValue(value=123, path=["/bar/foobar", "/foo/bar"], timestamp=0)
         with pytest.raises(TypeError):
-            await session.set(value)
+            await mock_connection.session.set(value)
 
 
 class TestGetValueWithExpression:
     """Integration tests for Session node get values functionality."""
 
-    @pytest.fixture()
-    async def session_recorder(
-        self,
-        session_server,
-    ) -> tuple[KernelSession, ServerRecords]:
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_receives_correct_value(self, mock_connection):
         recorder = ServerRecords()
 
         def mock_method(params, _):
             param_builder = params.as_builder()
             recorder.params.append(param_builder)
 
-        server.getValue.side_effect = mock_method
-        return session, recorder
-
-    @utils.ensure_event_loop
-    async def test_server_receives_correct_value(self, session_recorder):
-        session, recorder = await session_recorder
-        result = await session.get_with_expression("/foo/*")
+        mock_connection.server.getValue.side_effect = mock_method
+        result = await mock_connection.session.get_with_expression("/foo/*")
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/*"
         assert result == []
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok_single(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok_single(self, mock_connection):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].ok = value.to_capnp()
 
-        server.getValue.side_effect = mock_method
-        response = await session.get_with_expression("/foo/bar")
+        mock_connection.server.getValue.side_effect = mock_method
+        response = await mock_connection.session.get_with_expression("/foo/bar")
         assert response[0] == value
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok_multiple(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok_multiple(self, mock_connection):
         value0 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
         value1 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
@@ -539,39 +526,34 @@ class TestGetValueWithExpression:
             builder[0].ok = value0.to_capnp()
             builder[1].ok = value1.to_capnp()
 
-        server.getValue.side_effect = mock_method
-        response = await session.get_with_expression("/foo/bar")
+        mock_connection.server.getValue.side_effect = mock_method
+        response = await mock_connection.session.get_with_expression("/foo/bar")
         assert response[0] == value0
         assert response[1] == value1
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_single(self, session_server):
-        session, server = await session_server
-
+    @pytest.mark.asyncio()
+    async def test_server_response_err_single(self, mock_connection):
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
 
-        server.getValue.side_effect = mock_method
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.get_with_expression("/foo/bar")
+            await mock_connection.session.get_with_expression("/foo/bar")
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_multiple(self, session_server):
-        session, server = await session_server
-
+    @pytest.mark.asyncio()
+    async def test_server_response_err_multiple(self, mock_connection):
         def mock_method(_, results):
             builder = results.init("result", 2)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
-        server.getValue.side_effect = mock_method
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.get_with_expression("/foo/bar")
+            await mock_connection.session.get_with_expression("/foo/bar")
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_mix(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_err_mix(self, mock_connection):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
@@ -579,98 +561,80 @@ class TestGetValueWithExpression:
             builder[0].ok = value.to_capnp()
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
-        server.getValue.side_effect = mock_method
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test2 error"):
-            await session.get_with_expression("/foo/bar")
+            await mock_connection.session.get_with_expression("/foo/bar")
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_string(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_string(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.get_with_expression(["/foo/bar"])
+            await mock_connection.session.get_with_expression(["/foo/bar"])
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_int(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_int(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.get_with_expression([1, 2, 3])
+            await mock_connection.session.get_with_expression([1, 2, 3])
 
 
 class TestGetValue:
     """Integration tests for Session node get values functionality."""
 
-    @pytest.fixture()
-    async def session_recorder(
-        self,
-        session_server,
-    ) -> tuple[KernelSession, ServerRecords]:
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_receives_correct_values_single(self, mock_connection):
         recorder = ServerRecords()
 
         def mock_method(params, _):
             param_builder = params.as_builder()
             recorder.params.append(param_builder)
 
-        server.getValue.side_effect = mock_method
-        return session, recorder
-
-    @utils.ensure_event_loop
-    async def test_server_receives_correct_values_single(self, session_recorder):
-        session, recorder = await session_recorder
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(IndexError):
-            await session.get("/foo/bar")
+            await mock_connection.session.get("/foo/bar")
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/bar"
 
-    @utils.ensure_event_loop
-    async def test_server_response_ok_single(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_server_response_ok_single(self, mock_connection):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].ok = value.to_capnp()
 
-        server.getValue.side_effect = mock_method
-        response = await session.get("/foo/bar")
+        mock_connection.server.getValue.side_effect = mock_method
+        response = await mock_connection.session.get("/foo/bar")
         assert response == value
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_single(self, session_server):
-        session, server = await session_server
-
+    @pytest.mark.asyncio()
+    async def test_server_response_err_single(self, mock_connection):
         def mock_method(_, results):
             builder = results.init("result", 1)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
 
-        server.getValue.side_effect = mock_method
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.get("/foo/bar")
+            await mock_connection.session.get("/foo/bar")
 
-    @utils.ensure_event_loop
-    async def test_server_response_err_multiple(self, session_server):
-        session, server = await session_server
-
+    @pytest.mark.asyncio()
+    async def test_server_response_err_multiple(self, mock_connection):
         def mock_method(_, results):
             builder = results.init("result", 2)
             builder[0].from_dict({"err": {"code": 1, "message": "test error"}})
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
-        server.getValue.side_effect = mock_method
+        mock_connection.server.getValue.side_effect = mock_method
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.get("/foo/bar")
+            await mock_connection.session.get("/foo/bar")
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_string(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_string(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.get(["/foo/bar"])
+            await mock_connection.session.get(["/foo/bar"])
 
-    @utils.ensure_event_loop
-    async def test_illegal_input_list_int(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_illegal_input_list_int(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.get([1, 2, 3])
+            await mock_connection.session.get([1, 2, 3])
 
 
 class TestSessionSubscribe:
@@ -690,48 +654,43 @@ class TestSessionSubscribe:
             else:
                 results.result.from_dict({"ok": {}})
 
-    @utils.ensure_event_loop
-    async def test_subscribe_meta_data(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_subscribe_meta_data(self, mock_connection):
         path = "/dev1234/demods/0/sample"
         subscription_server = self.SubscriptionServer()
-        server.subscribe.side_effect = subscription_server.subscribe
-        queue = await session.subscribe(path)
+        mock_connection.server.subscribe.side_effect = subscription_server.subscribe
+        queue = await mock_connection.session.subscribe(path)
         assert subscription_server.path == path
-        assert subscription_server.client_id == session._client_id.bytes
+        assert subscription_server.client_id == mock_connection.session._client_id.bytes
         assert queue.qsize() == 0
         assert queue.path == path
 
-    @utils.ensure_event_loop
-    async def test_subscribe_error(self, session_server):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_subscribe_error(self, mock_connection):
         path = "/dev1234/demods/0/sample"
         subscription_server = self.SubscriptionServer(error="test error")
-        server.subscribe.side_effect = subscription_server.subscribe
+        mock_connection.server.subscribe.side_effect = subscription_server.subscribe
 
         with pytest.raises(errors.LabOneCoreError, match="test error"):
-            await session.subscribe(path)
+            await mock_connection.session.subscribe(path)
 
-    @utils.ensure_event_loop
-    async def test_subscribe_invalid_argument_dict(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_subscribe_invalid_argument_dict(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.subscribe({"I": "am", "not": "a", "path": 1})
+            await mock_connection.session.subscribe({"I": "am", "not": "a", "path": 1})
 
-    @utils.ensure_event_loop
-    async def test_subscribe_invalid_argument_int(self, session_server):
-        session, _ = await session_server
+    @pytest.mark.asyncio()
+    async def test_subscribe_invalid_argument_int(self, mock_connection):
         with pytest.raises(TypeError):
-            await session.subscribe(2)
+            await mock_connection.session.subscribe(2)
 
     @pytest.mark.parametrize("num_values", range(0, 20, 4))
-    @utils.ensure_event_loop
-    async def test_subscribe_send_value_ok(self, session_server, num_values):
-        session, server = await session_server
+    @pytest.mark.asyncio()
+    async def test_subscribe_send_value_ok(self, mock_connection, num_values):
         path = "/dev1234/demods/0/sample"
         subscription_server = self.SubscriptionServer()
-        server.subscribe.side_effect = subscription_server.subscribe
-        queue = await session.subscribe(path)
+        mock_connection.server.subscribe.side_effect = subscription_server.subscribe
+        queue = await mock_connection.session.subscribe(path)
 
         values = []
         for i in range(num_values):
@@ -761,11 +720,11 @@ class BrokenSessionBootstrap(session_protocol_capnp.Session.Server):
 
 
 class TestKJErrors:
-    @utils.ensure_event_loop
+    @pytest.mark.asyncio()
     async def test_session_function_not_implemented(self):
-        mock_session_server = MagicMock()
-        broker_server = await utils.CapnpServer.create(
-            BrokenSessionBootstrap(mock_session_server),
+        mock_mock_connection = MagicMock()
+        broker_server = await CapnpServer.create(
+            BrokenSessionBootstrap(mock_mock_connection),
         )
         client = KernelSession(
             connection=broker_server.connection,

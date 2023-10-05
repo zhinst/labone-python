@@ -30,6 +30,7 @@ from labone.core.connection_layer import (
 )
 from labone.core.helper import (
     LabOneNodePath,
+    ensure_capnp_event_loop,
     request_field_type_description,
 )
 from labone.core.resources import (  # type: ignore[attr-defined]
@@ -163,7 +164,7 @@ async def _send_and_wait_request(
         LabOneConnectionError: If sending the message or receiving the response failed.
     """
     try:
-        return await request.send().a_wait()
+        return await request.send()
     # TODO(markush): Raise more specific error types.  # noqa: TD003, FIX002
     except capnp.lib.capnp.KjException as error:
         if (
@@ -270,6 +271,7 @@ class KernelSession:
             kernel_info=kernel_info,
             server_info=server_info,
         )
+        await ensure_capnp_event_loop()
         connection = await capnp.AsyncIoStream.create_connection(sock=sock)
         return KernelSession(
             connection=connection,
