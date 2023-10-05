@@ -40,13 +40,17 @@ Warning:
     the master version can be installed.
 
 First, install the latest pycapnp master version
-(if you have already installed pycapnp, please uninstall it first)
 
 ```bash
 pip install --upgrade --force-reinstall -i https://docs.zhinst.com/pypi/ pycapnp
 ```
 
-Then install the labone package
+Then install the labone package.
+
+Warning: 
+    Since this package has not been released on pypi yet, it has to be installed
+    directly from github. This requires the `packaging` package to be installed.
+    (`pip install packaging`)
 
 ```bash
 pip install git+https://github.com/zhinst/labone-python@main

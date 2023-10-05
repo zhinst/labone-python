@@ -3,13 +3,41 @@
 This module bypasses the circular dependency between the modules
 within the core.
 """
+import asyncio
+import logging
 from enum import IntEnum
 
+import asyncio_atexit  # type: ignore [import]
 import capnp
 import numpy as np
 from typing_extensions import TypeAlias
 
+logger = logging.getLogger(__name__)
+
 LabOneNodePath: TypeAlias = str
+
+
+async def ensure_capnp_event_loop() -> None:
+    """Ensure that the capnp event loop is running.
+
+    Pycapnp requires the capnp event loop to be running for every async
+    function call to the capnp library. This function ensures that the capnp
+    event loop is running. The event loop is intended to be managed through a
+    context manager. This function fakes the context by using asyncio_atexit
+    to close the context when the asyncio event loop is closed. This ensures
+    that the capnp event loop will be closed before the asyncio event loop.
+    """
+    # The kj event loop is attached to the current asyncio event loop.
+    # Pycapnp does this by adding an attribute _kj_loop to the asyncio
+    # event loop. This is done in the capnp.kj_loop() context manager.
+    # The context manager should only be entered once. To avoid entering
+    # the context manager multiple times we check if the attribute is
+    # already set.
+    if not hasattr(asyncio.get_running_loop(), "_kj_loop"):
+        loop = capnp.kj_loop()
+        logger.debug("kj event loop attached to asyncio event loop %s", id(loop))
+        await loop.__aenter__()
+        asyncio_atexit.register(loop.__aexit__)
 
 
 def request_field_type_description(

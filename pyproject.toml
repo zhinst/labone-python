@@ -22,9 +22,15 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering",
 ]
-dependencies = ["numpy>=1.20", "packaging", "pycapnp", "typing_extensions"]
+dependencies = [
+  "typing_extensions>=4.8.0",
+  "numpy>=1.20",
+  "pycapnp==2.0.0b1",
+  "asyncio-atexit==1.0.1",
+]
 
 [project.urls]
 Issues = "https://github.com/zhinst/labone-python/issues"
@@ -47,7 +53,7 @@ packages = ["src/labone"]
 PIP_EXTRA_INDEX_URL = "https://docs.zhinst.com/pypi/"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.8", "3.9", "3.10", "3.11"]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
 [tool.hatch.envs.test]
 dependencies = ["coverage[toml]>=6.5", "pytest", "hypothesis", "pytest-asyncio"]
@@ -55,15 +61,25 @@ dependencies = ["coverage[toml]>=6.5", "pytest", "hypothesis", "pytest-asyncio"]
 [tool.hatch.envs.test.scripts]
 test = "pytest {args:tests}"
 test-cov = "coverage run -m pytest {args:tests}"
-cov-report = ["- coverage combine", "coverage report", "coverage html"]
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+  "coverage html",
+  "coverage xml",
+]
 cov = ["test-cov", "cov-report"]
 
 [[tool.hatch.envs.lint.matrix]]
-python = ["3.8", "3.9", "3.10", "3.11"]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
 [tool.hatch.envs.lint]
-detached = true
-dependencies = ["black>=23.1.0", "mypy>=1.0.0", "ruff>=0.0.243", "numpy>=1.20"]
+dependencies = [
+  "black>=23.1.0",
+  "mypy>=1.0.0",
+  "ruff>=0.0.243",
+  "numpy>=1.20",
+  "asyncio-atexit==1.0.1",
+]
 
 [tool.hatch.envs.lint.scripts]
 typing = "mypy --install-types --non-interactive {args:src/labone}"

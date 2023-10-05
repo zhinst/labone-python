@@ -19,8 +19,6 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install pycapnp from master
-      run:  pip install pycapnp -i https://docs.zhinst.com/pypi/
     - name: Install dependencies
       run:  pip install -r requirements.txt
     - name: Run style check
