@@ -2,12 +2,12 @@
 | --- | --- |
 | Package | not yet released on pypi.org |
 | Meta | [![Hatch project](https://img.shields.io/badge/%F0%9F%A5%9A-Hatch-4051b5.svg)](https://github.com/pypa/hatch) [![linting - Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v0.json)](https://github.com/charliermarsh/ruff) [![code style - Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) [![types - Mypy](https://img.shields.io/badge/types-Mypy-blue.svg)](https://github.com/python/mypy) [![License - MIT](https://img.shields.io/badge/license-MIT-9400d3.svg)](https://spdx.org/licenses/)|
-| CI | ![](https://github.com/zhinst/labone-python/actions/workflows/github-code-scanning/codeql/badge.svg) ![](https://github.com/zhinst/labone-python/actions/workflows/code_quality.yml/badge.svg) ![](https://github.com/zhinst/labone-python/actions/workflows/tests.yml/badge.svg) | 
+| CI | ![](https://github.com/zhinst/labone-python/actions/workflows/github-code-scanning/codeql/badge.svg) ![](https://codecov.io/gh/zhinst/labone-python/branch/main/graph/badge.svg?token=VUDDFQE20M) ![](https://github.com/zhinst/labone-python/actions/workflows/code_quality.yml/badge.svg) ![](https://github.com/zhinst/labone-python/actions/workflows/tests.yml/badge.svg) | 
 -----
 
 # LabOne Python API
 
-A python only API for [Zurich Instruments LabOne](https://www.zhinst.com/labone).
+A python-only API for [Zurich Instruments LabOne](https://www.zhinst.com/labone).
 
 Warning:
     This is a work in progress and not yet ready for production use. Feel free
@@ -15,26 +15,20 @@ Warning:
 
 Warning:
     The API is built and tested against the latest internal LabOne development
-    version. It will not work with the latest released version of LabOne.
+    version. It will most likely not work with the latest released version of LabOne.
 
 Current development status:
 
 * [x] Basic connection to the data server through the labone.core.session.KernelSession
 * [x] Full support of the data server API through the labone.core.session.KernelSession
-* [] Async node tree 
-* [] Helper functions
-* [] Device objects
-
-
-Warning:
-    The name of the project and package are still a work in progress.
+* [ ] Async lazy node tree 
+* [ ] Device objects
+* [ ] feature parity with zhinst-toolkit
 
 ## Installation
 
 Warning: 
-    Currently, we use the master version of the pycapnp package. Unfortunately,
-    pycapnp does not use git for versioning. Therefore, the master version has the
-    same then the latest released version. 
+    Currently, we use the master version of the pycapnp package.
     This means it has to be manually installed. To ease the installation, we have
     temporarily created a custom index at https://docs.zhinst.com/pypi/ from which 
     the master version can be installed.
@@ -45,7 +39,7 @@ First, install the latest pycapnp master version
 pip install --upgrade --force-reinstall -i https://docs.zhinst.com/pypi/ pycapnp
 ```
 
-Then install the labone package.
+Then, install the labone package.
 
 Warning: 
     Since this package has not been released on pypi yet, it has to be installed
@@ -59,7 +53,7 @@ pip install git+https://github.com/zhinst/labone-python@main
 # Demo Usage
 
 Compared to the `zhinst` python api, the `labone` python api is a pure python
-implementation. It does not depend on the LabOne C API but on the captain proto.
+implementation. It depends not on the LabOne C API but on the captain proto.
 The main differences are:
 
 * Pure Python implementation
