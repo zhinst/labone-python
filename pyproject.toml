@@ -48,10 +48,6 @@ exclude = ["/.github", "/docs"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/labone"]
 
-# Temporary solution until pycapnp has release its new version
-[tool.hatch.envs.default.env-vars]
-PIP_EXTRA_INDEX_URL = "https://docs.zhinst.com/pypi/"
-
 [[tool.hatch.envs.test.matrix]]
 python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 

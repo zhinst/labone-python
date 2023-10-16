@@ -28,20 +28,6 @@ Current development status:
 ## Installation
 
 Warning: 
-    Currently, we use the master version of the pycapnp package.
-    This means it has to be manually installed. To ease the installation, we have
-    temporarily created a custom index at https://docs.zhinst.com/pypi/ from which 
-    the master version can be installed.
-
-First, install the latest pycapnp master version
-
-```bash
-pip install --upgrade --force-reinstall -i https://docs.zhinst.com/pypi/ pycapnp
-```
-
-Then, install the labone package.
-
-Warning: 
     Since this package has not been released on pypi yet, it has to be installed
     directly from github. This requires the `packaging` package to be installed.
     (`pip install packaging`)
