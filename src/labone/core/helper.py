@@ -6,6 +6,7 @@ within the core.
 import asyncio
 import logging
 from enum import IntEnum
+from functools import partial
 
 import asyncio_atexit  # type: ignore [import]
 import capnp
@@ -37,7 +38,7 @@ async def ensure_capnp_event_loop() -> None:
         loop = capnp.kj_loop()
         logger.debug("kj event loop attached to asyncio event loop %s", id(loop))
         await loop.__aenter__()
-        asyncio_atexit.register(loop.__aexit__)
+        asyncio_atexit.register(partial(loop.__aexit__, None, None, None))
 
 
 def request_field_type_description(
