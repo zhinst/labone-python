@@ -16,11 +16,13 @@ to the same kernel.
 from __future__ import annotations
 
 import json
+import typing as t
 import uuid
 from enum import IntFlag
+from typing import Literal
 
 import capnp
-from typing_extensions import Literal, NotRequired, TypeAlias, TypedDict
+from typing_extensions import NotRequired, TypeAlias, TypedDict
 
 from labone.core import errors, result
 from labone.core.connection_layer import (
@@ -39,6 +41,8 @@ from labone.core.resources import (  # type: ignore[attr-defined]
 from labone.core.result import unwrap
 from labone.core.subscription import DataQueue, StreamingHandle
 from labone.core.value import AnnotatedValue
+
+T = t.TypeVar("T")
 
 NodeType: TypeAlias = Literal[
     "Integer (64 bit)",
@@ -614,7 +618,11 @@ class KernelSession:
             for raw_result in response.result
         ]
 
-    async def subscribe(self, path: LabOneNodePath) -> DataQueue:
+    async def subscribe(
+        self,
+        path: LabOneNodePath,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+    ) -> DataQueue:
         """Register a new subscription to a node.
 
         Registers a new subscription to a node on the kernel/server. All
@@ -635,6 +643,9 @@ class KernelSession:
         Args:
             path: String representing the path of the node to be streamed.
                 Currently does not support wildcards in the path.
+            parser_callback: Function to bring values obtained from
+                data-queue into desired format. This may involve parsing
+                them or putting them into an enum.
 
         Returns:
             An instance of the DataQueue class. This async queue will receive
@@ -648,7 +659,7 @@ class KernelSession:
             TypeError: If `path` is not a string
             LabOneConnectionError: If there is a problem in the connection.
         """
-        streaming_handle = StreamingHandle()
+        streaming_handle = StreamingHandle(parser_callback=parser_callback)
         subscription = session_protocol_capnp.Subscription(
             streamingHandle=streaming_handle,
             subscriberId=self._client_id.bytes,

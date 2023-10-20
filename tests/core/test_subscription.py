@@ -178,6 +178,12 @@ async def test_streaming_handle_update_event(num_values, num_queues):
             )
 
 
+def test_streaming_handle_with_parser_callback():
+    StreamingHandle(
+        parser_callback=lambda a: AnnotatedValue(path=a.path, value=a.value * 2),
+    )
+
+
 @pytest.mark.asyncio()
 async def test_streaming_handle_update_empty():
     streaming_handle = StreamingHandle()
