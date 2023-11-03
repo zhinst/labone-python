@@ -92,6 +92,7 @@ class DataQueue(asyncio.Queue):
         self._path = path
         self._connection_state = _ConnectionState()
         self._register_function = register_function
+
         register_function(weakref.ref(self))
 
     def __repr__(self) -> str:
@@ -121,7 +122,10 @@ class DataQueue(asyncio.Queue):
                 "sense as it would never receive data.",
             )
             raise errors.StreamingError(msg)
-        return DataQueue(path=self._path, register_function=self._register_function)
+        return DataQueue(
+            path=self._path,
+            register_function=self._register_function,
+        )
 
     def disconnect(self) -> None:
         """Disconnect the data queue.
@@ -224,8 +228,19 @@ class StreamingHandle(session_protocol_capnp.StreamingHandle.Server):
             will be added.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+    ) -> None:
         self._data_queues: list[weakref.ReferenceType[DataQueue]] = []
+
+        if parser_callback is None:
+
+            def parser_callback(x: AnnotatedValue) -> AnnotatedValue:
+                return x
+
+        self._parser_callback = parser_callback
 
     def register_data_queue(self, data_queue: weakref.ReferenceType[DataQueue]) -> None:
         """Register a new data queue.
@@ -287,7 +302,7 @@ class StreamingHandle(session_protocol_capnp.StreamingHandle.Server):
             capnp.KjException: If no data queues are registered any more and
                 the subscription should be removed.
         """
-        parsed_value = AnnotatedValue.from_capnp(value)
+        parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
         self._data_queues = [
             data_queue
             for data_queue in self._data_queues
