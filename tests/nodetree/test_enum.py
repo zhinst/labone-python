@@ -1,4 +1,6 @@
+import pickle
 from enum import Enum
+from io import BytesIO
 
 import pytest
 from labone.core import AnnotatedValue
@@ -12,9 +14,8 @@ from tests.nodetree.conftest import (
     device_structure,
     zi_structure,
 )
-from tests.nodetree.test_node import get_serverless_tree
+from tests.nodetree.test_node import sessionless_manager_logic
 from tests.nodetree.conftest import zi_structure, zi
-#from tests.nodetree.conftest import sessionless_tree
 
 
 class TestNodeInfo:

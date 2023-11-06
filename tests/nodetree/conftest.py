@@ -114,7 +114,7 @@ async def session_zi(session_mock):
     )
 
 
-def get_serverless_manager(
+def sessionless_manager_logic(
     *,
     nodes_to_info=None,
     parser=None,
@@ -133,24 +133,25 @@ def get_serverless_manager(
         parser=parser,
     )
 
+
 @pytest.fixture(name="sessionless_manager")
 def sessionless_manager_fixture(
     request# nodes_to_info=None, parser_builder=None,
 ):
     nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
-    parser_builder_marker = request.node.get_closest_marker("parser_builder")
-    if parser_builder_marker is None:
-        parser_builder = ParserBuilder(use_enum_parser=False)
+    parser_marker = request.node.get_closest_marker("parser_builder")
+    if parser_marker is None:
+        parser = lambda x:x
     else:
-        parser_builder = parser_builder_marker.args[0]
+        parser = parser_marker.args[0]
 
     if nodes_to_info_marker is None:
         nodes_to_info = zi_structure.nodes_to_info
     else:
         nodes_to_info = nodes_to_info_marker.args[0]
 
-    return sessionless_manager(
-        parser_builder=parser_builder,
+    return sessionless_manager_logic(
+        parser=parser,
         nodes_to_info=nodes_to_info
     )
 
@@ -171,7 +172,7 @@ def zi(
     else:
         nodes_to_info = nodes_to_info_marker.args[0]
 
-    return sessionless_manager(
+    return sessionless_manager_logic(
         nodes_to_info=nodes_to_info,
         parser=parser,
     ).construct_nodetree(hide_kernel_prefix=True)
@@ -180,7 +181,7 @@ def zi(
 @pytest.fixture
 def result_node():
     return ResultNode(
-        tree_manager=sessionless_manager(),
+        tree_manager=sessionless_manager_logic(),
         path_segments=(),
         subtree_paths=zi_structure.structure,
         value_structure=zi_get_responses_prop,

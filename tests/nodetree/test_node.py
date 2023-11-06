@@ -25,7 +25,7 @@ from tests.nodetree.conftest import (
     device_id,
     device_structure,
     result_node,
-    sessionless_manager,
+    sessionless_manager_logic,
     zi,
     session_zi,
     zi_get_responses_prop,
@@ -98,10 +98,9 @@ class TestNodetreeManager:
         assert set(node.subtree_structure.keys()) == {"open", "port"}
 
     @staticmethod
-    def test_hide_prefix():
-        manager = get_serverless_manager()
-        tree = manager.construct_nodetree(hide_kernel_prefix=False)
-        zi = manager.construct_nodetree(hide_kernel_prefix=True)
+    def test_hide_prefix(sessionless_manager):
+        tree = sessionless_manager.construct_nodetree(hide_kernel_prefix=False)
+        zi = sessionless_manager.construct_nodetree(hide_kernel_prefix=True)
 
         assert tree.zi == zi
 
