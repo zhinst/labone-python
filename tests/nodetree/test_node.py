@@ -190,6 +190,22 @@ class TestResultNode:
         assert unpickled_obj == result_node
 
     @staticmethod
+    @pytest.mark.asyncio()
+    async def test_iterate_result():
+        result_node = get_result_node()
+
+        found_nodes = [result.path for result in result_node.results()]
+        assert found_nodes == list(result_node._value_structure.keys())
+
+    @staticmethod
+    @pytest.mark.asyncio()
+    async def test_iterate_result_partial():
+        result_node = get_result_node()
+
+        found_nodes = [result.path for result in result_node.debug.results()]
+        assert len(found_nodes) == 3
+
+    @staticmethod
     def test_dir():
         result_node = get_result_node()
         assert "config" in dir(result_node)
