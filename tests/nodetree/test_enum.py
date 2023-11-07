@@ -22,7 +22,7 @@ class TestNodeInfo:
     def test_node_info():
         zi = get_serverless_tree()
         path = zi.debug.level.path
-        info = NodeInfo(zi.tree_manager.path_to_info[path], path)
+        info = NodeInfo(zi.tree_manager.path_to_info[path])
         assert isinstance(info, NodeInfo)
 
         # test callablity of methods
@@ -109,3 +109,17 @@ def test_pickle_enum():
     unpickled_obj = pickle.load(buffer)  # noqa: S301
 
     assert unpickled_obj == enum_value
+
+
+def test_enum_parser_non_existing_node():
+    parser = get_default_enum_parser(zi_structure.nodes_to_info)
+    result = parser(AnnotatedValue(path="/zi/invalid/node", value=1))
+    assert isinstance(result.value, int)
+    assert result.value == 1
+
+
+def test_enum_parser_invalid_value():
+    parser = get_default_enum_parser(zi_structure.nodes_to_info)
+    result = parser(AnnotatedValue(path="/zi/debug/level", value="67"))
+    assert isinstance(result.value, str)
+    assert result.value == "67"

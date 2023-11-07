@@ -1,19 +1,31 @@
-"""Defining Enum-Handling behavior."""
+"""Module providing a parser for enumerated integer values.
+
+Some integer values coming from the server are enumerated. This means that
+only a limited set of integer values are valid and each integer value is
+associated to a keyword. This module provides a parser that converts the
+integer value to an Enum object.
+
+The Enum object is created dynamically based on the node information. This
+is not ideal since it makes it hard to use the Enum as a user. Nevertheless
+its beneficial to apply the parser to the values coming from the server since
+it makes the values more readable and easier to use. Since we return a IntEnum
+object the values can be treated as integers and used as such.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 import typing as t
 from enum import Enum, IntEnum
 from functools import lru_cache
-
-import numpy as np
 
 if t.TYPE_CHECKING:
     from labone.core import AnnotatedValue  # pragma: no cover
     from labone.core.helper import LabOneNodePath  # pragma: no cover
     from labone.core.session import NodeInfo as NodeInfoType  # pragma: no cover
 
+logger = logging.getLogger(__name__)
 
 T = t.TypeVar("T")
 
@@ -29,10 +41,11 @@ class NodeEnumMeta:
     bypasses this problem by providing the functionality to recreate the
     Enum on the fly.
 
-    Warning: Although the class of the resulting enum object looks and feels
-    the same as the original one it is not. Therefore comparing the `type` will
-    fail. This is however the only limitation.
-    (type(value_old) != type(value_new) but value_old == value_new)
+    Warning:
+        Although the class of the resulting enum object looks and feels
+        the same as the original one it is not. Therefore comparing the `type`
+        will fail. This is however the only limitation.
+        (type(value_old) != type(value_new) but value_old == value_new)
 
     Args:
         value: Value of the NodeEnum object that should be created.
@@ -56,7 +69,7 @@ class NodeEnum(IntEnum):
     """Custom dynamically picklable IntEnum class.
 
     The Enum values for a device are created dynamically in toolkit based on
-    the node informations. Since they are not predefined but rather created
+    the node information. Since they are not predefined but rather created
     dynamically, the are not picklable. This custom child class of IntEnum
     overwrites the reduce function that returns all information required to
     recreate the Enum class in `NodeEnumMeta`.
@@ -110,7 +123,13 @@ def _get_enum(*, info: NodeInfoType, path: LabOneNodePath) -> NodeEnum | None:
 def get_default_enum_parser(
     path_to_info: dict[LabOneNodePath, NodeInfoType],
 ) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
-    """Default Enum Parser Closure.
+    """Get a generic parser for enumerated integer values.
+
+    The returned parser can be called with an annotated value. If the value
+    is enumerated and the corresponding Enum can be found, the value will be
+    converted to the Enum.
+
+    The lookup is cached to speed up the process.
 
     Args:
         path_to_info: Mapping of node paths to their corresponding NodeInfo.
@@ -133,12 +152,30 @@ def get_default_enum_parser(
         Returns:
             Parsed value.
         """
-        is_integer_value = isinstance(annotated_value.value, (int, np.integer))
-
-        if is_integer_value and annotated_value.path in path_to_info:
+        try:
             enum = get_enum_cached(annotated_value.path)
-            if enum is not None:
+        except KeyError:
+            # There is no sane scenario where this should happen. But the
+            # parser should not raise an exception. Therefore we return the
+            # original value.
+            logger.warning(
+                "Failed to parse the result for %s, its not part of the node tree.",
+                annotated_value.path,
+            )
+            return annotated_value
+        if enum is not None:
+            try:
                 annotated_value.value = enum(annotated_value.value)
+            except ValueError:
+                # The value is not part of the enum. This is a critical error
+                # of the server. But the parser should not raise an exception.
+                # Therefore we return the original value.
+                logger.warning(
+                    "Failed to parse the %s for %s, the value is not part of the enum.",
+                    annotated_value.value,
+                    annotated_value.path,
+                )
+                return annotated_value
         return annotated_value
 
     return default_enum_parser
