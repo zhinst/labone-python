@@ -758,6 +758,20 @@ class ResultNode(MetaNode):
     def __repr__(self) -> str:
         return f"{self!s} -> {[str(k) for k in self._subtree_structure]}"
 
+    def results(self) -> t.Iterator[AnnotatedValue]:
+        """Iterating through all results.
+
+        The difference to the normal iterator is that this iterator will iterate
+        through all results, not only the direct children. This is useful when
+        iterating through results of a wildcard or partial node.
+
+        Returns:
+            Results iterator.
+        """
+        for path, value in self._value_structure.items():
+            if path.startswith(self.path):
+                yield value
+
     def try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
