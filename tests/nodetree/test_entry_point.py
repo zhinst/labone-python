@@ -1,5 +1,6 @@
 import pytest
-from labone.nodetree import Node, construct_nodetree
+from labone.nodetree import construct_nodetree
+from labone.nodetree.node import Node
 
 from tests.nodetree.conftest import get_server_mock
 

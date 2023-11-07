@@ -15,3 +15,7 @@ class LabOneInappropriateNodeTypeError(LabOneNodetreeError):
 
 class LabOneNoEnumError(LabOneNodetreeError):
     """Raised when it is tried to get a enum for a node which is not an enum."""
+
+
+class LabOneNotImplementedError(LabOneNodetreeError, NotImplementedError):
+    """Raised when a method is not implemented."""

@@ -8,6 +8,7 @@ from labone.core.subscription import DataQueue
 from labone.nodetree.errors import (
     LabOneInappropriateNodeTypeError,
     LabOneInvalidPathError,
+    LabOneNotImplementedError,
 )
 from labone.nodetree.helper import (
     join_path,
@@ -347,6 +348,13 @@ class TestLeafNode:
         zi = await get_tree()
         queue = await zi.debug.level.subscribe()
         assert isinstance(queue, DataQueue)
+
+    @staticmethod
+    @pytest.mark.asyncio()
+    async def test_subscribe_partial_nodes():
+        zi = await get_tree()
+        with pytest.raises(LabOneNotImplementedError):
+            await zi.debug.subscribe()
 
     @staticmethod
     def test_node_info():

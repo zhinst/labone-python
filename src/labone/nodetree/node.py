@@ -1,12 +1,8 @@
-"""Pythonic node-tree.
+"""LabOne object-based node-tree implementation.
 
-This module enables working on a nodetree with the dot-operator:
->>> zi.debug.level
-A Node object will return another node object at access. These nodes can be used
-for getting and setting values using the __call__-operator.
->>> zi.debug.level()
->>> zi.debug.level(6)
-
+This module contains the core functionality of the node-tree. It provides
+the classes for the different types of nodes, the node info and the
+NodeTreeManager, which is the interface to the server.
 """
 from __future__ import annotations
 
@@ -28,6 +24,7 @@ from labone.core.value import AnnotatedValue, Value
 from labone.nodetree.errors import (
     LabOneInappropriateNodeTypeError,
     LabOneInvalidPathError,
+    LabOneNotImplementedError,
 )
 from labone.nodetree.helper import (
     WILDCARD,
@@ -60,18 +57,24 @@ class OptionInfo(t.NamedTuple):
 
 
 class NodeInfo:
-    """Encapsulating information about a node.
+    """Encapsulating information about a leaf node.
 
-    Among other, this class can answer weather the corresponding node
-    is readable, writable, which values can be set, how values coming from the server
-    should be preprocessed (parsed) ...
+    This class contains all information about a node provided by the server.
+    This includes:
 
-    This node is initially gained from remote and can be used to handle the node
-    properly.
+    * LabOne node path
+    * Description of the node
+    * Properties of the node (e.g. Read, Write, Setting)
+    * Type of the node (e.g. Double, Integer, String)
+    * Unit of the node, if applicable (e.g. V, Hz, dB)
+    * Options of the node, if applicable (e.g. 0: "Off", 1: "On")
+
+    Args:
+        info: Raw information about the node (JSON formatted), as provided by
+            the server.
     """
 
-    def __init__(self, info: NodeInfoType, path: LabOneNodePath):
-        self._path = path
+    def __init__(self, info: NodeInfoType):
         self._info: NodeInfoType = info
 
     def __getattr__(
@@ -99,12 +102,11 @@ class NodeInfo:
         ]
 
     def __repr__(self) -> str:
-        return f'NodeInfo("{self._path}")'
+        return f'NodeInfo("{self.path}")'
 
     def __str__(self) -> str:
-        string = self._path
-        if "Description" in self._info:  # pragma: no cover
-            string += "\n" + self._info["Description"]
+        string = self.path
+        string += "\n" + self._info["Description"]
         for key, value in self._info.items():
             if key == "Options":
                 string += f"\n{key}:"
@@ -115,29 +117,29 @@ class NodeInfo:
         return string
 
     @property
-    def readable(self) -> bool | None:
+    def readable(self) -> bool:
         """Flag if the node is readable."""
         return "Read" in self._info["Properties"]
 
     @property
-    def writable(self) -> bool | None:
+    def writable(self) -> bool:
         """Flag if the node is writable."""
         return "Write" in self._info["Properties"]
 
     @property
-    def is_setting(self) -> bool | None:
+    def is_setting(self) -> bool:
         """Flag if the node is a setting."""
         return "Setting" in self._info["Properties"]
 
     @property
-    def is_vector(self) -> bool | None:
+    def is_vector(self) -> bool:
         """Flag if the value of the node a vector."""
         return "Vector" in self._info["Type"]
 
     @property
     def path(self) -> str:
-        """Path (LabOne representation) of the node."""
-        return self._path
+        """LabOne path of the node."""
+        return self._info["Node"].lower()
 
     @property
     def description(self) -> str:
@@ -156,7 +158,7 @@ class NodeInfo:
 
     @cached_property
     def options(self) -> dict[int, OptionInfo]:
-        """Options of the node."""
+        """Option mapping of the node."""
         option_map = {}
         for key, value in self._info.get("Options", {}).items():
             # Find all the keywords. We use only the first one
@@ -175,9 +177,18 @@ class NodeInfo:
 
 
 class NodeTreeManager:
-    """Managing relation of one nodetree and one session.
+    """Managing relation of a node tree and its underlying session.
 
-    Can be used to find nodes by path, caching them along the way.
+    Acts as a factory for nodes and holds the reference to the underlying
+    session. I holds a nested dictionary representing the structure of the
+    node tree.
+
+    Args:
+        session: Session from which the node tree data is retrieved.
+        path_to_info: Result of former server-call, representing structure of
+            tree plus information about each node.
+        parser: Function, which is used to parse incoming values. It may do this
+            in a path-specific manner.
     """
 
     def __init__(
@@ -187,38 +198,13 @@ class NodeTreeManager:
         path_to_info: dict[LabOneNodePath, NodeInfoType],
         parser: t.Callable[[AnnotatedValue], AnnotatedValue],
     ):
-        """Retrieves the tree-structure and info to the nodes from the server.
-
-        Executes the initialization procedure in order to acquire knowledge about
-        the node-structure.
-        (Later on, it is always assumed, that this structure has remained constant.)
-
-        Args:
-            session:
-                Session from which the nodetree-data is retrieved.
-            path_to_info:
-                Result of former server-call, representing structure of tree plus
-                information about each node.
-            parser:
-                Function, which is used to parse incoming values.
-                It may do this in a path-specific manner.
-        """
         self._session = session
-        self._remembered_nodes: dict[tuple[NormalizedPathSegment, ...], Node] = {}
         self.path_to_info = path_to_info
-        self._paths = self.path_to_info.keys()
-        paths_as_segments = [split_path(path) for path in self._paths]
-
-        # type casting to allow assignment of more general type into the dict
-        self._partially_explored_structure: NestedDict[
-            list[list[NormalizedPathSegment]] | dict
-        ] = build_prefix_dict(
-            paths_as_segments,
-        )  # type: ignore[assignment]
-        self.structure_info = self.path_to_info
-
+        self._paths = path_to_info.keys()
+        self.structure_info = path_to_info
         self._parser = parser
 
+        self._remembered_nodes: dict[tuple[NormalizedPathSegment, ...], Node] = {}
         self._cache_path_segments_to_node: (dict)[
             tuple[int, tuple[NormalizedPathSegment, ...]],
             Node,
@@ -228,23 +214,29 @@ class NodeTreeManager:
             NestedDict[list[list[NormalizedPathSegment]] | dict],
         ] = {}
 
+        paths_as_segments = [split_path(path) for path in self._paths]
+        # type casting to allow assignment of more general type into the dict
+        self._partially_explored_structure: NestedDict[
+            list[list[NormalizedPathSegment]] | dict
+        ] = build_prefix_dict(
+            paths_as_segments,
+        )  # type: ignore[assignment]
+
     def construct_nodetree(
         self,
         *,
         hide_kernel_prefix: bool = True,
     ) -> Node:
-        """Provides a nodetree to work with.
+        """Create the root-node of the tree.
 
         Args:
-            hide_kernel_prefix:
-                Enter a trivial first path-segment automatically.
+            hide_kernel_prefix: Enter a trivial first path-segment automatically.
                 E.g. having the result of this function in a variable `tree`
                 `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
                 Setting this option makes working with the tree easier.
 
         Returns:
             Root-node of the tree.
-
         """
         has_common_prefix = len(self._partially_explored_structure.keys()) == 1
 
@@ -258,18 +250,21 @@ class NodeTreeManager:
         self,
         path_segments: tuple[NormalizedPathSegment, ...],
     ) -> NestedDict[list[list[NormalizedPathSegment]] | dict]:
-        """Find children and explore structure lazily as needed.
+        """Find children and explore the node structure lazily as needed.
 
-        All exploration at one place, so that nothing is explored twice.
+        This function must be used by all nodes to find their children.
+        This ensures efficient caching of the structure and avoids
+        unnecessary lookups.
 
         Args:
-            path_segments: Path, for which the children should be found.
+            path_segments: Segments describing the path, for which the children
+                should be found.
 
         Returns:
-            Structure of the children of the path.
+            Nested dictionary, representing the structure of the children.
 
         Raises:
-            LabOneInvalidPathError: If path is invalid.
+            LabOneInvalidPathError: If the path segments are invalid.
         """
         unique_value = (hash(self), path_segments)
         if unique_value in self._cache_find_substructure:
@@ -327,15 +322,13 @@ class NodeTreeManager:
         self,
         path: LabOneNodePath,
     ) -> Node:
-        """Obtain nodes in a cached manner.
+        """Convert a LabOne node path into a node object.
 
         Caches node-objects and enforces thereby a singleton pattern.
         Only one node-object per path.
 
         Args:
-            path:
-                Path, for which a node object
-                should be provided.
+            path: Path, for which a node object should be provided.
 
         Returns:
             Node-object corresponding to the path.
@@ -346,27 +339,25 @@ class NodeTreeManager:
         """
         return self.path_segments_to_node(tuple(split_path(path)))
 
-    # @cache_flexible(lambda self_, path_segments: (hash(self_), path_segments))
     def path_segments_to_node(
         self,
         path_segments: tuple[NormalizedPathSegment, ...],
     ) -> Node:
-        """Obtain nodes in a cached manner.
+        """Convert a tuple of path-segments into a node object.
 
         Caches node-objects and enforces thereby a singleton pattern.
         Only one node-object per path.
 
         Args:
-            path_segments:
-                Segments describing the path, for which a node object
+            path_segments: Segments describing the path, for which a node object
                 should be provided.
 
         Returns:
             Node-object corresponding to the path.
 
         Raises:
-            LabOneInvalidPathError:
-                In no subtree_paths are given and the path is invalid.
+            LabOneInvalidPathError: In no subtree_paths are given and the path
+                is invalid.
         """
         unique_value = (hash(self), path_segments)
         if unique_value in self._cache_path_segments_to_node:
@@ -381,36 +372,37 @@ class NodeTreeManager:
 
     @property
     def paths(self) -> t.KeysView[LabOneNodePath]:
-        """Provides list of paths of all leaf-nodes.
-
-        Returns:
-            Paths of all leaf-nodes
-        """
+        """List of paths of all leaf-nodes."""
         return self._paths
 
     @property
     def parser(self) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
-        """Providing the enum-handler.
-
-        Returns:
-            Enum-handler of this Manager.
-        """
+        """Parser for values received from the server."""
         return self._parser
 
     @property
     def session(self) -> Session:
-        """Providing the session.
-
-        Returns:
-            Session of this Manager.
-        """
+        """Underlying Session to the server."""
         return self._session
 
 
 class MetaNode(ABC):
-    """Basic functionality for a tree of nodes.
+    """Basic functionality of all nodes.
 
-    This class provides common behavior for the Node and ResultNode classes.
+    This class provides common behavior for all node classes, both normal nodes
+    and result nodes. This includes the traversal of the tree, the redirection
+    of paths and the generation of sub-nodes.
+
+    Args:
+        tree_manager: Interface managing the node-tree and the corresponding
+            session.
+        path_segments: A tuple describing the path.
+        subtree_paths: Structure, defining which sub-nodes exist.
+            May contain a Nested dictionary or a list of paths. If a list is
+            passed, a prefix-to-suffix-dictionary will be created out of it.
+        path_aliases: When creating sub-nodes, these aliases are used to redirect
+            certain paths. This attribute is useful for creating artificial nodes
+            outside the normal structure. It will not be used in most other cases.
     """
 
     def __init__(
@@ -426,50 +418,21 @@ class MetaNode(ABC):
         ]
         | None = None,
     ):
-        """Initializing MetaNode.
-
-        Args:
-            tree_manager:
-                Interface managing the node-tree and the corresponding session.
-            path_segments:
-                A tuple describing the path.
-            subtree_paths:
-                Structure, defining which sub-nodes exist.
-                May contain a Nested dictionary or a list of paths. If a list is passed,
-                a prefix-to-suffix-dictionary will be created out of it.
-            path_aliases:
-                When creating sub-nodes, these aliases are used to redirect
-                certain paths. This attribute is useful for creating artificial nodes
-                outside the normal structure. It will not be used in most other cases.
-        """
-        path_aliases = path_aliases if path_aliases is not None else {}
-
         self._tree_manager = tree_manager
         self._path_segments = path_segments
-        self._path_aliases = path_aliases
+        self._path_aliases = path_aliases if path_aliases is not None else {}
         self._subtree_structure = subtree_paths
-
-    def _redirect(
-        self,
-        path_segments: tuple[NormalizedPathSegment, ...],
-    ) -> tuple[NormalizedPathSegment, ...]:
-        """Use path aliases to redirect."""
-        while path_segments in self._path_aliases:
-            path_segments = self._path_aliases[path_segments]
-        return path_segments
 
     @abstractmethod
     def __getattr__(self, next_segment: str) -> MetaNode | AnnotatedValue:
-        """Go deeper into the tree structure.
+        """Access sub-node or value.
 
         Args:
-            next_segment:
-                Segment, with which the current path should be extended
-
+            next_segment: Segment, with which the current path should be extended
 
         Returns:
             New node-object, representing the extended path, or plain value,
-            if came to a leaf-node.
+            if came to a leaf-node of a result.
 
         Example:
             >>> node.demods  # where 'demods' is the next segment to enter
@@ -481,8 +444,13 @@ class MetaNode(ABC):
     def __getitem__(self, path_extension: str | int) -> MetaNode | AnnotatedValue:
         """Go one or multiple levels deeper into the tree structure.
 
-        This operator can deal with a number of different scenarios, including:
-        - simple path extensions
+        The primary purpose of this operator is to allow accessing subnodes that
+        are numbers (e.g. /0, /1, ...). The attribute access operator (dot) does
+        not allow this, because numbers are not valid identifiers in Python.
+
+        However, this operator can deal with a number of different scenarios:
+
+        - simple path extensions:
             >>> node['deeper']
         - path indexing:
             >>> node['deeper/path']
@@ -513,12 +481,10 @@ class MetaNode(ABC):
 
         The paths are traversed in a sorted manner, providing a clear order.
         This is particularly useful when iterating through numbered child nodes,
-        such as /0, /1, ...
-        or alphabetically sorted child nodes.
+        such as /0, /1, ... or alphabetically sorted child nodes.
 
         Returns:
-            Iterator through sub-nodes.
-
+            Sub-nodes iterator.
         """
         for segment in sorted(self._subtree_structure.keys()):
             yield self[segment]
@@ -533,68 +499,26 @@ class MetaNode(ABC):
     def __str__(self) -> str:
         return self.path
 
-    @property
-    def tree_manager(self) -> NodeTreeManager:
-        """Get interface managing the node-tree and the corresponding session.
-
-        Returns:
-            Interface managing the node-tree and the corresponding session.
-        """
-        return self._tree_manager
-
-    @property
-    def path(self) -> LabOneNodePath:
-        """The path, this node corresponds to.
-
-        Returns:
-            The path, this node corresponds to.
-        """
-        return join_path(self._path_segments)
-
-    @property
-    def path_segments(self) -> tuple[NormalizedPathSegment, ...]:
-        """The segments of the path, this node corresponds to.
-
-        Returns:
-            The segments of the path, this node corresponds to.
-        """
-        return self._path_segments
-
-    @property
-    @deprecated(details="use 'path_segments' instead.")
-    def raw_tree(self) -> tuple[NormalizedPathSegment, ...]:
-        """The segments of the path, this node corresponds to.
-
-        Returns:
-            The segments of the path, this node corresponds to.
-        """
-        return self.path_segments
-
-    @property
-    def path_aliases(
+    def _redirect(
         self,
-    ) -> dict[tuple[NormalizedPathSegment, ...], tuple[NormalizedPathSegment, ...]]:
-        """Path aliases of this node.
+        path_segments: tuple[NormalizedPathSegment, ...],
+    ) -> tuple[NormalizedPathSegment, ...]:
+        """Use path aliases to redirect a path.
 
-        When creating sub-nodes, these aliases are used to redirect
-        certain paths. This attribute is useful for creating artificial nodes
-        outside the normal structure. It will not be used in most other cases.
+        An alias can can be used to redirect artificial nodes to their
+        underlying nodes. This is useful for creating nodes outside the normal
+        structure. The redirection is done recursively, so that multiple
+        aliases can be used in a row.
 
-        Returns:
-            Path aliases of this node.
-        """
-        return self._path_aliases  # pragma: no cover
-
-    @property
-    def subtree_structure(
-        self,
-    ) -> NestedDict[list[list[NormalizedPathSegment]] | dict] | UndefinedStructure:
-        """Structure defining which sub-nodes exist.
+        Args:
+            path_segments: Path, which should be redirected.
 
         Returns:
-            Structure defining which sub-nodes exist.
+            Redirected path.
         """
-        return self._subtree_structure
+        while path_segments in self._path_aliases:
+            path_segments = self._path_aliases[path_segments]
+        return path_segments
 
     def is_child_node(
         self,
@@ -606,8 +530,7 @@ class MetaNode(ABC):
         The node itself is also not counted as its child.
 
         Args:
-            child_node:
-                Potential child node.
+            child_node: Potential child node.
 
         Returns:
             Boolean if passed node is a child node.
@@ -622,11 +545,79 @@ class MetaNode(ABC):
             and path_segments[-1] in self._subtree_structure
         )
 
+    @property
+    def tree_manager(self) -> NodeTreeManager:
+        """Get interface managing the node-tree and the corresponding session."""
+        return self._tree_manager
+
+    @property
+    def path(self) -> LabOneNodePath:
+        """The LabOne node path, this node corresponds to."""
+        return join_path(self._path_segments)
+
+    @property
+    def path_segments(self) -> tuple[NormalizedPathSegment, ...]:
+        """The underlying segments of the path, this node corresponds to."""
+        return self._path_segments
+
+    @property
+    @deprecated(details="use 'path_segments' instead.")
+    def raw_tree(self) -> tuple[NormalizedPathSegment, ...]:
+        """The underlying segments of the path, this node corresponds to."""
+        return self.path_segments
+
+    @property
+    def path_aliases(
+        self,
+    ) -> dict[tuple[NormalizedPathSegment, ...], tuple[NormalizedPathSegment, ...]]:
+        """Path aliases of this node.
+
+        When creating sub-nodes, these aliases are used to redirect
+        certain paths. This attribute is useful for creating artificial nodes
+        outside the normal structure. It will not be used in most other cases.
+        """
+        return self._path_aliases  # pragma: no cover
+
+    @property
+    def subtree_structure(
+        self,
+    ) -> NestedDict[list[list[NormalizedPathSegment]] | dict] | UndefinedStructure:
+        """Structure defining which sub-nodes exist."""
+        return self._subtree_structure
+
 
 class ResultNode(MetaNode):
     """Representing values of a get-request in form of a tree.
 
-    If hold values at its leafs.
+    When issuing a get-request on a partial or wildcard node, the server will
+    return a list of AnnotatedValues for every leaf-node in the subtree.
+    This class adds the same object oriented interface as the normal nodes, when
+    hitting a leaf node the result is returned.
+
+    This allows to work with the results of a get-request in the same way as
+    with the normal nodes. If needed one can still iterate through all the
+    results. `results` will return an iterator over all results, not only the
+    direct children.
+
+    Args:
+        tree_manager:
+            Interface managing the node-tree and the corresponding session.
+        path_segments: A tuple describing the path.
+        subtree_paths:
+            Structure, defining which sub-nodes exist.
+        value_structure:
+            Storage of the values at the leaf-nodes. They will be
+            returned once the tree is traversed.
+        timestamp:
+            The time the results where created.
+        path_aliases:
+            When creating sub-nodes, these aliases are used to redirect
+            certain paths. This attribute is useful for creating artificial nodes
+            outside the normal structure. It will not be used in most other cases.
+
+    Example:
+        >>> result = device.demods[0]
+        >>> print(result.rate)
     """
 
     def __init__(  # noqa: PLR0913
@@ -642,24 +633,6 @@ class ResultNode(MetaNode):
         ]
         | None = None,
     ):
-        """Tree-structure representing the results of a former request.
-
-        Args:
-            tree_manager:
-                Interface managing the node-tree and the corresponding session.
-            path_segments: A tuple describing the path.
-            subtree_paths:
-                Structure, defining which sub-nodes exist.
-            value_structure:
-                Storage of the values at the leaf-nodes. They will be
-                returned once the tree is traversed.
-            timestamp:
-                The time the results where created.
-            path_aliases:
-                When creating sub-nodes, these aliases are used to redirect
-                certain paths. This attribute is useful for creating artificial nodes
-                outside the normal structure. It will not be used in most other cases.
-        """
         super().__init__(
             tree_manager=tree_manager,
             path_segments=path_segments,
@@ -670,11 +643,10 @@ class ResultNode(MetaNode):
         self._timestamp = timestamp
 
     def __getattr__(self, next_segment: str) -> ResultNode | AnnotatedValue:
-        """Go deeper into the tree structure.
+        """Access sub-node or value.
 
         Args:
-            next_segment:
-                Segment, with which the current path should be extended.
+            next_segment: Segment, with which the current path should be extended.
 
         Returns:
             New node-object, representing the extended path, or plain value,
@@ -689,8 +661,13 @@ class ResultNode(MetaNode):
     def __getitem__(self, path_extension: str | int) -> ResultNode | AnnotatedValue:
         """Go one or multiple levels deeper into the tree structure.
 
-        This operator can deal with a number of different scenarios, including:
-        - simple path extensions
+        The primary purpose of this operator is to allow accessing subnodes that
+        are numbers (e.g. /0, /1, ...). The attribute access operator (dot) does
+        not allow this, because numbers are not valid identifiers in Python.
+
+        However, this operator can deal with a number of different scenarios:
+
+        - simple path extensions:
             >>> node['deeper']
         - path indexing:
             >>> node['deeper/path']
@@ -735,6 +712,52 @@ class ResultNode(MetaNode):
 
         return current_node
 
+    def __dir__(self) -> t.Iterable[str]:
+        """Show valid subtree-extensions in hints.
+
+        Returns:
+            Iterator of valid dot-access identifier.
+
+        """
+        return [pythonify_path_segment(p) for p in self._subtree_structure] + list(
+            super().__dir__(),
+        )
+
+    def __contains__(self, item: str | int | ResultNode | AnnotatedValue) -> bool:
+        """Checks if a path-segment or node is an immediate sub-node of this one."""
+        if isinstance(item, ResultNode):
+            return self.is_child_node(item)
+        if isinstance(item, AnnotatedValue):
+            return self.is_child_node(split_path(item.path))
+        return normalize_path_segment(item) in self._subtree_structure
+
+    def __call__(self, *_, **__) -> None:
+        """Not supported on the Result node.
+
+        Showing an error to express result-nodes can't be get/set.
+
+        Raises:
+            LabOneInappropriateNodeTypeError: Always.
+        """
+        msg = (
+            "Trying to get/set a result node. This is not possible, because "
+            "result nodes represents values of a former get-request. "
+            "To interact with a device, make sure to operate on normal nodes."
+        )
+        raise LabOneInappropriateNodeTypeError(msg)
+
+    def __str__(self) -> str:
+        value_dict = {
+            path: self._value_structure[path].value for path in self._value_structure
+        }
+        return (
+            f"{self.__class__.__name__}('{self.path}', time: #{self._timestamp}, "
+            f"data: {value_dict})"
+        )
+
+    def __repr__(self) -> str:
+        return f"{self!s} -> {[str(k) for k in self._subtree_structure]}"
+
     def try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
@@ -744,8 +767,8 @@ class ResultNode(MetaNode):
         Will fail if the resulting Path is ill-formed.
 
         Args:
-            next_path_segment:
-                Segment, with which the current path should be extended.
+            next_path_segment: Segment, with which the current path should be
+                extended.
 
         Returns:
             New node-object, representing the extended path, or plain value,
@@ -754,7 +777,6 @@ class ResultNode(MetaNode):
         Raises:
             LabOneInvalidPathError: If the extension leads to an invalid path or if it
                 is tried to use wildcards in ResultNodes.
-
         """
         extended_path = self._redirect((*self._path_segments, next_path_segment))
 
@@ -787,6 +809,98 @@ class ResultNode(MetaNode):
 
         return deeper_node
 
+
+class Node(MetaNode, ABC):
+    """Single node in the object-based node tree.
+
+    The child nodes of each node can be accessed either by attribute or by item.
+
+    The core functionality of each node is the overloaded call operator.
+    Making a call gets the value(s) for that node. Passing a value to the call
+    operator will set that value to the node on the device. Calling a node that
+    is not a leaf (wildcard or partial node) will return/set the value on every
+    node that matches it.
+
+    Warning:
+        Setting a value to a non-leaf node will try to set the value of all
+        nodes that matches that node. It should therefor be used with great care
+        to avoid unintentional changes.
+
+    In addition to the call operator every node has a `wait_for_state_change`
+    function that can be used to wait for a node to change state.
+
+    Leaf nodes also have a `subscribe` function that can be used to subscribe to
+    changes in the node. For more information on the subscription functionality
+    see the documentation of the `subscribe` function or the `DataQueue` class.
+    """
+
+    def __getattr__(self, next_segment: str) -> Node:
+        """Access sub-node.
+
+        Args:
+            next_segment: Segment, with which the current path should be extended
+
+        Returns:
+            New node-object, representing the extended path, or plain value,
+            if came to a leaf-node.
+
+        Example:
+            >>> node.demods  # where 'demods' is the next segment to enter
+        """
+        return self.try_generate_subnode(normalize_path_segment(next_segment))
+
+    def __getitem__(self, path_extension: str | int) -> Node:
+        """Go one or multiple levels deeper into the tree structure.
+
+        The primary purpose of this operator is to allow accessing subnodes that
+        are numbers (e.g. /0, /1, ...). The attribute access operator (dot) does
+        not allow this, because numbers are not valid identifiers in Python.
+
+        However, this operator can deal with a number of different scenarios:
+
+        - simple path extensions:
+            >>> node['deeper']
+        - path indexing:
+            >>> node['deeper/path']
+        - numeric indexing:
+            >>> node[0]
+        - wildcards (placeholder for multiple path-extensions):
+            >>> node['*']
+        - combinations of all that:
+            >>> node['deeper/*/path/0']
+
+        Args:
+            path_extension: path, number or wildcard.
+
+        Returns: New node-object, representing the extended path
+
+        Example:
+            All these implementations are equivalent:
+            >>> node['mds/groups/0']
+            >>> node['mds']['groups'][0]
+            >>> node.mds.groups[0]
+
+        """
+        relative_path_segments = split_path(str(path_extension))
+        current_node = self
+
+        for path_segment in relative_path_segments:
+            current_node = current_node.try_generate_subnode(
+                normalize_path_segment(path_segment),
+            )
+
+        return current_node
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            other.__class__ == self.__class__
+            and self.path_segments == other.path_segments  # type:ignore[attr-defined]
+            and self.tree_manager == other.tree_manager  # type:ignore[attr-defined]
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.path, hash(self.__class__), hash(self._tree_manager)))
+
     def __dir__(self) -> t.Iterable[str]:
         """Show valid subtree-extensions in hints.
 
@@ -798,45 +912,71 @@ class ResultNode(MetaNode):
             super().__dir__(),
         )
 
-    def __contains__(self, item: str | int | ResultNode | AnnotatedValue) -> bool:
-        """Checks if a path-segment or node is an immediate sub-node of this one."""
-        if isinstance(item, ResultNode):
+    def __contains__(self, item: str | int | Node) -> bool:
+        """Checks if a path-segment or node is an immediate sub-node of this one.
+
+        Args:
+            item: To be checked this is among the child-nodes. Can be called with
+                either a node, or a plain identifier/number, which would be used
+                to identify the child.
+
+        Returns:
+            If item describes/is a valid subnode.
+
+        Example:
+            >>> if "debug" in node:         # implicit call to __contains__
+            >>>     print(node["debug"])    # if contained, indexing is valid
+            >>>     print(node.debug)       # ... as well as dot-access
+
+            Nodes can also be used as arguments. In this example, it is asserted
+            that all subnodes are "contained" in the node.
+            >>> for subnode in node:        # implicit call to __iter__
+            >>>     assert subnode in node  # implicit call to __contains__
+        """
+        if isinstance(item, Node):
             return self.is_child_node(item)
-        if isinstance(item, AnnotatedValue):
-            return self.is_child_node(split_path(item.path))
         return normalize_path_segment(item) in self._subtree_structure
 
-    def __call__(self, *_, **__) -> None:
-        """Do not use. Showing an error to express result-nodes can't be get/set.
+    async def __call__(
+        self,
+        value: Value | None = None,
+    ) -> AnnotatedValue | ResultNode:
+        """Call with or without a value for setting/getting the node.
+
+        Args:
+            value: optional value, which is set to the node. If it is omitted,
+                a get request is triggered instead.
+
+        Returns:
+            The current value of the node is returned either way. If a set-request
+            is triggered, the new value will be given back. In case of non-leaf nodes,
+            a node-structure representing the results of all sub-paths is returned.
 
         Raises:
-            LabOneInappropriateNodeTypeError: Always.
+            LabOneCoreError: If the node value type is not supported.
+            LabOneConnectionError: If there is a problem in the connection.
+            errors.LabOneTimeoutError: If the operation timed out.
+            errors.LabOneWriteOnlyError: If a read operation was attempted on a
+                write-only node.
+            errors.LabOneCoreError: If something else went wrong.
         """
-        msg = (
-            "Trying to get/set a result node. This is not possible, because "
-            "result nodes represents values of a former get-request. "
-            "To interact with a device, make sure to operate on normal nodes."
-        )
-        raise LabOneInappropriateNodeTypeError(msg)
+        if value is None:
+            return await self._get()
 
-    def __str__(self) -> str:
-        value_dict = {
-            path: self._value_structure[path].value for path in self._value_structure
-        }
-        return (
-            f"{self.__class__.__name__}('{self.path}', time: #{self._timestamp}, "
-            f"data: {value_dict})"
-        )
+        return await self._set(value)
 
-    def __repr__(self) -> str:
-        return f"{self!s} -> {[str(k) for k in self._subtree_structure]}"
+    @abstractmethod
+    async def _get(
+        self,
+    ) -> AnnotatedValue | ResultNode:
+        ...  # pragma: no cover
 
-
-class Node(MetaNode, ABC):
-    """Nodes of (lazy) tree-structure, representing paths.
-
-    Can be used to get and set values or subscribe to a path.
-    """
+    @abstractmethod
+    async def _set(
+        self,
+        value: Value,
+    ) -> AnnotatedValue | ResultNode:
+        ...  # pragma: no cover
 
     @classmethod
     def build(
@@ -849,19 +989,19 @@ class Node(MetaNode, ABC):
         ]
         | None = None,
     ) -> Node:
-        """Create appropriate type of node.
+        """Construct a matching subnode.
 
         Useful for creating a node, not necessarily knowing what kind of node it
         should be. This factory method will choose the correct one.
 
         Args:
-            tree_manager:
-                Interface managing the node-tree and the corresponding session.
+            tree_manager: Interface managing the node-tree and the corresponding
+                session.
             path_segments: A tuple describing the path.
-            path_aliases:
-                When creating sub-nodes, these aliases are used to redirect
-                certain paths. This attribute is useful for creating artificial nodes
-                outside the normal structure. It will not be used in most other cases.
+            path_aliases: When creating sub-nodes, these aliases are used to
+                redirect certain paths. This attribute is useful for creating
+                artificial nodes outside the normal structure. It will not be
+                used in most other cases.
 
         Returns:
             A node of the appropriate type.
@@ -900,61 +1040,6 @@ class Node(MetaNode, ABC):
             path_aliases=path_aliases,
         )
 
-    def __getattr__(self, next_segment: str) -> Node:
-        """Go deeper into the tree structure.
-
-        Args:
-            next_segment:
-                Segment, with which the current path should be extended
-
-
-        Returns:
-            New node-object, representing the extended path, or plain value,
-            if came to a leaf-node.
-
-        Example:
-            >>> node.demods  # where 'demods' is the next segment to enter
-
-        """
-        return self.try_generate_subnode(normalize_path_segment(next_segment))
-
-    def __getitem__(self, path_extension: str | int) -> Node:
-        """Go one or multiple levels deeper into the tree structure.
-
-        This operator can deal with a number of different scenarios, including:
-        - simple path extensions
-            >>> node['deeper']
-        - path indexing:
-            >>> node['deeper/path']
-        - numeric indexing:
-            >>> node[0]
-        - wildcards (placeholder for multiple path-extensions):
-            >>> node['*']
-        - combinations of all that:
-            >>> node['deeper/*/path/0']
-
-        Args:
-            path_extension: path, number or wildcard.
-
-        Returns: New node-object, representing the extended path
-
-        Example:
-            All these implementations are equivalent:
-            >>> node['mds/groups/0']
-            >>> node['mds']['groups'][0]
-            >>> node.mds.groups[0]
-
-        """
-        relative_path_segments = split_path(str(path_extension))
-        current_node = self
-
-        for path_segment in relative_path_segments:
-            current_node = current_node.try_generate_subnode(
-                normalize_path_segment(path_segment),
-            )
-
-        return current_node
-
     @abstractmethod
     def try_generate_subnode(
         self,
@@ -963,102 +1048,12 @@ class Node(MetaNode, ABC):
         """Provides nodes for the extended path or the original values for leafs.
 
         Args:
-            next_path_segment:
-                Segment, with which the current path should be extended.
+            next_path_segment: Segment, with which the current path should be extended.
 
         Returns:
             New node-object, representing the extended path.
 
         """
-        ...  # pragma: no cover
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            other.__class__ == self.__class__
-            and self.path_segments == other.path_segments  # type:ignore[attr-defined]
-            and self.tree_manager == other.tree_manager  # type:ignore[attr-defined]
-        )
-
-    def __hash__(self) -> int:
-        return hash((self.path, hash(self.__class__), hash(self._tree_manager)))
-
-    def __dir__(self) -> t.Iterable[str]:
-        """Show valid subtree-extensions in hints.
-
-        Returns:
-            Iterator of valid dot-access identifier.
-
-        """
-        return [pythonify_path_segment(p) for p in self._subtree_structure] + list(
-            super().__dir__(),
-        )
-
-    def __contains__(self, item: str | int | Node) -> bool:
-        """Checks if a path-segment or node is an immediate sub-node of this one.
-
-        Args:
-            item:
-                To be checked this is among the child-nodes. Can be called with
-                either a node, or a plain identifier/number, which would be used
-                to identify the child.
-
-        Returns:
-            If item describes/is a valid subnode.
-
-        Example:
-            >>> if "debug" in node:         # implicit call to __contains__
-            >>>     print(node["debug"])    # if contained, indexing is valid
-            >>>     print(node.debug)       # ... as well as dot-access
-
-            Nodes can also be used as arguments. In this example, it is asserted
-            that all subnodes are "contained" in the node.
-            >>> for subnode in node:        # implicit call to __iter__
-            >>>     assert subnode in node  # implicit call to __contains__
-        """
-        if isinstance(item, Node):
-            return self.is_child_node(item)
-        return normalize_path_segment(item) in self._subtree_structure
-
-    async def __call__(
-        self,
-        value: Value | None = None,
-    ) -> AnnotatedValue | ResultNode:
-        """Call with or without a value for setting/getting the node.
-
-        Args:
-            value:
-                optional value, which is set to the node. If it is omitted, a get
-                request is triggered instead.
-
-        Returns: The current value of the node is returned either way. If a set-request
-            is triggered, the new value will be given back. In case of non-leaf nodes,
-            a node-structure representing the results of all sub-paths is returned.
-
-        Raises:
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
-            errors.LabOneTimeoutError: If the operation timed out.
-            errors.LabOneWriteOnlyError: If a read operation was attempted on a
-                write-only node.
-            errors.LabOneCoreError: If something else went wrong.
-
-        """
-        if value is None:
-            return await self._get()
-
-        return await self._set(value)
-
-    @abstractmethod
-    async def _get(
-        self,
-    ) -> AnnotatedValue | ResultNode:
-        ...  # pragma: no cover
-
-    @abstractmethod
-    async def _set(
-        self,
-        value: Value,
-    ) -> AnnotatedValue | ResultNode:
         ...  # pragma: no cover
 
     @abstractmethod
@@ -1087,35 +1082,45 @@ class Node(MetaNode, ABC):
         """
         ...  # pragma: no cover
 
+    @abstractmethod
+    async def subscribe(self) -> DataQueue:
+        """Subscribe to a node.
+
+        Subscribing to a node will cause the server to send updates that happen
+        to the node to the client. The updates are sent to the client automatically
+        without any further interaction needed. Every update will be put into the
+        queue, which can be used to receive the updates.
+
+        Warning:
+            Currently one can only subscribe to nodes that are leaf-nodes.
+
+        Note:
+            A node can be subscribed multiple times. Each subscription will
+            create a new queue. The queues are independent of each other. It is
+            however recommended to only subscribe to a node once and then fork
+            the queue into multiple independent queues if needed. This will
+            prevent unnecessary network traffic.
+
+        Note:
+            There is no explicit unsubscribe function. The subscription will
+            automatically be cancelled when the queue is closed. This will
+            happen when the queue is garbage collected or when the queue is
+            closed manually.
+
+        Returns:
+            A DataQueue, which can be used to receive any changes to the node in a
+            flexible manner.
+        """
+
 
 class LeafNode(Node):
     """Node corresponding to a leaf in the path-structure."""
 
-    def try_generate_subnode(
-        self,
-        next_path_segment: NormalizedPathSegment,
-    ) -> Node:
-        """Provides nodes for the extended path or the original values for leafs.
-
-        Args:
-            next_path_segment:
-                Segment, with which the current path should be extended.
-
-        Returns:
-            New node-object, representing the extended path.
-
-        Raises:
-            LabOneInvalidPathError: Always, because extending leaf-paths is illegal.
-
-        """
-        msg = (
-            f"Node '{self.path}' cannot be extended with "
-            f"'/{next_path_segment}' because it is a leaf node."
-        )
-        raise LabOneInvalidPathError(msg)
-
     async def _get(self) -> AnnotatedValue:
         """Get the value of the node.
+
+        Returns:
+            The current value of the node.
 
         Raises:
              LabOneConnectionError: If there is a problem in the connection.
@@ -1134,6 +1139,12 @@ class LeafNode(Node):
     ) -> AnnotatedValue:
         """Set the value of the node.
 
+        Args:
+            value: Value, which should be set to the node.
+
+        Returns:
+            The new value of the node.
+
         Raises:
             LabOneCoreError: If the node value type is not supported.
             LabOneConnectionError: If there is a problem in the connection.
@@ -1144,19 +1155,58 @@ class LeafNode(Node):
             ),
         )
 
-    async def subscribe(self) -> DataQueue:
-        """Stay informed of any changes to this node.
+    def try_generate_subnode(
+        self,
+        next_path_segment: NormalizedPathSegment,
+    ) -> Node:
+        """Provides nodes for the extended path or the original values for leafs.
 
         Args:
-            enum: (similar as in __call__-operator)
-            parse: (similar as in __call__-operator)
+            next_path_segment: Segment, with which the current path should be
+                extended.
 
-        Returns: A DataQueue, which can be used to receive any changes to the node in a
-            flexible manner.
+        Returns:
+            New node-object, representing the extended path.
+
+        Raises:
+            LabOneInvalidPathError: Always, because extending leaf-paths is illegal.
 
         """
-        parser_callback = self._tree_manager.parser
-        return await self._tree_manager.session.subscribe(self.path, parser_callback)
+        msg = (
+            f"Node '{self.path}' cannot be extended with "
+            f"'/{next_path_segment}' because it is a leaf node."
+        )
+        raise LabOneInvalidPathError(msg)
+
+    async def subscribe(self) -> DataQueue:
+        """Subscribe to a node.
+
+        Subscribing to a node will cause the server to send updates that happen
+        to the node to the client. The updates are sent to the client automatically
+        without any further interaction needed. Every update will be put into the
+        queue, which can be used to receive the updates.
+
+        Note:
+            A node can be subscribed multiple times. Each subscription will
+            create a new queue. The queues are independent of each other. It is
+            however recommended to only subscribe to a node once and then fork
+            the queue into multiple independent queues if needed. This will
+            prevent unnecessary network traffic.
+
+        Note:
+            There is no explicit unsubscribe function. The subscription will
+            automatically be cancelled when the queue is closed. This will
+            happen when the queue is garbage collected or when the queue is
+            closed manually.
+
+        Returns:
+            A DataQueue, which can be used to receive any changes to the node in a
+            flexible manner.
+        """
+        return await self._tree_manager.session.subscribe(
+            self.path,
+            parser_callback=self._tree_manager.parser,
+        )
 
     async def wait_for_state_change(
         self,
@@ -1201,6 +1251,15 @@ class LeafNode(Node):
         *,
         invert: bool = False,
     ) -> None:
+        """Loop, which waits for a state change.
+
+        Args:
+            queue: Queue, which is used to receive updates.
+            value: Expected value of the node.
+            invert: Instead of waiting for the value, the function will wait for
+                any value except the passed value. (default = False)
+                Useful when waiting for value to change from existing one.
+        """
         while True:
             new_value: AnnotatedValue = await queue.get()
             if (value == new_value.value) ^ invert:  # pragma: no cover
@@ -1208,12 +1267,8 @@ class LeafNode(Node):
 
     @cached_property
     def node_info(self) -> NodeInfo:
-        """Get further information regarding this node as a dedicated object.
-
-        Returns:
-            NodeInfo-object, containing further information regarding this node.
-        """
-        return NodeInfo(self.tree_manager.path_to_info[self.path], self.path)
+        """Additional information about the node."""
+        return NodeInfo(self.tree_manager.path_to_info[self.path])
 
 
 class WildcardOrPartialNode(Node, ABC):
@@ -1264,28 +1319,23 @@ class WildcardOrPartialNode(Node, ABC):
         """
         ...  # pragma: no cover
 
+    async def subscribe(self) -> DataQueue:
+        """Subscribe to a node.
+
+        Currently not supported for wildcard and partial nodes.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        msg = (
+            "Subscribing to a wildcard or partial node is currently not supported. "
+            "Please subscribe to a specific node instead."
+        )
+        raise LabOneNotImplementedError(msg)
+
 
 class WildcardNode(WildcardOrPartialNode):
     """Node corresponding to a path containing one or more wildcards."""
-
-    def try_generate_subnode(
-        self,
-        next_path_segment: NormalizedPathSegment,
-    ) -> Node:
-        """Provides nodes for the extended path or the original values for leafs.
-
-        Will never fail, because wildcard-paths are not checked to have valid matchings.
-
-        Args:
-            next_path_segment:
-                Segment, with which the current path should be extended.
-
-        Returns:
-            New node-object, representing the extended path.
-
-        """
-        extended_path = self._redirect((*self._path_segments, next_path_segment))
-        return self._tree_manager.path_segments_to_node(extended_path)
 
     def _package_get_response(
         self,
@@ -1299,8 +1349,7 @@ class WildcardNode(WildcardOrPartialNode):
         specific path-prefix, which fits to the given wildcard-path.)
 
         Args:
-            raw_response:
-                server-response to get (or set) request
+            raw_response: server-response to get (or set) request
 
         Returns:
             Node-structure, representing the results.
@@ -1348,6 +1397,25 @@ class WildcardNode(WildcardOrPartialNode):
             path_aliases=path_aliases,
         )
 
+    def try_generate_subnode(
+        self,
+        next_path_segment: NormalizedPathSegment,
+    ) -> Node:
+        """Provides nodes for the extended path or the original values for leafs.
+
+        Will never fail, because wildcard-paths are not checked to have valid matchings.
+
+        Args:
+            next_path_segment: Segment, with which the current path should be
+                extended.
+
+        Returns:
+            New node-object, representing the extended path.
+
+        """
+        extended_path = self._redirect((*self._path_segments, next_path_segment))
+        return self._tree_manager.path_segments_to_node(extended_path)
+
     async def wait_for_state_change(
         self,
         value: int | NodeEnum,
@@ -1387,39 +1455,6 @@ class WildcardNode(WildcardOrPartialNode):
 class PartialNode(WildcardOrPartialNode):
     """Node corresponding to a path, which has not reached a leaf yet."""
 
-    def try_generate_subnode(
-        self,
-        next_path_segment: NormalizedPathSegment,
-    ) -> Node:
-        """Provides nodes for the extended path or the original values for leafs.
-
-        Will fail if the resulting Path is ill-formed.
-
-        Args:
-            next_path_segment:
-                Segment, with which the current path should be extended.
-
-        Returns:
-            New node-object, representing the extended path, or plain value,
-            if came to a leaf-node.
-
-        Raises:
-            LabOneInvalidPathError: If the extension leads to an invalid path.
-
-        """
-        extended_path = self._redirect((*self._path_segments, next_path_segment))
-
-        # first try to extend the path. Will fail if the resulting path is invalid
-        try:
-            self.tree_manager.find_substructure(extended_path)
-        except LabOneInvalidPathError as e:
-            # wildcards are always legal
-            if next_path_segment == WILDCARD:
-                return self._tree_manager.path_segments_to_node(extended_path)
-            raise LabOneInvalidPathError from e
-
-        return self._tree_manager.path_segments_to_node(extended_path)
-
     def _package_get_response(
         self,
         raw_response: list[AnnotatedValue],
@@ -1430,8 +1465,7 @@ class PartialNode(WildcardOrPartialNode):
         be returned. Instead of giving a list, they are grouped into a tree.
 
         Args:
-            raw_response:
-                server-response to get (or set) request
+            raw_response: server-response to get (or set) request
 
         Returns:
             Node-structure, representing the results.
@@ -1453,6 +1487,39 @@ class PartialNode(WildcardOrPartialNode):
             value_structure=response_dict,
             timestamp=timestamp if timestamp else 0,
         )
+
+    def try_generate_subnode(
+        self,
+        next_path_segment: NormalizedPathSegment,
+    ) -> Node:
+        """Provides nodes for the extended path or the original values for leafs.
+
+        Will fail if the resulting Path is ill-formed.
+
+        Args:
+            next_path_segment: Segment, with which the current path should be
+            extended.
+
+        Returns:
+            New node-object, representing the extended path, or plain value,
+            if came to a leaf-node.
+
+        Raises:
+            LabOneInvalidPathError: If the extension leads to an invalid path.
+
+        """
+        extended_path = self._redirect((*self._path_segments, next_path_segment))
+
+        # first try to extend the path. Will fail if the resulting path is invalid
+        try:
+            self.tree_manager.find_substructure(extended_path)
+        except LabOneInvalidPathError as e:
+            # wildcards are always legal
+            if next_path_segment == WILDCARD:
+                return self._tree_manager.path_segments_to_node(extended_path)
+            raise LabOneInvalidPathError from e
+
+        return self._tree_manager.path_segments_to_node(extended_path)
 
     async def wait_for_state_change(
         self,
