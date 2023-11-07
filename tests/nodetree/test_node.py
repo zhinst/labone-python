@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 from io import BytesIO
+from unittest.mock import patch
 
 import pytest
 from labone.core import AnnotatedValue
@@ -18,14 +19,14 @@ from labone.nodetree.node import (
     NodeInfo,
     NodeTreeManager,
     ResultNode,
-    WildcardNode,
+    WildcardNode, Node,
 )
 
 from tests.nodetree.conftest import (
     device_id,
     device_structure,
     result_node,
-    sessionless_manager_logic,
+    sessionless_manager,
     zi,
     session_zi,
     zi_get_responses_prop,
@@ -362,7 +363,7 @@ class TestWildcardPartialNode:
 
 class TestWildcardNode:
     @staticmethod
-    @pytest.mark.nodes_to_info(device_structure.nodes_to_info)
+    #@pytest.mark.nodes_to_info(device_structure.nodes_to_info)
     def test_package_get_response(zi):
         device = zi
         node = device.oscs["*"].freq
@@ -410,3 +411,8 @@ class TestWildcardNode:
         node = zi["*"].level
 
         await node(3)
+
+
+
+
+

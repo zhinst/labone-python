@@ -14,7 +14,7 @@ from tests.nodetree.conftest import (
     device_structure,
     zi_structure,
 )
-from tests.nodetree.test_node import sessionless_manager_logic
+from tests.nodetree.test_node import sessionless_manager
 from tests.nodetree.conftest import zi_structure, zi
 
 

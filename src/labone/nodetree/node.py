@@ -631,6 +631,7 @@ class ResultNode(MetaNode):
 
     def __init__(  # noqa: PLR0913
         self,
+        *,
         tree_manager: NodeTreeManager,
         path_segments: tuple[NormalizedPathSegment, ...],
         subtree_paths: NestedDict[list[list[NormalizedPathSegment]] | dict],

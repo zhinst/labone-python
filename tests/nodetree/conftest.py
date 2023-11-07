@@ -13,6 +13,22 @@ from labone.nodetree.node import NodeTreeManager, ResultNode
 from tests.nodetree.zi_responses import zi_get_responses
 
 
+def cache(func):
+    """Decorator to cache the result of a function call.
+
+    As 3.8 does not have functools.cache yet.
+    """
+    cache_dict = {}
+
+    def wrapper(*args, **kwargs):
+        key = (args, frozenset(kwargs.items()))
+        if key not in cache_dict:
+            cache_dict[key] = func(*args, **kwargs)
+        return cache_dict[key]
+
+    return wrapper
+
+
 class StructureProvider:
     def __init__(self, nodes_to_info):
         self._nodes_to_info = nodes_to_info
@@ -30,29 +46,33 @@ class StructureProvider:
         return paths_to_nested_dict(self.paths)
 
 
-with Path.open(Path(__file__).parent / "resources" / "zi_nodes_info.json") as f:
-    zi_structure = StructureProvider(json.load(f))
-zi_get_responses_prop = {ann.path: ann for ann in zi_get_responses}
-
-device_id = "dev12084"
-with Path.open(Path(__file__).parent / "resources" / "device_nodes_info.json") as f:
-    device_structure = StructureProvider(json.load(f))
+@pytest.fixture
+def data_dir():
+    return Path(__file__).parent / "resources"
 
 
-def cache(func):
-    """Decorator to cache the result of a function call.
+@pytest.fixture
+def zi_structure(data_dir):
+    with Path.open(data_dir / "zi_nodes_info.json") as f:
+        return StructureProvider(json.load(f))
 
-    As 3.8 does not have functools.cache yet.
-    """
-    cache_dict = {}
+@pytest.fixture
+def zi_get_responses_prop(zi_structure):
+    return {ann.path: ann for ann in zi_get_responses}
 
-    def wrapper(*args, **kwargs):
-        key = (args, frozenset(kwargs.items()))
-        if key not in cache_dict:
-            cache_dict[key] = func(*args, **kwargs)
-        return cache_dict[key]
+@pytest.fixture
+def device_id():
+    return "dev12084"
 
-    return wrapper
+
+@pytest.fixture
+def device_structure(data_dir):
+    with Path.open(data_dir / "device_nodes_info.json") as f:
+        return StructureProvider(json.load(f))
+
+
+
+
 
 
 @pytest.fixture
@@ -102,7 +122,7 @@ def session_mock():
 
 
 @pytest.fixture
-async def session_zi(session_mock):
+async def session_zi(session_mock, zi_structure):
     return (
         NodeTreeManager(
             session=session_mock,
@@ -114,18 +134,19 @@ async def session_zi(session_mock):
     )
 
 
-def sessionless_manager_logic(
-    *,
-    nodes_to_info=None,
-    parser=None,
-):
-    if parser is None:
+@pytest.fixture
+def sessionless_manager(zi_structure, request):
+    nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
+    parser_marker = request.node.get_closest_marker("parser_builder")
+    if parser_marker is None:
+        parser = lambda x: x
+    else:
+        parser = parser_marker.args[0]
 
-        def parser(x: AnnotatedValue) -> AnnotatedValue:
-            return x
-
-    if nodes_to_info is None:
+    if nodes_to_info_marker is None:
         nodes_to_info = zi_structure.nodes_to_info
+    else:
+        nodes_to_info = nodes_to_info_marker.args[0]
 
     return NodeTreeManager(
         session=None,
@@ -134,36 +155,12 @@ def sessionless_manager_logic(
     )
 
 
-@pytest.fixture(name="sessionless_manager")
-def sessionless_manager_fixture(
-    request# nodes_to_info=None, parser_builder=None,
-):
-    nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
-    parser_marker = request.node.get_closest_marker("parser_builder")
-    if parser_marker is None:
-        parser = lambda x:x
-    else:
-        parser = parser_marker.args[0]
-
-    if nodes_to_info_marker is None:
-        nodes_to_info = zi_structure.nodes_to_info
-    else:
-        nodes_to_info = nodes_to_info_marker.args[0]
-
-    return sessionless_manager_logic(
-        parser=parser,
-        nodes_to_info=nodes_to_info
-    )
-
-
 @pytest.fixture(autouse=True)
-def zi(
-    request #nodes_to_info=None, parser_builder=None,
-):
+def zi(sessionless_manager, request, zi_structure):
     nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
     parser_marker = request.node.get_closest_marker("parser")
     if parser_marker is None:
-        parser = lambda x:x
+        parser = lambda x: x
     else:
         parser = parser_marker.args[0]
 
@@ -172,16 +169,18 @@ def zi(
     else:
         nodes_to_info = nodes_to_info_marker.args[0]
 
-    return sessionless_manager_logic(
-        nodes_to_info=nodes_to_info,
+    return NodeTreeManager(
+        session=None,
+        path_to_info=nodes_to_info,
         parser=parser,
     ).construct_nodetree(hide_kernel_prefix=True)
 
 
+
 @pytest.fixture
-def result_node():
+def result_node(sessionless_manager, zi_structure, zi_get_responses_prop):
     return ResultNode(
-        tree_manager=sessionless_manager_logic(),
+        tree_manager=sessionless_manager,
         path_segments=(),
         subtree_paths=zi_structure.structure,
         value_structure=zi_get_responses_prop,
