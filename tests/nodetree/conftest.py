@@ -1,17 +1,24 @@
+from __future__ import annotations
+
 import json
+import typing as t
 from functools import cached_property
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from labone.core import AnnotatedValue
-from labone.core.subscription import DataQueue
+import pytest
 from labone.nodetree.helper import join_path, paths_to_nested_dict
-from labone.nodetree.node import NodeTreeManager, ResultNode
+from labone.nodetree.node import MetaNode, NodeTreeManager, ResultNode
 
+if t.TYPE_CHECKING:
+    from src.labone.core.value import AnnotatedValue
+    from src.labone.nodetree.node import Node
 from tests.nodetree.zi_responses import zi_get_responses
 
 
 class StructureProvider:
+    """Helper class to provide diverse useful formats, given a node-to-info mapping."""
+
     def __init__(self, nodes_to_info):
         self._nodes_to_info = nodes_to_info
 
@@ -28,29 +35,36 @@ class StructureProvider:
         return paths_to_nested_dict(self.paths)
 
 
-with Path.open(Path(__file__).parent / "resources" / "zi_nodes_info.json") as f:
-    zi_structure = StructureProvider(json.load(f))
-zi_get_responses_prop = {ann.path: ann for ann in zi_get_responses}
-
-device_id = "dev12084"
-with Path.open(Path(__file__).parent / "resources" / "device_nodes_info.json") as f:
-    device_structure = StructureProvider(json.load(f))
+@pytest.fixture()
+def data_dir() -> Path:
+    return Path(__file__).parent / "resources"
 
 
-def cache(func):
-    """Decorator to cache the result of a function call."""
-    cache_dict = {}
-
-    def wrapper(*args, **kwargs):
-        key = (args, frozenset(kwargs.items()))
-        if key not in cache_dict:
-            cache_dict[key] = func(*args, **kwargs)
-        return cache_dict[key]
-
-    return wrapper
+@pytest.fixture()
+def zi_structure(data_dir) -> StructureProvider:
+    with Path.open(data_dir / "zi_nodes_info.json") as f:
+        return StructureProvider(json.load(f))
 
 
-def get_server_mock():
+@pytest.fixture()
+def zi_get_responses_prop() -> dict[str, AnnotatedValue]:
+    return {ann.path: ann for ann in zi_get_responses}
+
+
+@pytest.fixture()
+def device_id() -> str:
+    return "dev1234"
+
+
+@pytest.fixture()
+def device_structure(data_dir) -> StructureProvider:
+    with Path.open(data_dir / "device_nodes_info.json") as f:
+        return StructureProvider(json.load(f))
+
+
+@pytest.fixture()
+def session_mock():
+    """Mock a Session connection by redefining multiple methods."""
     mock = MagicMock()
 
     async def mock_get(path):
@@ -78,27 +92,21 @@ def get_server_mock():
             return [ann_value]
         raise NotImplementedError
 
-    @cache
-    def path_to_unique_queue(path):
-        return DataQueue(path=path, register_function=lambda *_, **__: None)
-
-    async def mock_subscribe(path, *_, **__):
-        return path_to_unique_queue(path)
-
     mock.get.side_effect = mock_get
     mock.get_with_expression.side_effect = mock_get_with_expression
     mock.list_nodes_info.side_effect = mock_list_nodes_info
     mock.set.side_effect = mock_set
-    mock.subscribe.side_effect = mock_subscribe
     mock.list_nodes.side_effect = mock_list_nodes
     mock.set_with_expression.side_effect = mock_set_with_expression
     return mock
 
 
-async def get_tree():
+@pytest.fixture()
+async def session_zi(session_mock, zi_structure) -> Node:
+    """Fixture to provide a zi node tree with mock session connection."""
     return (
         NodeTreeManager(
-            session=get_server_mock(),
+            session=session_mock,
             path_to_info=zi_structure.nodes_to_info,
             parser=lambda x: x,
         )
@@ -107,18 +115,20 @@ async def get_tree():
     )
 
 
-def get_serverless_manager(
-    *,
-    nodes_to_info=None,
-    parser=None,
-):
-    if parser is None:
+@pytest.fixture()
+def sessionless_manager(zi_structure, request) -> NodeTreeManager:
+    """Fixture to provide a zi node tree manager."""
+    nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
+    parser_marker = request.node.get_closest_marker("parser_builder")
 
-        def parser(x: AnnotatedValue) -> AnnotatedValue:
-            return x
+    def parser(x):
+        return x if parser_marker is None else parser_marker.args[0]
 
-    if nodes_to_info is None:
+    if nodes_to_info_marker is None:
         nodes_to_info = zi_structure.nodes_to_info
+    else:
+        nodes_to_info = nodes_to_info_marker.args[0]
+
     return NodeTreeManager(
         session=None,
         path_to_info=nodes_to_info,
@@ -126,22 +136,66 @@ def get_serverless_manager(
     )
 
 
-def get_serverless_tree(
-    *,
-    nodes_to_info=None,
-    parser=None,
-):
-    return get_serverless_manager(
-        nodes_to_info=nodes_to_info,
+@pytest.fixture(autouse=True)
+def zi(request, zi_structure) -> Node:
+    """Fixture to provide a zi node tree."""
+    nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
+    parser_marker = request.node.get_closest_marker("parser")
+
+    def parser(x):
+        return x if parser_marker is None else parser_marker.args[0]
+
+    if nodes_to_info_marker is None:
+        nodes_to_info = zi_structure.nodes_to_info
+    else:
+        nodes_to_info = nodes_to_info_marker.args[0]
+
+    return NodeTreeManager(
+        session=None,
+        path_to_info=nodes_to_info,
         parser=parser,
     ).construct_nodetree(hide_kernel_prefix=True)
 
 
-def get_result_node():
+@pytest.fixture()
+def result_node(sessionless_manager, zi_structure, zi_get_responses_prop) -> ResultNode:
+    """Provide authentic result node"""
     return ResultNode(
-        tree_manager=get_serverless_manager(),
+        tree_manager=sessionless_manager,
         path_segments=(),
         subtree_paths=zi_structure.structure,
         value_structure=zi_get_responses_prop,
         timestamp=0,
     ).zi
+
+
+class MockMetaNode(MetaNode):
+    """Get simple MetaNode like object by path"""
+
+    def __init__(self, path_segments):
+        super().__init__(
+            path_segments=path_segments,
+            tree_manager=None,
+            subtree_paths=None,
+            path_aliases=None,
+        )
+
+    def __getattr__(self, item):
+        return self
+
+    def __getitem__(self, item):
+        return self
+
+
+class MockResultNode(ResultNode):
+    """Get simple ResultNode like object by path"""
+
+    def __init__(self, path_segments):
+        super().__init__(
+            path_segments=path_segments,
+            tree_manager=None,
+            subtree_paths=None,
+            path_aliases=None,
+            value_structure=None,
+            timestamp=None,
+        )

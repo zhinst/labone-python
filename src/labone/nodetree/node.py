@@ -421,7 +421,7 @@ class MetaNode(ABC):
         self._tree_manager = tree_manager
         self._path_segments = path_segments
         self._path_aliases = path_aliases if path_aliases is not None else {}
-        self._subtree_structure = subtree_paths
+        self._subtree_paths = subtree_paths
 
     @abstractmethod
     def __getattr__(self, next_segment: str) -> MetaNode | AnnotatedValue:
@@ -486,12 +486,12 @@ class MetaNode(ABC):
         Returns:
             Sub-nodes iterator.
         """
-        for segment in sorted(self._subtree_structure.keys()):
+        for segment in sorted(self._subtree_paths.keys()):
             yield self[segment]
 
     def __len__(self) -> int:
         """Number of direct sub-nodes."""
-        return len(self._subtree_structure.keys())
+        return len(self._subtree_paths.keys())
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self!s})"
@@ -541,8 +541,9 @@ class MetaNode(ABC):
             else tuple(child_node)
         )
         return (
-            self.path_segments == path_segments[:-1]
-            and path_segments[-1] in self._subtree_structure
+            bool(path_segments)
+            and self.path_segments == path_segments[:-1]
+            and path_segments[-1] in self._subtree_paths
         )
 
     @property
@@ -579,11 +580,11 @@ class MetaNode(ABC):
         return self._path_aliases  # pragma: no cover
 
     @property
-    def subtree_structure(
+    def subtree_paths(
         self,
     ) -> NestedDict[list[list[NormalizedPathSegment]] | dict] | UndefinedStructure:
         """Structure defining which sub-nodes exist."""
-        return self._subtree_structure
+        return self._subtree_paths
 
 
 class ResultNode(MetaNode):
@@ -719,7 +720,7 @@ class ResultNode(MetaNode):
             Iterator of valid dot-access identifier.
 
         """
-        return [pythonify_path_segment(p) for p in self._subtree_structure] + list(
+        return [pythonify_path_segment(p) for p in self._subtree_paths] + list(
             super().__dir__(),
         )
 
@@ -729,7 +730,7 @@ class ResultNode(MetaNode):
             return self.is_child_node(item)
         if isinstance(item, AnnotatedValue):
             return self.is_child_node(split_path(item.path))
-        return normalize_path_segment(item) in self._subtree_structure
+        return normalize_path_segment(item) in self._subtree_paths
 
     def __call__(self, *_, **__) -> None:
         """Not supported on the Result node.
@@ -756,7 +757,7 @@ class ResultNode(MetaNode):
         )
 
     def __repr__(self) -> str:
-        return f"{self!s} -> {[str(k) for k in self._subtree_structure]}"
+        return f"{self!s} -> {[str(k) for k in self._subtree_paths]}"
 
     def results(self) -> t.Iterator[AnnotatedValue]:
         """Iterating through all results.
@@ -922,7 +923,7 @@ class Node(MetaNode, ABC):
             Iterator of valid dot-access identifier.
 
         """
-        return [pythonify_path_segment(p) for p in self._subtree_structure] + list(
+        return [pythonify_path_segment(p) for p in self._subtree_paths] + list(
             super().__dir__(),
         )
 
@@ -949,7 +950,7 @@ class Node(MetaNode, ABC):
         """
         if isinstance(item, Node):
             return self.is_child_node(item)
-        return normalize_path_segment(item) in self._subtree_structure
+        return normalize_path_segment(item) in self._subtree_paths
 
     async def __call__(
         self,
@@ -1392,7 +1393,7 @@ class WildcardNode(WildcardOrPartialNode):
             self._tree_manager.path_segments_to_node(tuple(split_path(prefix)))
             for prefix in prefixes
         ]
-        structure = {str(i): node.subtree_structure for i, node in enumerate(nodes)}
+        structure = {str(i): node.subtree_paths for i, node in enumerate(nodes)}
 
         # define redirection to original paths
         match_segment = f"matches_{uuid.uuid4()}_id"
@@ -1497,7 +1498,7 @@ class PartialNode(WildcardOrPartialNode):
         return ResultNode(
             tree_manager=self.tree_manager,
             path_segments=self.path_segments,
-            subtree_paths=self._subtree_structure,  # type: ignore[arg-type]
+            subtree_paths=self._subtree_paths,  # type: ignore[arg-type]
             value_structure=response_dict,
             timestamp=timestamp if timestamp else 0,
         )
