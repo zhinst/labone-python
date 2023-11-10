@@ -204,10 +204,7 @@ def test_protocol_upgrade_ok_dev(socket_mock):
 
     socket_mock.getpeername.return_value = ("localhost", 1234)
     socket_mock.makefile.return_value.readline.side_effect = response_lines
-    kernel_info = connection_layer.DeviceKernelInfo(
-        device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
-    )
+    kernel_info = connection_layer.DeviceKernelInfo(device_id="dev1234")
 
     kernel_info_extended = connection_layer._protocol_upgrade(
         socket_mock,
@@ -255,7 +252,7 @@ def test_protocol_upgrade_ok_no_capability_version(socket_mock):
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="1GbE",
     )
 
     kernel_info_extended = connection_layer._protocol_upgrade(
@@ -287,7 +284,7 @@ def test_protocol_upgrade_device_not_found(socket_mock):
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="1GbE",
     )
 
     with pytest.raises(errors.DeviceNotFoundError):
@@ -314,7 +311,7 @@ def test_protocol_upgrade_device_different_interface(socket_mock):
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="USB",
     )
 
     with pytest.raises(errors.InterfaceMismatchError):
@@ -340,7 +337,7 @@ def test_protocol_upgrade_unsuported_api_level(socket_mock):
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="USB",
     )
 
     with pytest.raises(errors.LabOneConnectionError):
@@ -360,7 +357,7 @@ def test_protocol_upgrade_error_but_no_info(socket_mock):
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="1GbE",
     )
 
     with pytest.raises(errors.LabOneConnectionError):
@@ -387,7 +384,7 @@ def test_protocol_upgrade_not_possible(socket_mock):
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
-        interface=connection_layer.DeviceKernelInfo.DeviceInterface.GbE,
+        interface="1GbE",
     )
 
     with pytest.raises(errors.LabOneConnectionError):

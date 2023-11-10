@@ -13,7 +13,6 @@ __all__ = [
     "create_session_client_stream",
 ]
 
-import enum
 import json
 import re
 import socket
@@ -81,19 +80,15 @@ class DeviceKernelInfo(KernelInfo):
 
     Args:
         device_id: Identifier of the device. (e.g. dev1234)
-        interface: Interface of the device. (default = DeviceInterface.GbE)
+        interface: Interface of the device. If empty the Data Server will
+            automatically choose the right interface based on the available
+            interfaces and a priority list. (default = "")
     """
-
-    class DeviceInterface(enum.Enum):
-        """Enum for the different interfaces used by the data server."""
-
-        USB = "USB"
-        GbE = "1GbE"
 
     def __init__(
         self,
         device_id: str,
-        interface: DeviceInterface,
+        interface: str = "",
         capability_version: version.Version | None = None,
     ) -> None:
         self._device_id = device_id
@@ -132,7 +127,7 @@ class DeviceKernelInfo(KernelInfo):
     @property
     def query(self) -> dict[str, str]:
         """Additional query that should be used in the upgrade request."""
-        return {"interface": str(self._interface.value)}
+        return {"interface": str(self._interface)}
 
     @property
     def device_id(self) -> str:
@@ -140,7 +135,7 @@ class DeviceKernelInfo(KernelInfo):
         return self._device_id
 
     @property
-    def interface(self) -> DeviceInterface:
+    def interface(self) -> str:
         """Interface of the device."""
         return self._interface
 
