@@ -7,12 +7,27 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from labone.nodetree.helper import join_path, paths_to_nested_dict
-from labone.nodetree.node import MetaNode, NodeTreeManager, ResultNode
+
+if t.TYPE_CHECKING:
+    from labone.core.subscription import DataQueue
+    from labone.nodetree.enum import NodeEnum
+from labone.nodetree.helper import (
+    NormalizedPathSegment,
+    join_path,
+    paths_to_nested_dict,
+)
+from labone.nodetree.node import (
+    LeafNode,
+    MetaNode,
+    NodeTreeManager,
+    PartialNode,
+    ResultNode,
+    WildcardNode,
+)
 
 if t.TYPE_CHECKING:
     from src.labone.core.value import AnnotatedValue
-    from src.labone.nodetree.node import Node
+from src.labone.nodetree.node import Node
 from tests.nodetree.zi_responses import zi_get_responses
 
 
@@ -198,4 +213,70 @@ class MockResultNode(ResultNode):
             path_aliases=None,
             value_structure=None,
             timestamp=None,
+        )
+
+
+class MockNode(Node):
+    """Get simple Node like object by path"""
+
+    def __init__(self, path_segments):
+        super().__init__(
+            path_segments=path_segments,
+            tree_manager=None,
+            subtree_paths=None,
+            path_aliases=None,
+        )
+
+    def _get(self, *_, **__):
+        return
+
+    def _set(self, *_, **__):
+        return
+
+    def subscribe(self) -> DataQueue:
+        return
+
+    def try_generate_subnode(
+        self,
+        next_path_segment: NormalizedPathSegment,  # noqa: ARG002
+    ) -> Node:
+        return
+
+    def wait_for_state_change(
+        self,
+        value: int | NodeEnum,  # noqa: ARG002
+        *,
+        invert: bool = False,  # noqa: ARG002
+        timeout: float = 2,  # noqa: ARG002
+    ) -> None:
+        return
+
+
+class MockPartialNode(PartialNode):
+    def __init__(self, path_segments):
+        super().__init__(
+            tree_manager=None,
+            path_segments=path_segments,
+            subtree_paths=None,
+            path_aliases=None,
+        )
+
+
+class MockLeafNode(LeafNode):
+    def __init__(self, path_segments):
+        super().__init__(
+            tree_manager=None,
+            path_segments=path_segments,
+            subtree_paths=None,
+            path_aliases=None,
+        )
+
+
+class MockWildcardNode(WildcardNode):
+    def __init__(self, path_segments):
+        super().__init__(
+            tree_manager=None,
+            path_segments=path_segments,
+            subtree_paths=None,
+            path_aliases=None,
         )
