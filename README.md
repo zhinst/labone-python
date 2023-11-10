@@ -71,7 +71,7 @@ The device id and the interface have to be specified.
 from labone.core import KernelSession, DeviceKernelInfo, AnnotatedValue
 
 connection = await KernelSession.create(
-    kernel_info=DeviceKernelInfo(device_id="dev1234", interface=DeviceKernelInfo.GbE),
+    kernel_info=DeviceKernelInfo(device_id="dev1234"),
     server_info=ServerInfo(host='localhost', port=8004)
 )
 
