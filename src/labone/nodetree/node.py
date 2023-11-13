@@ -363,7 +363,7 @@ class NodeTreeManager:
         if unique_value in self._cache_path_segments_to_node:
             return self._cache_path_segments_to_node[unique_value]
 
-        result = Node.build(self, path_segments)
+        result = Node.build(tree_manager=self, path_segments=path_segments)
         self._cache_path_segments_to_node[unique_value] = result
         return result
 
@@ -996,6 +996,7 @@ class Node(MetaNode, ABC):
     @classmethod
     def build(
         cls,
+        *,
         tree_manager: NodeTreeManager,
         path_segments: tuple[NormalizedPathSegment, ...],
         path_aliases: dict[
