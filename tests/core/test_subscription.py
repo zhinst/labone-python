@@ -4,9 +4,13 @@ import asyncio
 import capnp
 import pytest
 from labone.core import errors
-from labone.core.resources import session_protocol_capnp
-from labone.core.subscription import DataQueue, StreamingHandle
+from labone.core.subscription import (
+    DataQueue,
+    streaming_handle_factory,
+)
 from labone.core.value import AnnotatedValue
+
+from .resources import value_capnp
 
 
 class FakeSubscription:
@@ -142,8 +146,9 @@ async def test_data_queue_get_disconnected_empty():
         await queue.get()
 
 
-def test_streaming_handle_register():
-    streaming_handle = StreamingHandle()
+def test_streaming_handle_register(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     DataQueue(path="dummy", register_function=streaming_handle.register_data_queue)
     assert len(streaming_handle._data_queues) == 1
 
@@ -151,8 +156,9 @@ def test_streaming_handle_register():
 @pytest.mark.parametrize("num_values", range(0, 20, 4))
 @pytest.mark.parametrize("num_queues", [1, 2, 6])
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_event(num_values, num_queues):
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_event(num_values, num_queues, reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     queues = []
     for _ in range(num_queues):
         queue = DataQueue(
@@ -162,7 +168,7 @@ async def test_streaming_handle_update_event(num_values, num_queues):
         queues.append(queue)
     values = []
     for i in range(num_values):
-        value = session_protocol_capnp.AnnotatedValue.new_message()
+        value = value_capnp.AnnotatedValue.new_message()
         value.metadata.path = "dummy"
         value.value.int64 = i
         values.append(value)
@@ -178,40 +184,44 @@ async def test_streaming_handle_update_event(num_values, num_queues):
             )
 
 
-def test_streaming_handle_with_parser_callback():
-    StreamingHandle(
+def test_streaming_handle_with_parser_callback(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle_class(
         parser_callback=lambda a: AnnotatedValue(path=a.path, value=a.value * 2),
     )
 
 
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_empty():
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_empty(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     values = []
-    value = session_protocol_capnp.AnnotatedValue.new_message()
+    value = value_capnp.AnnotatedValue.new_message()
     values.append(value)
     with pytest.raises(capnp.KjException):
         await streaming_handle.sendValues(values)
 
 
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_disconnect():
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_disconnect(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     queue = DataQueue(
         path="dummy",
         register_function=streaming_handle.register_data_queue,
     )
     queue.disconnect()
     values = []
-    value = session_protocol_capnp.AnnotatedValue.new_message()
+    value = value_capnp.AnnotatedValue.new_message()
     values.append(value)
     with pytest.raises(capnp.KjException):
         await streaming_handle.sendValues(values)
 
 
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_partially_disconnected():
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_partially_disconnected(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     queue_0 = DataQueue(
         path="dummy",
         register_function=streaming_handle.register_data_queue,
@@ -222,7 +232,7 @@ async def test_streaming_handle_update_partially_disconnected():
     )
     queue_0.disconnect()
     values = []
-    value = session_protocol_capnp.AnnotatedValue.new_message()
+    value = value_capnp.AnnotatedValue.new_message()
     value.metadata.path = "dummy"
     value.value.int64 = 1
     values.append(value)
@@ -241,8 +251,9 @@ async def test_streaming_handle_update_partially_disconnected():
 
 
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_queue_full_single():
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_queue_full_single(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     queue_0 = DataQueue(
         path="dummy",
         register_function=streaming_handle.register_data_queue,
@@ -255,7 +266,7 @@ async def test_streaming_handle_update_queue_full_single():
     queue_0.put_nowait("dummy")
     assert queue_0.qsize() == 1
     values = []
-    value = session_protocol_capnp.AnnotatedValue.new_message()
+    value = value_capnp.AnnotatedValue.new_message()
     value.metadata.path = "dummy"
     value.value.int64 = 1
     values.append(value)
@@ -271,8 +282,9 @@ async def test_streaming_handle_update_queue_full_single():
 
 
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_queue_full_multiple():
-    streaming_handle = StreamingHandle()
+async def test_streaming_handle_update_queue_full_multiple(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
     queue_0 = DataQueue(
         path="dummy",
         register_function=streaming_handle.register_data_queue,
@@ -286,7 +298,7 @@ async def test_streaming_handle_update_queue_full_multiple():
     queue_1.maxsize = 1
     queue_1.put_nowait("dummy")
     values = []
-    value = session_protocol_capnp.AnnotatedValue.new_message()
+    value = value_capnp.AnnotatedValue.new_message()
     value.metadata.path = "dummy"
     value.value.int64 = 1
     values.append(value)

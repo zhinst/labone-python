@@ -62,7 +62,8 @@ class Session(t.Protocol):
 
     async def list_nodes(
         self,
-        path: LabOneNodePath,
+        path: LabOneNodePath = "",
+        *,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
     ) -> list[LabOneNodePath]:
         """List the nodes found at a given path."""
@@ -70,7 +71,8 @@ class Session(t.Protocol):
 
     async def list_nodes_info(
         self,
-        path: LabOneNodePath,
+        path: LabOneNodePath = "",
+        *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
     ) -> dict[LabOneNodePath, NodeInfo]:
         """List the nodes and their information found at a given path."""

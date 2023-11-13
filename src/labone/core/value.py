@@ -8,8 +8,8 @@ versa.
 from __future__ import annotations
 
 import logging
+import typing as t
 from dataclasses import dataclass
-from typing import Any, Union
 
 import capnp
 import numpy as np
@@ -20,13 +20,16 @@ from labone.core.helper import (
     VectorValueType,
     request_field_type_description,
 )
-from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
 from labone.core.shf_vector_data import (
     ExtraHeader,
     SHFDemodSample,
     get_header_length,
     parse_shf_vector_data_struct,
 )
+
+if t.TYPE_CHECKING:
+    from labone.core.helper import CapnpCapability
+    from labone.core.reflection.server import ReflectionServer
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +57,10 @@ class AnnotatedValue:
     value: Value
     path: LabOneNodePath
     timestamp: int | None = None
-    extra_header: Any = None
+    extra_header: t.Any = None
 
     @staticmethod
-    def from_capnp(raw: session_protocol_capnp.AnnotatedValue) -> AnnotatedValue:
+    def from_capnp(raw: CapnpCapability) -> AnnotatedValue:
         """Convert a capnp AnnotatedValue to a python AnnotatedValue.
 
         Args:
@@ -74,7 +77,7 @@ class AnnotatedValue:
             extra_header=extra_header,
         )
 
-    def to_capnp(self) -> session_protocol_capnp.AnnotatedValue:
+    def to_capnp(self, *, reflection: ReflectionServer) -> CapnpCapability:
         """Convert a python AnnotatedValue to a capnp AnnotatedValue.
 
         Warning:
@@ -90,14 +93,14 @@ class AnnotatedValue:
             TypeError: If the `path` attribute is not of type `str`.
             LabOneCoreError: If the data type of the value to be set is not supported.
         """
-        message = session_protocol_capnp.AnnotatedValue.new_message()
+        message = reflection.AnnotatedValue.new_message()  # type: ignore[attr-defined]
         try:
             message.metadata.path = self.path
         except (AttributeError, TypeError, capnp.KjException):
             field_type = request_field_type_description(message.metadata, "path")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from None
-        message.value = _value_from_python_types(self.value)
+        message.value = _value_from_python_types(self.value, reflection=reflection)
         return message
 
 
@@ -124,7 +127,7 @@ class TriggerSample:
     sequence_index: int
 
     @staticmethod
-    def from_capnp(raw: session_protocol_capnp.TriggerSample) -> TriggerSample:
+    def from_capnp(raw: CapnpCapability) -> TriggerSample:
         """Convert a capnp TriggerSample to a python TriggerSample.
 
         Args:
@@ -159,7 +162,7 @@ class CntSample:
     trigger: int
 
     @staticmethod
-    def from_capnp(raw: session_protocol_capnp.CntSample) -> CntSample:
+    def from_capnp(raw: CapnpCapability) -> CntSample:
         """Convert a capnp CntSample to a python CntSample.
 
         Args:
@@ -176,7 +179,7 @@ class CntSample:
 
 
 # All possible types of values that can be stored in a node.
-Value = Union[
+Value = t.Union[
     int,
     float,
     str,
@@ -190,7 +193,7 @@ Value = Union[
 
 
 def _capnp_vector_to_value(
-    vector_data: session_protocol_capnp.VectorData,
+    vector_data: CapnpCapability,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse a capnp vector to a numpy array.
 
@@ -233,7 +236,7 @@ def _capnp_vector_to_value(
 
 
 def _capnp_value_to_python_value(
-    capnp_value: session_protocol_capnp.Value,
+    capnp_value: CapnpCapability,
 ) -> tuple[Value, ExtraHeader | None]:
     """Convert a capnp value to a python value.
 
@@ -268,20 +271,23 @@ def _capnp_value_to_python_value(
 
 
 def _value_from_python_types(
-    value: Any,  # noqa: ANN401
+    value: t.Any,  # noqa: ANN401
+    *,
+    reflection: ReflectionServer,
 ) -> capnp.lib.capnp._DynamicStructBuilder:  # noqa: SLF001
-    """Create `session_protocol_capnp.Value` builder from Python types.
+    """Create `Value` builder from Python types.
 
     Args:
         value: The value to be converted.
+        reflection: The reflection server used for the conversion.
 
     Returns:
-        A new message builder for `labone.core.resources.session_protocol_capnp:Value`.
+        A new message builder for `capnp:Value`.
 
     Raises:
         LabOneCoreError: If the data type of the value to be set is not supported.
     """
-    request_value = session_protocol_capnp.Value.new_message()
+    request_value = reflection.Value.new_message()  # type: ignore[attr-defined]
     if isinstance(value, bool):
         request_value.int64 = int(value)
     elif np.issubdtype(type(value), np.integer):
@@ -289,21 +295,21 @@ def _value_from_python_types(
     elif np.issubdtype(type(value), np.floating):
         request_value.double = value
     elif isinstance(value, complex):
-        request_value.complex = session_protocol_capnp.Complex(
+        request_value.complex = reflection.Complex(  # type: ignore[attr-defined]
             real=value.real,
             imag=value.imag,
         )
     elif isinstance(value, str):
         request_value.string = value
     elif isinstance(value, bytes):
-        request_value.vectorData = session_protocol_capnp.VectorData(
+        request_value.vectorData = reflection.VectorData(  # type: ignore[attr-defined]
             valueType=VectorValueType.BYTE_ARRAY.value,
             extraHeaderInfo=0,
             vectorElementType=VectorElementType.UINT8.value,
             data=value,
         )
     elif isinstance(value, np.ndarray):
-        vector_data = session_protocol_capnp.VectorData(
+        vector_data = reflection.VectorData(  # type: ignore[attr-defined]
             valueType=VectorValueType.VECTOR_DATA.value,
             extraHeaderInfo=0,
             vectorElementType=VectorElementType.from_numpy_type(value.dtype).value,

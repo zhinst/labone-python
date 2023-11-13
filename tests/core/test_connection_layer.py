@@ -4,14 +4,11 @@ import json
 import socket
 from unittest.mock import patch
 
-import capnp
 import pytest
 from labone.core import connection_layer, errors
-from labone.core.resources import (  # type: ignore[attr-defined]
-    hello_msg_capnp,
-    orchestrator_capnp,
-)
 from packaging import version
+
+from .resources import hello_msg_capnp, orchestrator_capnp
 
 
 def test_open_socket_ok():
@@ -38,7 +35,7 @@ def hello_msg():
     hello_msg.kind = hello_msg_capnp.HelloMsg.Kind.orchestrator
     hello_msg.protocol = hello_msg_capnp.HelloMsg.Protocol.http
     hello_msg.l1Ver = "99.99.99"
-    hello_msg._set("schema", orchestrator_capnp.Orchestrator.capabilityVersion)
+    hello_msg._set("schema", "1.6.0")
     return hello_msg
 
 
@@ -60,7 +57,7 @@ def _hello_msg_to_bytes(hello_msg):
 def test_client_handshake_ok(socket_mock, hello_msg):
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     received_hello_msg = connection_layer._client_handshake(socket_mock)
-    assert received_hello_msg.to_dict() == hello_msg.to_dict()
+    assert received_hello_msg == hello_msg.to_dict()
 
 
 @patch("labone.core.connection_layer.socket.socket", autospec=True)
@@ -91,12 +88,11 @@ def test_client_handshake_additional_fields(socket_mock, hello_msg):
     # additional fields should be filtered out an only the known field should be
     # used. This helps outputting a more helpful error message.
     received_hello_msg = connection_layer._client_handshake(socket_mock)
-    assert received_hello_msg.to_dict() == hello_msg.to_dict()
-
-
-def test_malicious_hello_msg_from_json():
-    with pytest.raises(capnp.lib.capnp.KjException):
-        connection_layer._hello_msg_from_json({"kind": "test"})
+    assert "additional_field" in received_hello_msg
+    del received_hello_msg["additional_field"]
+    assert "test" in received_hello_msg
+    del received_hello_msg["test"]
+    assert received_hello_msg == hello_msg.to_dict()
 
 
 @patch("labone.core.connection_layer.socket.socket", autospec=True)
@@ -115,7 +111,7 @@ def test_client_handshake_wrong_kind_no_check(socket_mock, hello_msg):
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
     received_hello_msg = connection_layer._client_handshake(socket_mock, check=False)
-    assert received_hello_msg.to_dict() == hello_msg.to_dict()
+    assert received_hello_msg == hello_msg.to_dict()
 
 
 @patch("labone.core.connection_layer.socket.socket", autospec=True)
@@ -174,12 +170,9 @@ def test_raise_orchestrator_error():
         "badRequest": errors.BadRequestError,
     }
     for value in orchestrator_capnp.Orchestrator.ErrorCode.schema.enumerants:
-        error = orchestrator_capnp.Orchestrator.Error.new_message()
-        error.code = value
-        error.message = "test"
         try:
             with pytest.raises(error_map[value]) as err:
-                connection_layer._raise_orchestrator_error(error)
+                connection_layer._raise_orchestrator_error(value, "test")
         except KeyError as key_error:
             msg = (
                 f"Error `{value}` not mapped. Please add it to the test "
@@ -187,7 +180,7 @@ def test_raise_orchestrator_error():
             )
             raise KeyError(msg) from key_error
         if value != "ok":
-            assert error.message in err.value.args[0]
+            assert "test" in err.value.args[0]
 
 
 @patch("labone.core.connection_layer.socket.socket", autospec=True)
@@ -269,7 +262,7 @@ def test_protocol_upgrade_ok_no_capability_version(socket_mock):
 def test_protocol_upgrade_device_not_found(socket_mock):
     response_lines = [
         b"HTTP/1.1 404 Not Found\r\n",
-        b"Content-Length: 80\r\n",
+        b"Content-Length: 78\r\n",
         b"Content-Type: application/capnp\r\n",
         b"\r\n",
     ]
@@ -277,10 +270,8 @@ def test_protocol_upgrade_device_not_found(socket_mock):
     socket_mock.getpeername.return_value = ("localhost", 1234)
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     socket_mock.makefile.return_value.read.return_value = (
-        b"\x00\x00\x00\x00\t\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x01"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x04"
-        b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x02\x01\x00\x00"
-        b"No device found with id DEV123.\x00"
+        b'{"err":{"code":"deviceNotFound","message":"No device found with id '
+        b'DEV1234."}}'
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
@@ -295,7 +286,7 @@ def test_protocol_upgrade_device_not_found(socket_mock):
 def test_protocol_upgrade_device_different_interface(socket_mock):
     response_lines = [
         b"HTTP/1.1 409 Conflict \r\n",
-        b"Content-Length: 168\r\n",
+        b"Content-Length: 166\r\n",
         b"Content-Type: application/capnp\r\n",
         b"\r\n",
     ]
@@ -303,11 +294,9 @@ def test_protocol_upgrade_device_different_interface(socket_mock):
     socket_mock.getpeername.return_value = ("localhost", 1234)
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     socket_mock.makefile.return_value.read.return_value = (
-        b"\x00\x00\x00\x00\x14\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x01"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x07\x00"
-        b"\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\xba\x03\x00\x00"
+        b'{"err":{"code":"interfaceMismatch","message":"'
         b"Cannot connect to DEV8563 through a USB interface. The device is "
-        b"available only through the following interfaces: 1GbE\x00\x00"
+        b'available only through the following interfaces: 1GbE"}}'
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
@@ -323,7 +312,7 @@ def test_protocol_upgrade_unsuported_api_level(socket_mock):
     # This is only a hypothetical scenario ... the API level always must be 6
     response_lines = [
         b"HTTP/1.1 409 Conflict \r\n",
-        b"Content-Length: 56\r\n",
+        b"Content-Length: 54\r\n",
         b"Content-Type: application/capnp\r\n",
         b"\r\n",
     ]
@@ -331,9 +320,7 @@ def test_protocol_upgrade_unsuported_api_level(socket_mock):
     socket_mock.getpeername.return_value = ("localhost", 1234)
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     socket_mock.makefile.return_value.read.return_value = (
-        b"\x00\x00\x00\x00\x06\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x01"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\n\x00\x00"
-        b"\x00\x00\x00\x00\x00\x01\x00\x00\x00*\x00\x00\x00Test\x00\x00\x00\x00"
+        b'{"err":{"code":"unsupportedApiLevel","message":"Test"}}'
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",
@@ -368,7 +355,7 @@ def test_protocol_upgrade_error_but_no_info(socket_mock):
 def test_protocol_upgrade_not_possible(socket_mock):
     response_lines = [
         b"HTTP/1.1 200 OK\r\n",
-        b"Content-Length: 104\r\n",
+        b"Content-Length: 55\r\n",
         b"Content-Type: application/capnp\r\n",
         b"\r\n",
     ]
@@ -376,11 +363,7 @@ def test_protocol_upgrade_not_possible(socket_mock):
     socket_mock.getpeername.return_value = ("localhost", 1234)
     socket_mock.makefile.return_value.readline.side_effect = response_lines
     socket_mock.makefile.return_value.read.return_value = (
-        b"\x00\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x00\x00"
-        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x03\x00C\x1f\x00"
-        b"\x00\x00\x00\x00\x00\t\x00\x00\x00R\x00\x00\x00\r\x00\x00\x00\x82\x00"
-        b"\x00\x00\x11\x00\x00\x002\x00\x00\x00127.0.0.1\x00\x00\x00\x00\x00\x00"
-        b"\x00V@b\x1eu\x07C\xee\xbf\xb3\xc0\xef\xfb\xaf0\xe40.0.0\x00\x00\x00"
+        b'{"err":{"code":"unsupportedApiLevel","message":"Test"}}'
     )
     kernel_info = connection_layer.DeviceKernelInfo(
         device_id="dev1234",

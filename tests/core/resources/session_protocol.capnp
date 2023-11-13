@@ -5,12 +5,16 @@ using Cxx = import "/capnp/c++.capnp";
 # collisions with the "capnp" namespace
 $Cxx.namespace("zhinst_capnp");
 
+using import "error.capnp".Error;
+using import "path.capnp".Path;
+using import "path.capnp".Paths;
+using import "path.capnp".PathExpression;
 using import "result.capnp".Result;
 using import "uuid.capnp".Uuid;
+using import "value.capnp".AnnotatedValue;
+using import "value.capnp".Value;
+using import "value.capnp".Void;
 
-using Path = Text;
-using Paths = List(Path);
-using PathExpression = Text;
 using Version = Text;
 # A unique identifier for a client. Note that the HPK makes no assumption about
 # what a client is. In particular, the HPK does not assume there's any relationship
@@ -44,25 +48,25 @@ interface Session @0xb9d445582da4a55c {
   listNodes @0 (pathExpression :PathExpression, flags :UInt32, client :ClientId) -> (paths :Paths);
   # The "client" field is needed only when subscribedonly is used.
 
-  getValue @10 (pathExpression :PathExpression, 
-                 lookupMode :LookupMode = directLookup,
-                 flags :UInt32 = 0,
-                 client :ClientId = .defaultClientId)
+  getValue @10 (pathExpression :PathExpression,
+                lookupMode :LookupMode = directLookup,
+                flags :UInt32 = 0,
+                client :ClientId = .defaultClientId)
             -> (result :List(Result(AnnotatedValue, Error)));
-  # Note 1: A pathExpressions can be anything that listNodes is able to resolve.
-  #         This means that e.g. wildcards are allowed. It is also possible to
-  #         pass multiple, comma separated paths as single pathExpression.
-  # Note 2: The lookupMode controlls if and how pathExpressions are resolved.
-  #         by default the pathExpression is expected to be a node path pointing
+  # Note 1: A pathExpressions can be anything that listNodes can resolve.
+  #         This means that, e.g., wildcards are allowed. Passing multiple
+  #         comma-separated paths as a single pathExpression is also possible.
+  # Note 2: The lookupMode controls if and how pathExpressions are resolved.
+  #         By default the pathExpression is expected to be a node path pointing
   #         to an existing leaf node. If lookupMode is set to withExpansion,
   #         the server tries to resolve the pathExpression with listNodes internally
   #         and returns the value for all matching nodes.
 
   setValue @9 (pathExpression :PathExpression,
-                value        :Value,
-                lookupMode :LookupMode = directLookup,
-                completeWhen :ReturnFromSetWhen = deviceAck,
-                client :ClientId = .defaultClientId)
+               value        :Value,
+               lookupMode :LookupMode = directLookup,
+               completeWhen :ReturnFromSetWhen = deviceAck,
+               client :ClientId = .defaultClientId)
             -> (result :List(Result(AnnotatedValue, Error)));
   # Note 1: in certain cases, the HPK allows setting nodes with a type different
   #         from that of the value passed in. For example, it is allowed to set
@@ -70,8 +74,8 @@ interface Session @0xb9d445582da4a55c {
   #         of the node. So it can happen that setValue returns a value of a type
   #         different from the one that was passed in.
   # Note 2: The AnnotatedValue is only returned if `completeWhen` is set to `deviceAck`.
-  # Note 3: The lookupMode controlls if and how pathExpressions are resolved.
-  #         by default the pathExpression is expected to be a node path pointing
+  # Note 3: The lookupMode controls if and how pathExpressions are resolved.
+  #         By default the pathExpression is expected to be a node path pointing
   #         to an existing leaf node. If lookupMode is set to withExpansion,
   #         the server tries to resolve the pathExpression with listNodes internally
   #         and sets the value to all matching nodes.
@@ -124,8 +128,6 @@ interface Session @0xb9d445582da4a55c {
   deprecatedGetValues @1 (paths :Paths, client :ClientId = .defaultClientId) -> (result :List(Result(AnnotatedValue, Error)));
 }
 
-struct Void {}
-
 interface StreamingHandle @0xf51e28a7f5b41574 {
   sendValues @0 (values :List(AnnotatedValue)) -> stream;
   # Note: Capnp documentation reccommends that, when using streaming a "done()"
@@ -133,65 +135,6 @@ interface StreamingHandle @0xf51e28a7f5b41574 {
   # ensure that the streaming was entirely successful. In the Session interface
   # however a done() call would not make sense, because the streaming goes on
   # "forever" and is fire and forget.
-}
-
-struct Error @0xc4e34e4c517d11d9 {
-  code @0 :UInt32;
-  message @1 :Text;
-}
-
-struct VectorData @0x994c65b80df38978 {
-  # "valueType" specifies the type of the vector. It uses (a subset) of values from `ZIValueType_enum`.
-  # The most commonly used type is "ZI_VALUE_TYPE_VECTOR_DATA". Some vectors use a different format,
-  # e.g., for SHF devices.
-  valueType @0 :UInt16;
-  # "vectorElementType" uses the values from `ZIVectorElementType_enum` to specify the
-  # data type of each element in the vector.
-  vectorElementType @1 :UInt8;
-  # ExtraHeader: [31:16] type and version information, [15:0] length in 32-bit words
-  extraHeaderInfo @2 :UInt32;
-  # "data" maps to the `VectorData` struct.
-  data @3 :Data;
-}
-
-struct Complex @0xaaf1afaf97b4b157 {
-  real @0 :Float64;
-  imag @1 :Float64;
-}
-
-# The CntSample data type is application specific. We generally avoid
-# application specific data types, but these are needed to support the HDAWG
-# in the HPK.
-struct CntSample @0xe9370bd8287d6065 {
-  timestamp @0 :UInt64;
-  counter   @1 :Int32;
-  trigger   @2 :UInt32;
-}
-
-# The TriggerSample data type is application specific. We generally avoid
-# application specific data types, but these are needed to support the HDAWG
-# in the HPK.
-struct TriggerSample @0xdeb72097c27d0d95 {
-  timestamp      @0 :UInt64;
-  sampleTick     @1 :UInt64;
-  trigger        @2 :UInt32;
-  missedTriggers @3 :UInt32;
-  awgTrigger     @4 :UInt32;
-  dio            @5 :UInt32;
-  sequenceIndex  @6 :UInt32;
-}
-
-struct Value @0xb1838b4771be75ac {
-  union {
-    int64         @0 :Int64;
-    double        @1 :Float64;
-    complex       @2 :Complex;
-    string        @3 :Text;
-    vectorData    @4 :VectorData;
-    cntSample     @5 :CntSample;
-    triggerSample @6 :TriggerSample;
-    none          @7 :Void;
-  }
 }
 
 enum ReturnFromSetWhen @0xdd2da53aac55edf9 {
@@ -213,14 +156,4 @@ enum LookupMode @0xda5049b5e072f425 {
   directLookup @0;
   # The server tries to resolve the path with listNodes internally.
   withExpansion @1;
-}
-
-struct AnnotatedValue @0xf408ee376e837cdc {
-  struct Metadata @0xad53d8ca57af3018 {
-    timestamp @0 :UInt64;
-    path @1 :Path;
-  }
-
-  metadata @0 :Metadata;
-  value @1 :Value;
 }

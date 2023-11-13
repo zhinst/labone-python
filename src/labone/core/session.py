@@ -1,17 +1,17 @@
-"""Module for a session to a LabOne Kernel.
+"""Module for a session to a Zurich Instruments Session Capability.
 
-A Kernel is a remote server that provides access to a defined set of nodes.
-It can be a device kernel that provides access to the device nodes but it
-can also be a kernel that provides additional functionality, e.g. the
-Data Server (zi) kernel.
+The Session capability provides access to the basic interactions with nodes
+and or properties of a server. Its used in multiple places with the software
+stack of Zurich Instruments. For example the Data Server kernel for a device
+provides a Session capability to access the nodes of the device.
 
-Every Kernel provides the same capnp interface and can therefore be handled
-in the same way. The only difference is the set of nodes that are available
-on the kernel.
+Every Session capability provides the same capnp interface and can therefore be
+handled in the same way. The only difference is the set of nodes/properties that
+are available.
 
-The number of sessions to a kernel is not limited. However, due to the
+The number of sessions to a capability is not limited. However, due to the
 asynchronous interface, it is often not necessary to have multiple sessions
-to the same kernel.
+to the same capability.
 """
 from __future__ import annotations
 
@@ -25,22 +25,17 @@ import capnp
 from typing_extensions import NotRequired, TypeAlias, TypedDict
 
 from labone.core import errors, result
-from labone.core.connection_layer import (
-    KernelInfo,
-    ServerInfo,
-    create_session_client_stream,
-)
 from labone.core.helper import (
+    CapnpCapability,
     LabOneNodePath,
-    ensure_capnp_event_loop,
     request_field_type_description,
 )
-from labone.core.resources import (  # type: ignore[attr-defined]
-    session_protocol_capnp,
-)
 from labone.core.result import unwrap
-from labone.core.subscription import DataQueue, StreamingHandle
+from labone.core.subscription import DataQueue, streaming_handle_factory
 from labone.core.value import AnnotatedValue
+
+if t.TYPE_CHECKING:
+    from labone.core.reflection.server import ReflectionServer
 
 T = t.TypeVar("T")
 
@@ -188,114 +183,43 @@ async def _send_and_wait_request(
         raise errors.LabOneConnectionError(msg) from None
 
 
-class KernelSession:
-    """Capnp session client.
+class Session:
+    """Generic Capnp session client.
 
-    Representation of a single session to a LabOne kernel. This class
+    Representation of a single Session capability. This class
     encapsulates the capnp interaction an exposes a python native api.
-    All function are exposed as they are implementet in the kernel
-    interface and are directly forwarded to the kernel through capnp.
+    All function are exposed as they are implemented in the interface
+    of the capnp server and are directly forwarded.
 
     Each function implements the required error handling both for the
     capnp communication and the server errors. This means unless an Exception
-    is raised the call was sucessfull.
+    is raised the call was successful.
 
-    The KenerlSession class is instantiated through the staticmethod
-    `create()`.
-    This is due to the fact that the instantiation is done asynchronously.
-    To call the contructor directly an already existing capnp io stream
-    must be provided.
-
-    Example:
-        >>> kernel_info = ZIKernelInfo()
-        >>> server_info = ServerInfo(host="localhost", port=8004)
-        >>> kernel_session = await KernelSession(
-                kernel_info = kernel_info,
-                server_info = server_info,
-            )
+    The Session already requires an existing connection this is due to the
+    fact that the instantiation is done asynchronously. In addition the underlying
+    reflection server is required to be able to create the capnp messages.
 
     Args:
-        connection: Asyncio stream connection to the server.
-        kernel_info: Information about the connected kernel
-        server_info: Information about the LabOne data server.
+        capnp_session: Capnp session capability.
+        reflection_server: Reflection server instance.
     """
 
     def __init__(
         self,
-        connection: capnp.AsyncIoStream,
-        kernel_info: KernelInfo,
-        server_info: ServerInfo,
-    ) -> None:
-        self._client = capnp.TwoPartyClient(connection)
-        self._kernel_info = kernel_info
-        self._server_info = server_info
-        self._session = self._client.bootstrap().cast_as(session_protocol_capnp.Session)
+        capnp_session: CapnpCapability,
+        *,
+        reflection_server: ReflectionServer,
+    ):
+        self._reflection_server = reflection_server
+        self._session = capnp_session
         # The client_id is required by most capnp messages to identify the client
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()
 
-    @staticmethod
-    async def create(
-        *,
-        kernel_info: KernelInfo,
-        server_info: ServerInfo,
-    ) -> KernelSession:
-        """Create a new session to a LabOne kernel.
-
-        Since the creation of a new session happens asynchronously, this method
-        is required, instead of a simple constructor (since a constructor can
-        not be async).
-
-        Warning: The initial socket creation and setup (handshake, ...) is
-            currently not done asynchronously! The reason is that there is not
-            easy way of doing this with the current capnp implementation.
-
-        Args:
-            kernel_info: Information about the target kernel.
-            server_info: Information about the target data server.
-
-        Returns:
-            A new session to the specified kernel.
-
-        Raises:
-            KernelNotFoundError: If the kernel was not found.
-            IllegalDeviceIdentifierError: If the device identifier is invalid.
-            DeviceNotFoundError: If the device was not found.
-            KernelLaunchFailureError: If the kernel could not be launched.
-            FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-            InterfaceMismatchError: If the interface does not match the device.
-            DifferentInterfaceInUseError: If the device is visible, but cannot be
-                connected through the requested interface.
-            DeviceInUseError: If the device is already in use.
-            BadRequestError: If there is a generic problem interpreting the incoming
-                request.
-            LabOneConnectionError: If another error happens during the session creation.
-        """
-        sock, kernel_info_extended, server_info_extended = create_session_client_stream(
-            kernel_info=kernel_info,
-            server_info=server_info,
-        )
-        await ensure_capnp_event_loop()
-        connection = await capnp.AsyncIoStream.create_connection(sock=sock)
-        return KernelSession(
-            connection=connection,
-            kernel_info=kernel_info_extended,
-            server_info=server_info_extended,
-        )
-
-    @property
-    def kernel_info(self) -> KernelInfo:
-        """Information about the kernel."""
-        return self._kernel_info
-
-    @property
-    def server_info(self) -> ServerInfo:
-        """Information about the server."""
-        return self._server_info
-
     async def list_nodes(
         self,
-        path: LabOneNodePath,
+        path: LabOneNodePath = "",
+        *,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
     ) -> list[LabOneNodePath]:
         """List the nodes found at a given path.
@@ -305,7 +229,7 @@ class KernelSession:
                 Value is case insensitive.
 
                 Supports asterix (*) wildcards, except in the place of node path forward
-                slashes.
+                slashes. (default="")
             flags: The flags for modifying the returned nodes.
 
         Returns:
@@ -365,7 +289,8 @@ class KernelSession:
 
     async def list_nodes_info(
         self,
-        path: LabOneNodePath,
+        path: LabOneNodePath = "",
+        *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
     ) -> dict[LabOneNodePath, NodeInfo]:
         """List the nodes and their information found at a given path.
@@ -375,7 +300,7 @@ class KernelSession:
                 Value is case insensitive.
 
                 Supports asterix (*) wildcards, except in the place of node path
-                forward slashes.
+                forward slashes. (default="")
 
             flags: The flags for modifying the returned nodes.
 
@@ -474,11 +399,13 @@ class KernelSession:
             LabOneCoreError: If the node value type is not supported.
             LabOneConnectionError: If there is a problem in the connection.
         """
-        capnp_value = value.to_capnp()
+        capnp_value = value.to_capnp(reflection=self._reflection_server)
         request = self._session.setValue_request()
         request.pathExpression = capnp_value.metadata.path
         request.value = capnp_value.value
-        request.lookupMode = session_protocol_capnp.LookupMode.directLookup
+        request.lookupMode = (
+            self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
+        )
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
         return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
@@ -512,11 +439,11 @@ class KernelSession:
             LabOneCoreError: If the node value type is not supported.
             LabOneConnectionError: If there is a problem in the connection.
         """
-        capnp_value = value.to_capnp()
+        capnp_value = value.to_capnp(reflection=self._reflection_server)
         request = self._session.setValue_request()
         request.pathExpression = capnp_value.metadata.path
         request.value = capnp_value.value
-        request.lookupMode = session_protocol_capnp.LookupMode.withExpansion
+        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
         return [
@@ -560,7 +487,7 @@ class KernelSession:
             field_type = request_field_type_description(request, "pathExpression")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
-        request.lookupMode = session_protocol_capnp.LookupMode.directLookup
+        request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
         return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
@@ -609,7 +536,7 @@ class KernelSession:
             field_type = request_field_type_description(request, "pathExpression")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from error
-        request.lookupMode = session_protocol_capnp.LookupMode.withExpansion
+        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
         request.flags = int(flags)
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
@@ -659,8 +586,10 @@ class KernelSession:
             TypeError: If `path` is not a string
             LabOneConnectionError: If there is a problem in the connection.
         """
-        streaming_handle = StreamingHandle(parser_callback=parser_callback)
-        subscription = session_protocol_capnp.Subscription(
+        streaming_handle = streaming_handle_factory(self._reflection_server)(
+            parser_callback=parser_callback,
+        )
+        subscription = self._reflection_server.Subscription(  # type: ignore[attr-defined]
             streamingHandle=streaming_handle,
             subscriberId=self._client_id.bytes,
         )

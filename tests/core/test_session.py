@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
 import socket
 import traceback
 import typing
@@ -18,16 +17,15 @@ import pytest_asyncio
 from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
 from labone.core.helper import request_field_type_description
-from labone.core.resources import session_protocol_capnp  # type: ignore[attr-defined]
+from labone.core.kernel_session import KernelSession
 from labone.core.session import (
-    KernelSession,
     ListNodesFlags,
     ListNodesInfoFlags,
     _send_and_wait_request,
 )
 from labone.core.value import AnnotatedValue
 
-from .resources import testfile_capnp  # type: ignore[attr-defined]
+from .resources import session_protocol_capnp, testfile_capnp, value_capnp
 
 
 class SessionBootstrap(session_protocol_capnp.Session.Server):
@@ -89,7 +87,7 @@ class MockServer(typing.NamedTuple):
 
 
 @pytest_asyncio.fixture()
-async def mock_connection() -> tuple[KernelSession, MagicMock]:
+async def mock_connection(reflection_server) -> tuple[KernelSession, MagicMock]:
     """Fixture for `labone.core.Session` and the server it is connected to.
 
     Returns:
@@ -97,8 +95,12 @@ async def mock_connection() -> tuple[KernelSession, MagicMock]:
     """
     mock_server = MagicMock()
     server = await CapnpServer.create(SessionBootstrap(mock_server))
+    reflection = reflection_server
+    client = capnp.TwoPartyClient(server.connection)
+    reflection.session = client.bootstrap().cast_as(reflection.Session)
+
     session = KernelSession(
-        connection=server.connection,
+        reflection_server=reflection,
         kernel_info=ZIKernelInfo(),
         server_info=ServerInfo(host="localhost", port=8004),
     )
@@ -145,7 +147,7 @@ class TestSessionListNodes:
     @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         "flags",
-        [random.randint(0, 10000) for _ in range(5)],  # noqa: S311
+        [0, 46378, 983, 354, 44, 10000],
     )
     async def test_with_flags_int(self, mock_connection, flags):
         mock_connection.server.listNodes.side_effect = self.mock_return_value([])
@@ -204,12 +206,13 @@ class TestSessionListNodesJson:
     @pytest.mark.asyncio()
     @pytest.mark.parametrize(
         "flags",
-        [random.randint(0, 10000) for _ in range(5)],  # noqa: S311
+        [0, 46378, 983, 354, 44, 10000],
     )
     async def test_with_flags_int(self, mock_connection, flags):
         mock_connection.server.listNodesJson.side_effect = self.mock_return_value({})
         r = await mock_connection.session.list_nodes_info("path", flags=flags)
         assert r == {}
+        mock_connection.server.listNodesJson.assert_called_once()
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("flags", ["foo", [3], None])
@@ -345,12 +348,12 @@ class TestSetValue:
         assert session_proto_value_to_python(recorder.params[0].value) == 12
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok(self, mock_connection):
+    async def test_server_response_ok(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
 
         mock_connection.server.setValue.side_effect = mock_method
         response = await mock_connection.session.set(value)
@@ -411,28 +414,32 @@ class TestSetValueWithPathExpression:
         assert result == []
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok_single(self, mock_connection):
+    async def test_server_response_ok_single(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
 
         mock_connection.server.setValue.side_effect = mock_method
         response = await mock_connection.session.set_with_expression(value)
         assert response[0] == value
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok_multiple(self, mock_connection):
+    async def test_server_response_ok_multiple(
+        self,
+        mock_connection,
+        reflection_server,
+    ):
         value0 = AnnotatedValue(value=123, path="/bar/foobar", timestamp=0)
         value1 = AnnotatedValue(value=124, path="/bar/foo", timestamp=0)
         value2 = AnnotatedValue(value=125, path="/bar/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 3)
-            builder[0].ok = value0.to_capnp()
-            builder[1].ok = value1.to_capnp()
-            builder[2].ok = value2.to_capnp()
+            builder[0].ok = value0.to_capnp(reflection=reflection_server)
+            builder[1].ok = value1.to_capnp(reflection=reflection_server)
+            builder[2].ok = value2.to_capnp(reflection=reflection_server)
 
         mock_connection.server.setValue.side_effect = mock_method
         response = await mock_connection.session.set_with_expression(value0)
@@ -468,12 +475,12 @@ class TestSetValueWithPathExpression:
             await mock_connection.session.set_with_expression(value)
 
     @pytest.mark.asyncio()
-    async def test_server_response_err_mix(self, mock_connection):
+    async def test_server_response_err_mix(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 2)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
         mock_connection.server.setValue.side_effect = mock_method
@@ -505,26 +512,30 @@ class TestGetValueWithExpression:
         assert result == []
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok_single(self, mock_connection):
+    async def test_server_response_ok_single(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
 
         mock_connection.server.getValue.side_effect = mock_method
         response = await mock_connection.session.get_with_expression("/foo/bar")
         assert response[0] == value
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok_multiple(self, mock_connection):
+    async def test_server_response_ok_multiple(
+        self,
+        mock_connection,
+        reflection_server,
+    ):
         value0 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
         value1 = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 2)
-            builder[0].ok = value0.to_capnp()
-            builder[1].ok = value1.to_capnp()
+            builder[0].ok = value0.to_capnp(reflection=reflection_server)
+            builder[1].ok = value1.to_capnp(reflection=reflection_server)
 
         mock_connection.server.getValue.side_effect = mock_method
         response = await mock_connection.session.get_with_expression("/foo/bar")
@@ -553,12 +564,12 @@ class TestGetValueWithExpression:
             await mock_connection.session.get_with_expression("/foo/bar")
 
     @pytest.mark.asyncio()
-    async def test_server_response_err_mix(self, mock_connection):
+    async def test_server_response_err_mix(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 2)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
             builder[1].from_dict({"err": {"code": 2, "message": "test2 error"}})
 
         mock_connection.server.getValue.side_effect = mock_method
@@ -594,12 +605,12 @@ class TestGetValue:
         assert recorder.params[0].pathExpression == "/foo/bar"
 
     @pytest.mark.asyncio()
-    async def test_server_response_ok_single(self, mock_connection):
+    async def test_server_response_ok_single(self, mock_connection, reflection_server):
         value = AnnotatedValue(value=123, path="/foo/bar", timestamp=0)
 
         def mock_method(_, results):
             builder = results.init("result", 1)
-            builder[0].ok = value.to_capnp()
+            builder[0].ok = value.to_capnp(reflection=reflection_server)
 
         mock_connection.server.getValue.side_effect = mock_method
         response = await mock_connection.session.get("/foo/bar")
@@ -694,11 +705,11 @@ class TestSessionSubscribe:
 
         values = []
         for i in range(num_values):
-            value = session_protocol_capnp.AnnotatedValue.new_message()
+            value = value_capnp.AnnotatedValue.new_message()
             value.metadata.path = path
             value.value.int64 = i
             values.append(value)
-        value = session_protocol_capnp.AnnotatedValue.new_message()
+        value = value_capnp.AnnotatedValue.new_message()
         value.metadata.path = "dummy"
         value.value.int64 = 1
         await subscription_server.server_handle.sendValues(values)
@@ -721,13 +732,16 @@ class BrokenSessionBootstrap(session_protocol_capnp.Session.Server):
 
 class TestKJErrors:
     @pytest.mark.asyncio()
-    async def test_session_function_not_implemented(self):
+    async def test_session_function_not_implemented(self, reflection_server):
         mock_mock_connection = MagicMock()
-        broker_server = await CapnpServer.create(
+        broken_server = await CapnpServer.create(
             BrokenSessionBootstrap(mock_mock_connection),
         )
+        reflection = reflection_server
+        client = capnp.TwoPartyClient(broken_server.connection)
+        reflection.session = client.bootstrap().cast_as(reflection.Session)
         client = KernelSession(
-            connection=broker_server.connection,
+            reflection_server=reflection,
             kernel_info=ZIKernelInfo(),
             server_info=ServerInfo(host="localhost", port=8004),
         )

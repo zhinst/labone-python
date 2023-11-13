@@ -16,6 +16,8 @@ from typing_extensions import TypeAlias
 logger = logging.getLogger(__name__)
 
 LabOneNodePath: TypeAlias = str
+CapnpCapability: TypeAlias = capnp.lib.capnp._DynamicCapabilityClient  # noqa: SLF001
+CapnpStructReader: TypeAlias = capnp.lib.capnp._DynamicStructReader  # noqa: SLF001
 
 
 async def ensure_capnp_event_loop() -> None:

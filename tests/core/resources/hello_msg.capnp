@@ -27,3 +27,4 @@ struct HelloMsg @0xd62994dbff882318 {
       http @2;
     }
 }
+
