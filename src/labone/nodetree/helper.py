@@ -236,9 +236,6 @@ def pythonify_path_segment(path_segment: NormalizedPathSegment) -> str:
     Returns:
         Path segment in pythonic representation.
     """
-    if path_segment.isdigit():
-        return str(path_segment)
-
     if keyword.iskeyword(path_segment):
         return path_segment + "_"
 
