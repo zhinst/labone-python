@@ -5,6 +5,9 @@ the necessary steps (e.g. handshake) to establish a connection.
 """
 from __future__ import annotations
 
+import contextlib
+import typing as t
+
 __all__ = [
     "KernelInfo",
     "DeviceKernelInfo",
@@ -14,7 +17,6 @@ __all__ = [
 ]
 
 import json
-import re
 import socket
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
@@ -25,12 +27,8 @@ import capnp
 from packaging import version
 
 from labone.core import errors
-from labone.core.resources import (  # type: ignore[attr-defined]
-    hello_msg_capnp,
-    orchestrator_capnp,
-    result_capnp,
-    session_protocol_capnp,
-)
+
+HelloMsgJson = t.Dict[str, str]
 
 
 class KernelInfo(ABC):
@@ -190,7 +188,7 @@ class ServerInfo:
 
     host: str
     port: int
-    hello_msg: hello_msg_capnp.HelloMsg | None = None
+    hello_msg: HelloMsgJson | None = None
 
 
 # The API level is used by LabOne to provide backwards compatibility.
@@ -202,9 +200,9 @@ API_LEVEL = 6
 # The minimum capability version that is required by the labone api.
 # 1.4.0 is the first version that supports the html interface.
 MIN_ORCHESTRATOR_CAPABILITY_VERSION = version.Version("1.4.0")
-CURRENT_KERNEL_CAPABILITY_VERSION = version.Version(
-    session_protocol_capnp.Session.capabilityVersion,
-)
+# The latest known version of the orchestrator capability version.
+TESTED_ORCHESTRATOR_CAPABILITY_VERSION = version.Version("1.5.0")
+HELLO_MSG_FIXED_LENGTH = 256
 
 
 def _open_socket(server_info: ServerInfo) -> socket.socket:
@@ -232,45 +230,6 @@ def _open_socket(server_info: ServerInfo) -> socket.socket:
     return sock
 
 
-def _hello_msg_from_json(hello_msg_json: dict) -> hello_msg_capnp.HelloMsg:
-    """Create a hello message from a json dictionary.
-
-    This function filters out additional fields that are not defined in the
-    hello_msg.capnp schema.
-
-    Args:
-        hello_msg_json: JSON dictionary of the hello message.
-
-    Returns:
-        Hello message.
-
-    Raises:
-        capnp.lib.capnp.KjException: If the hello message is invalid or unable to
-            convert to a hello message by capnp.
-    """
-    try:
-        hello_msg = hello_msg_capnp.HelloMsg.new_message()
-        hello_msg.from_dict(hello_msg_json)
-    except capnp.lib.capnp.KjException as err:
-        # If the hello_message contains additional fields that are not defined
-        # in the schema, kj will throw an exception. Since its important to
-        # have the hello message for a precise error message, we try to remove
-        # the additional fields and try again.
-        try:
-            additional_field = re.search(  # type: ignore[union-attr] # caught
-                r"struct has no such member; name = (.*?)$",
-                err.description,
-            ).group(1)
-            del hello_msg_json[additional_field]
-            return _hello_msg_from_json(hello_msg_json)
-        except AttributeError:
-            # the error message does not contain the additional field
-            # Unknown kj exception, re-raise
-            pass
-        raise
-    return hello_msg
-
-
 def _construct_handshake_error_msg(host: str, port: int, info: str) -> str:
     """Construct a handshake error message.
 
@@ -295,7 +254,7 @@ def _client_handshake(
     sock: socket.socket,
     *,
     check: bool = True,
-) -> hello_msg_capnp.HelloMsg:
+) -> HelloMsgJson:
     """Perform the zi client handshake with the server.
 
     The handshake is mandatory and is a fixed length json encoded string.
@@ -320,13 +279,12 @@ def _client_handshake(
         LabOneConnectionError: If the server is not compatible with the labone api.
             (Only if `check` == True)
     """
-    raw_hello_msg = sock.recv(hello_msg_capnp.HelloMsg.fixedLength).rstrip(b"\x00")
+    raw_hello_msg = sock.recv(HELLO_MSG_FIXED_LENGTH).rstrip(b"\x00")
     try:
         # The hello message is a json string, so we need to parse it with json
         # first and then convert it to a capnp message. This is due to the fact
         # that we want to keep the hello message as generic as possible.
-        hello_msg_json = json.loads(raw_hello_msg)
-        hello_msg = _hello_msg_from_json(hello_msg_json)
+        hello_msg: HelloMsgJson = json.loads(raw_hello_msg)
     except (json.JSONDecodeError, capnp.lib.capnp.KjException) as err:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
@@ -335,34 +293,34 @@ def _client_handshake(
         raise errors.LabOneConnectionError(msg) from err
     if not check:
         return hello_msg
-    if hello_msg.kind != hello_msg_capnp.HelloMsg.Kind.orchestrator:
+    if hello_msg.get("kind") != "orchestrator":  # type: ignore [attr-defined]
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
-            f"Invalid server kind: {hello_msg.kind}",
+            f"Invalid server kind: {hello_msg.get('kind')}",
         )
         raise errors.LabOneVersionMismatchError(msg)
-    if hello_msg.protocol != hello_msg_capnp.HelloMsg.Protocol.http:
+    if hello_msg.get("protocol") != "http":
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
-            f" Invalid protocol: {hello_msg.protocol}",
+            f" Invalid protocol: {hello_msg.get('protocol')}",
         )
         raise errors.LabOneVersionMismatchError(msg)
 
     try:
-        capability_version = version.Version(hello_msg._get("schema"))  # noqa: SLF001
+        capability_version = version.Version(hello_msg.get("schema", "0.0.0"))
     except version.InvalidVersion as err:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
-            f"Unsupported LabOne Version: {hello_msg.l1Ver}",
+            f"Unsupported LabOne Version: {hello_msg.get('l1Ver')}",
         )
         raise errors.LabOneVersionMismatchError(msg) from err
     if capability_version < MIN_ORCHESTRATOR_CAPABILITY_VERSION:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
-            f"Unsupported LabOne Version: {hello_msg.l1Ver}",
+            f"Unsupported LabOne Version: {hello_msg.get('l1Ver')}",
         )
         raise errors.LabOneVersionMismatchError(msg)
-    if capability_version.major > CURRENT_KERNEL_CAPABILITY_VERSION.major:
+    if capability_version.major > TESTED_ORCHESTRATOR_CAPABILITY_VERSION.major:
         msg = str(
             "Unable to open connection to the data server at {host}:{port}. "
             "The server is using a newer LabOne version that is incompatible "
@@ -373,11 +331,12 @@ def _client_handshake(
     return hello_msg
 
 
-def _raise_orchestrator_error(error: orchestrator_capnp.Orchestrator.Error) -> None:
+def _raise_orchestrator_error(code: str, message: str) -> None:
     """Raise a labone orchestrator error based on the error message.
 
     Args:
-        error: Error message from the server.
+        code: Error code of the error.
+        message: Error message of the error.
 
     Raises:
         ValueError: If the error code is ok.
@@ -394,36 +353,35 @@ def _raise_orchestrator_error(error: orchestrator_capnp.Orchestrator.Error) -> N
         BadRequestError: If there is a generic problem interpreting the incoming request
         LabOneConnectionError: If the error can not be mapped to a known error.
     """
-    orchestrator_error_code = orchestrator_capnp.Orchestrator.ErrorCode
-    if error.code == orchestrator_error_code.kernelNotFound:
-        raise errors.KernelNotFoundError(error.message)
-    if error.code == orchestrator_error_code.illegalDeviceIdentifier:
-        raise errors.IllegalDeviceIdentifierError(error.message)
-    if error.code == orchestrator_error_code.deviceNotFound:
-        raise errors.DeviceNotFoundError(error.message)
-    if error.code == orchestrator_error_code.kernelLaunchFailure:
-        raise errors.KernelLaunchFailureError(error.message)
-    if error.code == orchestrator_error_code.firmwareUpdateRequired:
-        raise errors.FirmwareUpdateRequiredError(error.message)
-    if error.code == orchestrator_error_code.interfaceMismatch:
-        raise errors.InterfaceMismatchError(error.message)
-    if error.code == orchestrator_error_code.differentInterfaceInUse:
-        raise errors.DifferentInterfaceInUseError(error.message)
-    if error.code == orchestrator_error_code.deviceInUse:
-        raise errors.DeviceInUseError(error.message)
-    if error.code == orchestrator_error_code.unsupportedApiLevel:
-        raise errors.UnsupportedApiLevelError(error.message)
-    if error.code == orchestrator_error_code.badRequest:
-        raise errors.BadRequestError(error.message)
-    if error.code == orchestrator_error_code.ok:
+    if code == "kernelNotFound":
+        raise errors.KernelNotFoundError(message)
+    if code == "illegalDeviceIdentifier":
+        raise errors.IllegalDeviceIdentifierError(message)
+    if code == "deviceNotFound":
+        raise errors.DeviceNotFoundError(message)
+    if code == "kernelLaunchFailure":
+        raise errors.KernelLaunchFailureError(message)
+    if code == "firmwareUpdateRequired":
+        raise errors.FirmwareUpdateRequiredError(message)
+    if code == "interfaceMismatch":
+        raise errors.InterfaceMismatchError(message)
+    if code == "differentInterfaceInUse":
+        raise errors.DifferentInterfaceInUseError(message)
+    if code == "deviceInUse":
+        raise errors.DeviceInUseError(message)
+    if code == "unsupportedApiLevel":
+        raise errors.UnsupportedApiLevelError(message)
+    if code == "badRequest":
+        raise errors.BadRequestError(message)
+    if code == "ok":
         msg = "Error expected but status code is ok"
         raise ValueError(msg)
-    raise errors.LabOneConnectionError(error.message)
+    raise errors.LabOneConnectionError(message)
 
 
 def _raise_connection_error(
     response_status: int,
-    response_info: result_capnp.Result | None,
+    response_info: HelloMsgJson | None,
 ) -> None:
     """Raises a connection error based on the http response.
 
@@ -445,18 +403,17 @@ def _raise_connection_error(
         BadRequestError: If there is a generic problem interpreting the incoming request
         LabOneConnectionError: If the error can not be mapped to a known error.
     """
-    # The response from the server is a result message
-    try:
-        # (no cover -> unable reach end of function)
-        # (ignore -> caught by except)
-        with response_info as result:  # type: ignore[union-attr] # pragma: no cover
-            error_info = result.err.as_struct(
-                orchestrator_capnp.Orchestrator.Error.schema,
-            )
-            _raise_orchestrator_error(error_info)
-    except (capnp.lib.capnp.KjException, AttributeError, TypeError):
-        # Nonexisting or malformed result message raise generic error
-        pass
+    with contextlib.suppress(
+        capnp.lib.capnp.KjException,
+        AttributeError,
+        KeyError,
+        TypeError,
+    ):
+        _raise_orchestrator_error(
+            response_info["err"].get("code", "unknown"),  # type: ignore [union-attr, index]
+            response_info["err"].get("message", ""),  # type: ignore [union-attr, index]
+        )
+    # Nonexisting or malformed result message raise generic error
     msg = (
         f"Unexpected HTTP error {HTTPStatus(response_status).name} ({response_status})"
     )
@@ -467,7 +424,7 @@ def _http_get_info_request(
     sock: socket.socket,
     kernel_info: KernelInfo,
     extra_headers: dict[str, str] | None = None,
-) -> tuple[int, KernelInfo, result_capnp.Result | None]:
+) -> tuple[int, KernelInfo, HelloMsgJson | None]:
     """Issue a HTTP get kernel info request to the server.
 
     This data server is expected to respond with a
@@ -489,7 +446,7 @@ def _http_get_info_request(
     connection.sock = sock
     headers = extra_headers if extra_headers else {}
     headers["Host"] = f"{host}:{port}"
-    headers["Accept"] = "application/capnp"
+    headers["Accept"] = "application/json"
     query = kernel_info.query
     query["apiLevel"] = str(API_LEVEL)
     query_str = "&".join([f"{k}={v}" for k, v in query.items()])
@@ -497,10 +454,10 @@ def _http_get_info_request(
 
     connection.request(method="GET", url=url, headers=headers)
     response = connection.getresponse()
-    # The response from the server is excepted to encoded with capnp
+    # The response from the server is excepted to encoded with json
     # At least that what we specified with the `Accept` header.
     response_info = (
-        result_capnp.Result.from_bytes(response.read())
+        json.loads(response.read().decode())
         if response.length and response.length > 0
         else None
     )

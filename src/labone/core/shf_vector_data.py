@@ -14,16 +14,11 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 import numpy as np
 
-from labone.core.helper import VectorElementType, VectorValueType
-
-if TYPE_CHECKING:
-    from labone.core.resources import (  # type: ignore[attr-defined]
-        session_protocol_capnp,
-    )
+from labone.core.helper import CapnpCapability, VectorElementType, VectorValueType
 
 
 @dataclass(frozen=True)
@@ -442,7 +437,7 @@ def _deserialize_shf_demodulator_vector(
     return SHFDemodSample(data_x, data_y), extra_header
 
 
-def get_header_length(vector_data: session_protocol_capnp.VectorData) -> int:
+def get_header_length(vector_data: CapnpCapability) -> int:
     """Get the length of the extra header.
 
     The 16 least significant bits of extra_header_info contain the length of
@@ -459,7 +454,7 @@ def get_header_length(vector_data: session_protocol_capnp.VectorData) -> int:
 
 
 def parse_shf_vector_data_struct(
-    vector_data: session_protocol_capnp.VectorData,
+    vector_data: CapnpCapability,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse the SHF vector data struct.
 

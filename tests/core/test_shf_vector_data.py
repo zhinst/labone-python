@@ -2,7 +2,6 @@ import struct
 
 import numpy as np
 import pytest
-from labone.core.resources import session_protocol_capnp
 from labone.core.shf_vector_data import (
     VectorValueType,
     get_header_length,
@@ -48,8 +47,8 @@ def test_get_header_length(header_bytes, expected_length):
         VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA,
     ],
 )
-def test_missing_extra_header(value_type):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_missing_extra_header(value_type, reflection_server):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = value_type.value
     input_vector.extraHeaderInfo = 0
     with pytest.raises(ValueError):
@@ -60,8 +59,8 @@ def _construct_extra_header_value(header_length, major_version, minor_version):
     return int(header_length / 4) | major_version << 21 | minor_version << 16
 
 
-def test_unsupported_vector_type():
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_unsupported_vector_type(reflection_server):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = 80
     with pytest.raises(ValueError):
         parse_shf_vector_data_struct(input_vector)
@@ -75,8 +74,8 @@ def test_unsupported_vector_type():
         VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA,
     ],
 )
-def test_invalid_header_version(value_type):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_invalid_header_version(value_type, reflection_server):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = value_type.value
     input_vector.extraHeaderInfo = _construct_extra_header_value(
         header_length=8,
@@ -92,8 +91,15 @@ def test_invalid_header_version(value_type):
 @pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
 @pytest.mark.parametrize("header_version", [1, 2])
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
-def test_shf_scope_vector(vector_length, scaling, header_version, x, y):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_shf_scope_vector(  # noqa: PLR0913
+    vector_length,
+    scaling,
+    header_version,
+    x,
+    y,
+    reflection_server,
+):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = VectorValueType.SHF_SCOPE_VECTOR_DATA.value
     header_length = 64
     input_vector.extraHeaderInfo = _construct_extra_header_value(
@@ -146,8 +152,9 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
     header_version,
     x,
     y,
+    reflection_server,
 ):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = VectorValueType.SHF_DEMODULATOR_VECTOR_DATA.value
     header_length = 64
     input_vector.extraHeaderInfo = _construct_extra_header_value(
@@ -201,8 +208,8 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize("header_version", [1])
 @pytest.mark.parametrize("x", range(0, 30, 7))
-def test_shf_result_logger_vector(vector_length, header_version, x):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_shf_result_logger_vector(vector_length, header_version, x, reflection_server):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA.value
     input_vector.vectorElementType = 2  # uint32
     header_length = 32
@@ -228,8 +235,8 @@ def test_shf_result_logger_vector(vector_length, header_version, x):
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743), (3785687, 1285732)])
-def test_shf_waveform_logger_vector(vector_length, x, y):
-    input_vector = session_protocol_capnp.VectorData.new_message()
+def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
+    input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = VectorValueType.SHF_GENERATOR_WAVEFORM_VECTOR_DATA.value
     input_vector.vectorElementType = 2  # uint32
     input_vector.extraHeaderInfo = 0

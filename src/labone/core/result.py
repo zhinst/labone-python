@@ -7,9 +7,7 @@ be used for low level capnp interface calls.
 import capnp
 
 from labone.core import errors
-from labone.core.resources import (  # type: ignore[attr-defined]
-    result_capnp,
-)
+from labone.core.helper import CapnpStructReader
 
 # Mapping between the internal error codes and the corresponding LabOne
 # exceptions. This list is intentional not complete. It only reflects the
@@ -32,9 +30,7 @@ _ZI_ERROR_MAP = {
 }
 
 
-def unwrap(
-    result: result_capnp.Result,
-) -> capnp.lib.capnp._DynamicStructReader:  # noqa: SLF001
+def unwrap(result: CapnpStructReader) -> CapnpStructReader:
     """Unwrap a result.capnp::Result struct.
 
     Args:
@@ -68,4 +64,10 @@ def unwrap(
         return result.ok
     except capnp.KjException:
         pass
-    raise _ZI_ERROR_MAP.get(result.err.code, errors.LabOneCoreError)(result.err.message)
+    try:
+        raise _ZI_ERROR_MAP.get(result.err.code, errors.LabOneCoreError)(
+            result.err.message,
+        )
+    except capnp.KjException as e:
+        msg = f"Unable to parse Server response. Received: \n{result}"
+        raise errors.LabOneCoreError(msg) from e

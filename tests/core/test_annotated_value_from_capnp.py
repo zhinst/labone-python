@@ -4,7 +4,8 @@ from unittest.mock import patch
 import labone.core.value as value_module
 import numpy as np
 import pytest
-from labone.core.resources import session_protocol_capnp
+
+from .resources import value_capnp
 
 
 class IllegalAnnotatedValue:
@@ -27,7 +28,7 @@ def test_void():
         "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
         "value": {"none": {}},
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -51,7 +52,7 @@ def test_trigger_sample():
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -92,7 +93,7 @@ def test_cnt_sample():
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -117,7 +118,7 @@ def test_generic_types(type_name, input_val, output_val):
         "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
         "value": {type_name: input_val},
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -138,7 +139,7 @@ def test_string_vector():
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -160,7 +161,7 @@ def test_generic_vector():
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -169,7 +170,8 @@ def test_generic_vector():
     assert np.array_equal(parsed_value.value, input_array)
 
 
-def test_shf_vector():
+@patch("labone.core.value.parse_shf_vector_data_struct", autospec=True)
+def test_shf_vector(mock_method):
     input_dict = {
         "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
         "value": {
@@ -181,15 +183,10 @@ def test_shf_vector():
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
-    with patch.object(
-        value_module,
-        "parse_shf_vector_data_struct",
-        autospec=True,
-    ) as mock_method:
-        mock_method.return_value = "array", "extra_header"
-        parsed_value = value_module.AnnotatedValue.from_capnp(msg)
+    mock_method.return_value = "array", "extra_header"
+    parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     mock_method.assert_called_once()
     assert mock_method.call_args[0][0].to_dict() == input_dict["value"]["vectorData"]
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
@@ -200,7 +197,12 @@ def test_shf_vector():
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize("header_length", range(0, 200, 32))
-def test_unknown_shf_vector(vector_length, header_length):
+@patch.object(
+    value_module,
+    "parse_shf_vector_data_struct",
+    autospec=True,
+)
+def test_unknown_shf_vector(mock_method, vector_length, header_length):
     input_array = np.linspace(0, 1, vector_length, dtype=np.uint32)
     input_dict = {
         "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
@@ -213,15 +215,10 @@ def test_unknown_shf_vector(vector_length, header_length):
             },
         },
     }
-    msg = session_protocol_capnp.AnnotatedValue.new_message()
+    msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
-    with patch.object(
-        value_module,
-        "parse_shf_vector_data_struct",
-        autospec=True,
-    ) as mock_method:
-        mock_method.side_effect = ValueError("Unknown SHF vector type")
-        parsed_value = value_module.AnnotatedValue.from_capnp(msg)
+    mock_method.side_effect = ValueError("Unknown SHF vector type")
+    parsed_value = value_module.AnnotatedValue.from_capnp(msg)
     mock_method.assert_called_once()
     assert mock_method.call_args[0][0].to_dict() == input_dict["value"]["vectorData"]
     assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]

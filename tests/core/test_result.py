@@ -16,11 +16,11 @@ class FakeError:
 class FakeResult:
     def __init__(self):
         self._ok = None
-        self.err = None
+        self._err = None
 
     @property
     def ok(self):
-        if self.err is not None:
+        if self._err is not None or self._ok is None:
             msg = "test"
             raise capnp.KjException(msg)
         return self._ok
@@ -28,6 +28,17 @@ class FakeResult:
     @ok.setter
     def ok(self, value):
         self._ok = value
+
+    @property
+    def err(self):
+        if self._err is None:
+            msg = "test"
+            raise capnp.KjException(msg)
+        return self._err
+
+    @err.setter
+    def err(self, value):
+        self._err = value
 
 
 def test_unwrap_ok():
@@ -57,4 +68,10 @@ def test_unwrap_error_generic(error_code, exception):
     msg = FakeResult()
     msg.err = FakeError(code=error_code, message="test")
     with pytest.raises(exception, match="test"):
+        unwrap(msg)
+
+
+def test_invalid_capnp_response():
+    msg = FakeResult()
+    with pytest.raises(errors.LabOneCoreError):
         unwrap(msg)
