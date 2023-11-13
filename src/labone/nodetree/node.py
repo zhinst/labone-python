@@ -1409,7 +1409,7 @@ class WildcardNode(WildcardOrPartialNode):
             path_segments=(match_segment,),
             subtree_paths=structure,  # type: ignore[arg-type]
             value_structure=response_dict,
-            timestamp=timestamp if timestamp else 0,
+            timestamp=timestamp if timestamp is not None else 0,
             path_aliases=path_aliases,
         )
 
