@@ -105,7 +105,7 @@ def _get_enum(*, info: NodeInfoType, path: LabOneNodePath) -> NodeEnum | None:
         return None
 
     options_reversed = {}
-    for int_key, value in info.get("Options", {}).items():
+    for int_key, value in info["Options"].items():
         # Find all the keywords associated to a integer key
         # account for formats like: "\"sigin0\", \"signal_input0\": Sig In 1"
         matches = list(re.finditer(r'"(?P<keyword>[a-zA-Z0-9-_"]+)"', value))

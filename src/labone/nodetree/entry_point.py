@@ -45,17 +45,11 @@ async def construct_nodetree(
     """
     path_to_info = await session.list_nodes_info("*")
 
-    if use_enum_parser:
-        parser = get_default_enum_parser(path_to_info)
-    else:
-
-        def parser(x: AnnotatedValue) -> AnnotatedValue:
-            return x  # pragma: no cover
+    parser = get_default_enum_parser(path_to_info) if use_enum_parser else lambda x: x
 
     if custom_parser is not None:
-
-        def parser(x: AnnotatedValue) -> AnnotatedValue:
-            return custom_parser(parser(x))  # pragma: no cover
+        first_parser = parser  # this assignment prevents infinite recursion
+        parser = lambda x: custom_parser(first_parser(x))  # type: ignore[misc] # noqa: E731
 
     nodetree_manager = NodeTreeManager(
         session=session,

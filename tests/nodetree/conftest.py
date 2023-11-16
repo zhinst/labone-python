@@ -151,7 +151,7 @@ def sessionless_manager(zi_structure, request) -> NodeTreeManager:
     )
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def zi(request, zi_structure) -> Node:
     """Fixture to provide a zi node tree."""
     nodes_to_info_marker = request.node.get_closest_marker("nodes_to_info")
