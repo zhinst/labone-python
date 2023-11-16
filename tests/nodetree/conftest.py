@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import typing as t
 from functools import cached_property
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 
 import pytest
+from labone.core import KernelSession
+from labone.core.subscription import DataQueue
 
 if t.TYPE_CHECKING:
-    from labone.core.subscription import DataQueue
     from labone.nodetree.enum import NodeEnum
 from labone.nodetree.helper import (
     NormalizedPathSegment,
-    join_path,
     paths_to_nested_dict,
 )
 from labone.nodetree.node import (
@@ -25,8 +26,7 @@ from labone.nodetree.node import (
     WildcardNode,
 )
 
-if t.TYPE_CHECKING:
-    from src.labone.core.value import AnnotatedValue
+from src.labone.core.value import AnnotatedValue
 from src.labone.nodetree.node import Node
 from tests.nodetree.zi_responses import zi_get_responses
 
@@ -78,41 +78,61 @@ def device_structure(data_dir) -> StructureProvider:
 
 
 @pytest.fixture()
-def session_mock():
+def session_mock(zi_structure, zi_get_responses_prop):
     """Mock a Session connection by redefining multiple methods."""
-    mock = MagicMock()
-
-    async def mock_get(path):
-        return zi_get_responses_prop[path]  # will only work for leaf nodes
-
-    async def mock_get_with_expression(*_, **__):
-        return list(zi_get_responses)  # will give a dummy answer, not the correct one!
-
-    async def mock_list_nodes_info(*_, **__):
-        return zi_structure.nodes_to_info
+    device_state = {}
+    mock = create_autospec(KernelSession)
+    subscription_queues = {}
 
     async def mock_list_nodes(path):
-        if path == "/zi/*/level":
-            return [join_path(("zi", "debug", "level"))]
-        raise NotImplementedError
+        if path[-1] != "*":
+            path = path + "/*"
+        return fnmatch.filter(
+            zi_structure.paths,
+            path,
+        )  # [p for p in zi_structure.paths if fnmatch.fnmatch(p,path)]
+
+    async def mock_get(path):
+        return device_state.get(path, zi_get_responses_prop[path])
 
     async def mock_set(annotated_value, *_, **__):
-        """will NOT change state for later get requests!"""
+        device_state[annotated_value.path] = annotated_value
+        if annotated_value.path in subscription_queues:
+            await subscription_queues[annotated_value.path].put(annotated_value)
         return annotated_value
 
-    # set_with_expression
-    async def mock_set_with_expression(ann_value, *_, **__):
-        """will NOT change state for later get requests!"""
-        if ann_value.path == "/zi/*/level":
-            return [ann_value]
-        raise NotImplementedError
+    async def mock_get_with_expression(path, **__):
+        paths = await mock_list_nodes(path)
+        return [await mock_get(p) for p in paths]
 
+    async def mock_set_with_expression(ann_value, *_, **__):
+        paths = await mock_list_nodes(ann_value.path)
+        return [
+            await mock_set(AnnotatedValue(path=p, value=ann_value.value)) for p in paths
+        ]
+
+    async def mock_list_nodes_info(path="*"):
+        return {
+            p: zi_structure.nodes_to_info[p]
+            for p in zi_structure.paths
+            if fnmatch.fnmatch(p, path)
+        }
+
+    async def subscribe(path, **__):
+        subscription_queues[path] = DataQueue(
+            path=path,
+            register_function=lambda _: None,
+        )
+        return subscription_queues[path]
+
+    mock.list_nodes.side_effect = mock_list_nodes
+    mock.list_nodes_info.side_effect = mock_list_nodes_info
     mock.get.side_effect = mock_get
     mock.get_with_expression.side_effect = mock_get_with_expression
-    mock.list_nodes_info.side_effect = mock_list_nodes_info
     mock.set.side_effect = mock_set
-    mock.list_nodes.side_effect = mock_list_nodes
     mock.set_with_expression.side_effect = mock_set_with_expression
+    mock.subscribe.side_effect = subscribe
+
     return mock
 
 

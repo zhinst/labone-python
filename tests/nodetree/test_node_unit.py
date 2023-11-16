@@ -10,6 +10,7 @@ from labone.nodetree.errors import (
 from labone.nodetree.helper import WILDCARD, UndefinedStructure, join_path, split_path
 from labone.nodetree.node import (
     LeafNode,
+    MetaNode,
     Node,
     NodeTreeManager,
     PartialNode,
@@ -75,18 +76,31 @@ class TestMetaNode:
         assert zi._redirect(start_path) == expected
 
     @pytest.mark.parametrize(
-        ("start_path_segments", "subtree_structure", "test_path_segments", "expected"),
+        (
+            "start_path_segments",
+            "subtree_structure",
+            "redirect_dict",
+            "test_path_segments",
+            "expected",
+        ),
         [
-            ((), [], (), False),
-            (("a",), [], ("a",), False),
-            ((), ["a"], ("a",), True),
-            (("a", "b"), [], ("a", "b"), False),
-            (("a",), ["c"], ("a", "c"), True),
-            (("a", "b"), ["c"], ("a", "b", "c"), True),
-            (("a", "b"), ["c"], ("a", "b", "d"), False),
-            (("a", "b", "c", "d"), ["d"], ("a", "b", "c", "d", "d"), True),
-            (("a",), ["c"], ("a", "c", "d"), False),
-            (("a",), ["c"], ("a", "c", "d", "e", "f", "g"), False),
+            ((), [], {}, (), False),
+            (("a",), [], {}, ("a",), False),
+            ((), ["a"], {}, ("a",), True),
+            (("a", "b"), [], {}, ("a", "b"), False),
+            (("a",), ["c"], {}, ("a", "c"), True),
+            (("a", "b"), ["c"], {}, ("a", "b", "c"), True),
+            (("a", "b"), ["c"], {}, ("a", "b", "d"), False),
+            (("a", "b", "c", "d"), ["d"], {}, ("a", "b", "c", "d", "d"), True),
+            (("a",), ["c"], {}, ("a", "c", "d"), False),
+            (("a",), ["c"], {}, ("a", "c", "d", "e", "f", "g"), False),
+            (
+                ("x", "y"),
+                ["c"],
+                {("x", "y", "c"): ("a", "b", "c", "d", "e")},
+                ("a", "b", "c", "d", "e"),
+                True,
+            ),
         ],
     )
     @pytest.mark.parametrize("as_node", [True, False])
@@ -95,13 +109,28 @@ class TestMetaNode:
         as_node,
         start_path_segments,
         subtree_structure,
+        redirect_dict,
         test_path_segments,
         expected,
     ):
         node = MockMetaNode(start_path_segments)
-        node._subtree_paths = subtree_structure
-        sub = MockMetaNode(test_path_segments) if as_node else test_path_segments
-        assert node.is_child_node(sub) == expected
+        node._subtree_paths = {s: None for s in subtree_structure}
+
+        def new_redirect(_, path):
+            if path in redirect_dict:
+                return redirect_dict[path]
+            return path
+
+        with patch.object(
+            MetaNode,
+            "_redirect",
+            autospec=True,
+            side_effect=new_redirect,
+        ) as redirect_mock:
+            sub = MockMetaNode(test_path_segments) if as_node else test_path_segments
+            assert node.is_child_node(sub) == expected
+            for s in subtree_structure:
+                redirect_mock.assert_any_call(node, (*start_path_segments, s))
 
     def test_path(self):
         with patch("labone.nodetree.node.join_path", return_value="/") as join_mock:
