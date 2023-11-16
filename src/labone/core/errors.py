@@ -1,8 +1,10 @@
 """LabOne Error classes for the core component of the API."""
 from asyncio import QueueEmpty
 
+from labone.errors import LabOneError
 
-class LabOneCoreError(RuntimeError):
+
+class LabOneCoreError(LabOneError):
     """Base class for all LabOne core errors."""
 
 

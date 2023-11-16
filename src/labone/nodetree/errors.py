@@ -1,7 +1,8 @@
 """LabOne Error classes associated with the nodetree."""
+from labone.errors import LabOneError
 
 
-class LabOneNodetreeError(RuntimeError):
+class LabOneNodetreeError(LabOneError):
     """Base class for all LabOne nodetree errors."""
 
 
