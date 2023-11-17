@@ -20,3 +20,7 @@ _version.py
 .pytest_cache
 .mypy_cache
 .hypothesis
+
+# Sync wrapper
+src/labone/sync/
+src/labone/semi_sync/

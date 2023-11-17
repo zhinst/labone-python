@@ -37,10 +37,11 @@ dependencies = [
 Issues = "https://github.com/zhinst/labone-python/issues"
 Source = "https://github.com/zhinst/labone-python"
 
-
-
 [tool.hatch.version]
 source = "vcs"
+
+# Used to call hatch_build.py
+[tool.hatch.build.hooks.custom]
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/labone/_version.py"
