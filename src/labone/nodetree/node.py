@@ -81,7 +81,7 @@ class NodeInfo:
         self,
         item: str,
     ) -> LabOneNodePath | str | NodeType | dict[str, str] | None:
-        return self._info[item]  # type: ignore[literal-required]
+        return self._info[item.capitalize()]  # type: ignore[literal-required]
 
     def __contains__(self, item: str) -> bool:
         return item in self.__dir__()
@@ -95,7 +95,7 @@ class NodeInfo:
         return self._info == other._info
 
     def __dir__(self) -> list[str]:
-        return list(self._info.keys()) + [
+        return [k.lower() for k in self._info] + [
             var
             for var, value in vars(self.__class__).items()
             if isinstance(value, property) and not var.startswith("_")
@@ -144,17 +144,17 @@ class NodeInfo:
     @property
     def description(self) -> str:
         """Description of the node."""
-        return self._info["Description"]
+        return self._info["Description"]  # pragma: no cover
 
     @property
     def type(self) -> str:  # noqa: A003
         """Type of the node."""
-        return self._info["Type"]
+        return self._info["Type"]  # pragma: no cover
 
     @property
     def unit(self) -> str:
         """Unit of the node."""
-        return self._info["Unit"]
+        return self._info["Unit"]  # pragma: no cover
 
     @cached_property
     def options(self) -> dict[int, OptionInfo]:
@@ -171,7 +171,6 @@ class NodeInfo:
             # This is the case for nameless options, when the
             # key is an integer (for example demods/x/order)
             desc = re.findall(r'(?:.+":\s)?(.+)$', value)[0]
-
             option_map[int(key)] = OptionInfo(enum, desc)
         return option_map
 
@@ -272,6 +271,7 @@ class NodeTreeManager:
 
         # base case
         if not path_segments:
+            # this is not worth adding to the cache, so just return it
             return self._partially_explored_structure
 
         # solving recursively, taking advantage of caching
@@ -307,7 +307,7 @@ class NodeTreeManager:
         # explore structure deeper on demand
         # (and only once, as structure remains resolved via reference within
         # self._partially_explored_structure)
-        if not isinstance(reference[segment], dict):  # pragma: no cover
+        if not isinstance(reference[segment], dict):
             reference[segment] = build_prefix_dict(
                 reference[segment],  # type: ignore[arg-type]
             )
@@ -368,22 +368,22 @@ class NodeTreeManager:
         return result
 
     def __hash__(self) -> int:
-        return hash(id(self))
+        return id(self)
 
     @property
     def paths(self) -> t.KeysView[LabOneNodePath]:
         """List of paths of all leaf-nodes."""
-        return self._paths
+        return self._paths  # pragma: no cover
 
     @property
     def parser(self) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
         """Parser for values received from the server."""
-        return self._parser
+        return self._parser  # pragma: no cover
 
     @property
     def session(self) -> Session:
         """Underlying Session to the server."""
-        return self._session
+        return self._session  # pragma: no cover
 
 
 class MetaNode(ABC):

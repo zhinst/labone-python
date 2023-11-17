@@ -332,6 +332,18 @@ class MockWildcardNode(WildcardNode):
         )
 
 
+class MockNodeTreeManager(NodeTreeManager):
+    def __init__(self, path_to_info=None):
+        if path_to_info is None:
+            path_to_info = {}
+
+        super().__init__(
+            session=None,
+            path_to_info=path_to_info,
+            parser=None,
+        )
+
+
 def _get_future(value):
     future = asyncio.Future()
     future.set_result(value)
