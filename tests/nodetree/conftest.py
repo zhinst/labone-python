@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import json
 import typing as t
 from functools import cached_property
 from pathlib import Path
-from unittest.mock import create_autospec
+from unittest.mock import PropertyMock, create_autospec, patch
 
 import pytest
 from labone.core import KernelSession
@@ -24,6 +25,7 @@ from labone.nodetree.node import (
     PartialNode,
     ResultNode,
     WildcardNode,
+    WildcardOrPartialNode,
 )
 
 from src.labone.core.value import AnnotatedValue
@@ -272,6 +274,34 @@ class MockNode(Node):
         return
 
 
+class MockWildcardOrPartialNode(WildcardOrPartialNode):
+    def __init__(self, path_segments):
+        super().__init__(
+            tree_manager=None,
+            path_segments=path_segments,
+            subtree_paths=None,
+            path_aliases=None,
+        )
+
+    def _package_get_response(self, *_, **__):
+        return
+
+    def wait_for_state_change(
+        self,
+        value: int | NodeEnum,  # noqa: ARG002
+        *,
+        invert: bool = False,  # noqa: ARG002
+        timeout: float = 2,  # noqa: ARG002
+    ) -> None:
+        return
+
+    def try_generate_subnode(
+        self,
+        next_path_segment: NormalizedPathSegment,  # noqa: ARG002
+    ) -> Node:
+        return
+
+
 class MockPartialNode(PartialNode):
     def __init__(self, path_segments):
         super().__init__(
@@ -300,3 +330,19 @@ class MockWildcardNode(WildcardNode):
             subtree_paths=None,
             path_aliases=None,
         )
+
+
+def _get_future(value):
+    future = asyncio.Future()
+    future.set_result(value)
+    return future
+
+
+@pytest.fixture()
+def mock_path():
+    with patch(
+        "labone.nodetree.node.MetaNode.path",
+        new_callable=PropertyMock,
+        return_value="path",
+    ) as path_patch:
+        yield path_patch
