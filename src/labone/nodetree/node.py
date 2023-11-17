@@ -527,7 +527,8 @@ class MetaNode(ABC):
         """Checks if a node is a direct child node of this node.
 
         Children of children (etc.) will not be counted as direct children.
-        The node itself is also not counted as its child.
+        The node itself is also not counted as its child. Path redirection will be
+        taken into account.
 
         Args:
             child_node: Potential child node.
@@ -540,11 +541,10 @@ class MetaNode(ABC):
             if isinstance(child_node, MetaNode)
             else tuple(child_node)
         )
-        return (
-            bool(path_segments)
-            and self.path_segments == path_segments[:-1]
-            and path_segments[-1] in self._subtree_paths
-        )
+
+        return path_segments in {
+            self._redirect((*self.path_segments, e)) for e in self._subtree_paths
+        }
 
     @property
     def tree_manager(self) -> NodeTreeManager:
