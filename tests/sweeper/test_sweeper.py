@@ -10,8 +10,17 @@ from tests.nodetree.conftest import zi_structure, StructureProvider
 
 @pytest.mark.asyncio()
 async def test_1():
-    session = LocalSession(StructureProvider(json.load(
-        Path.open(Path(__file__).parent.parent / "nodetree" / "resources" / "zi_nodes_info.json")
-    )).nodes_to_info)
+    session = LocalSession(
+        StructureProvider(
+            json.load(
+                Path.open(
+                    Path(__file__).parent.parent
+                    / "nodetree"
+                    / "resources"
+                    / "zi_nodes_info.json"
+                )
+            )
+        ).nodes_to_info
+    )
     sweeper = await Sweeper.create(session=session)
     assert sweeper
