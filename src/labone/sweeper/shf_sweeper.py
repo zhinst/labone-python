@@ -66,18 +66,23 @@ class Sweeper(PartialNode):
         # setting the default values
         await instance.sweep.start_freq(-300e6)
         await instance.sweep.stop_freq(300e6)
+        await instance.sweep.num_points(100)
+        await instance.average.num_averages(1)
+        await instance.rf.channel(0)
         # Todo continue
 
         return instance
 
     async def run(self):
-        await asyncio.gather(
-            self.send_settings(self.start_sweep_settings),
-            self.send_settings(self.result_length_and_averages_sequencer_settings),
-            self.send_settings(self.activate_sweep_settings),
-        )
+        # await asyncio.gather(
+        #     self.send_settings(self.start_sweep_settings),
+        #     self.send_settings(self.result_length_and_averages_sequencer_settings),
+        #     self.send_settings(self.activate_sweep_settings),
+        # )
 
-        num_results = await self.sweep.num_points() * await self._avg.num_averages()
+        await self._data_node
+
+        num_results = (await self.sweep.num_points()).value * (await self.average.num_averages()).value
         hundred_milliseconds = 0.1
         await asyncio.sleep(hundred_milliseconds)
 
@@ -115,7 +120,7 @@ class Sweeper(PartialNode):
     @property
     async def _prefix_node(self) -> Node:
         return self._device_tree[
-            join_path((await self.device(), "qachannels", await self.rf.channel()))
+            join_path(((await self.device()).value, "qachannels", str((await self.rf.channel()).value)))
         ]
 
     @property
