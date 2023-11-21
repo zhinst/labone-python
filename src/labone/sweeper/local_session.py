@@ -5,7 +5,10 @@ from labone.core import AnnotatedValue, ListNodesFlags, ListNodesInfoFlags
 from labone.core.helper import LabOneNodePath
 from labone.core.session import NodeInfo
 from labone.core.subscription import DataQueue
+from labone.core.value import Value
 from labone.nodetree.helper import Session
+from labone.nodetree.node import Node
+from labone.sweeper.errors import SweeperLocalStateError
 
 
 class LocalSession(Session):
@@ -21,10 +24,46 @@ class LocalSession(Session):
         self,
         path_to_info: dict[LabOneNodePath, NodeInfo],
         set_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        special_get_rules: dict[LabOneNodePath, t.Callable[[], Value]] | None = None,
     ):
-        self._memory = {}
         self._paths_to_info = path_to_info
+        self._memory = {path: AnnotatedValue(value=None, path=path) for path in path_to_info.keys()}  # bring all known paths into the memory
         self._set_parser = lambda x: x if set_parser is None else set_parser
+        self.special_get_rules = (
+            special_get_rules if special_get_rules is not None else {}
+        )
+
+    def sync_get(self, path: LabOneNodePath):
+        if path in self.special_get_rules:
+            return AnnotatedValue(path=path, value=self.special_get_rules[path]())
+        try:
+            return self._memory[path]
+        except KeyError as e:
+            raise SweeperLocalStateError(f"Trying to read sweeper path '{path}', which does not exist.") from e
+
+    def sync_set(self, value: AnnotatedValue):
+        if value.path not in self._memory:
+            raise SweeperLocalStateError(
+                f"Trying to write sweeper path '{value.path}', which does not exist.")
+
+        node_info = self.sync_list_nodes_info()[value.path]
+        if "Write" not in node_info["Properties"]:
+            raise SweeperLocalStateError(
+                f"Sweeper path '{value.path}' is not writeable.",
+            )
+
+        # TODO: additional checks for some nodes required?
+        self._memory[value.path] = self._set_parser(value)
+        return value
+
+    def sync_list_nodes_info(
+        self,
+        path: LabOneNodePath = "*",
+        flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
+    ) -> dict[LabOneNodePath, NodeInfo]:
+        return {
+            k: v for k, v in self._paths_to_info.items() if fnmatch.fnmatch(k, path)
+        }
 
     async def list_nodes(
         self,
@@ -36,8 +75,7 @@ class LocalSession(Session):
         return fnmatch.filter(self._paths_to_info.keys(), path)
 
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
-        self._memory[value.path] = self._set_parser(value)
-        return value
+        return self.sync_set(value)
 
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         paths = await self.list_nodes(value.path)
@@ -46,7 +84,7 @@ class LocalSession(Session):
         ]
 
     async def get(self, path: LabOneNodePath) -> AnnotatedValue:
-        return self._memory[path]
+        return self.sync_get(path)
 
     async def get_with_expression(
         self,
@@ -63,12 +101,10 @@ class LocalSession(Session):
 
     async def list_nodes_info(
         self,
-        path: LabOneNodePath,
+        path: LabOneNodePath = "*",
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
     ) -> dict[LabOneNodePath, NodeInfo]:
-        return {
-            k: v for k, v in self._paths_to_info.items() if fnmatch.fnmatch(k, path)
-        }
+        return self.sync_list_nodes_info(path, flags)
 
     async def subscribe(
         self,
@@ -76,4 +112,64 @@ class LocalSession(Session):
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> DataQueue:
-        raise NotImplementedError()
+        raise NotImplementedError("LocalSession does not support subscriptions.")
+
+
+NOT_SPECIFIED = object()
+
+
+def _sync(node: Node, value: Value | None | NOT_SPECIFIED = NOT_SPECIFIED):
+    """Non-async access to a node value."""
+    session = node.tree_manager.session
+    if not isinstance(session, LocalSession):
+        raise RuntimeError(
+            f"{__name__} can only be used on a local session, "
+            f"which is inheritely synchronous. "
+            f"It cannot be used on a {session}",
+        )
+
+    if value is NOT_SPECIFIED:
+        return session.sync_get(node.path).value
+    else:
+        return session.sync_set(AnnotatedValue(value=value, path=node.path)).value
+
+
+def sync_get(node: Node) -> Value:
+    """Non-async access to a node value."""
+    return _sync(node)
+
+
+def sync_set(node: Node, value: Value) -> Value:
+    """Non-async access to a node value."""
+    return _sync(node, value)
+
+
+# def new_setattr(node: Node, item: str, value):
+#     if item not in node.subtree_paths:
+#         raise ValueError()
+#
+#     subnode = node[item]
+#     if isinstance(subnode, LeafNode):
+#         sync(subnode, value)
+#     else:
+#         raise ZeroDivisionError()
+
+
+# Node.__lshift__ = _sync
+# # Node.__invert__ = sync
+# # Node.__setattr__ = new_setattr
+# # Node.sync_set = sync_set
+# # Node.sync_get = sync_get
+#
+#
+# async def main_func():
+#     model_node = await construct_nodetree(
+#         session=LocalSession({join_path(("zi", "debug", "level")): None}),
+#         hide_kernel_prefix=False,
+#         use_enum_parser=False,
+#     )
+#     print(model_node)
+
+
+# if __name__ == "__main__":
+#     asyncio.run(main_func())
