@@ -5,6 +5,7 @@ import capnp
 import pytest
 from labone.core import errors
 from labone.core.subscription import (
+    CircularDataQueue,
     DataQueue,
     streaming_handle_factory,
 )
@@ -144,6 +145,78 @@ async def test_data_queue_get_disconnected_empty():
     queue.disconnect()
     with pytest.raises(errors.EmptyDisconnectedDataQueueError):
         await queue.get()
+
+
+@pytest.mark.asyncio()
+async def test_circular_data_queue_put_enough_space():
+    subscription = FakeSubscription()
+    queue = CircularDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    queue.maxsize = 2
+    await asyncio.wait_for(queue.put("test"), timeout=0.01)
+    assert queue.qsize() == 1
+    assert queue.get_nowait() == "test"
+
+
+@pytest.mark.asyncio()
+async def test_circular_data_queue_put_full():
+    subscription = FakeSubscription()
+    queue = CircularDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    queue.maxsize = 2
+    await asyncio.wait_for(queue.put("test1"), timeout=0.01)
+    await asyncio.wait_for(queue.put("test2"), timeout=0.01)
+    await asyncio.wait_for(queue.put("test3"), timeout=0.01)
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == "test2"
+    assert queue.get_nowait() == "test3"
+
+
+@pytest.mark.asyncio()
+async def test_circular_data_queue_put_no_wait_enough_space():
+    subscription = FakeSubscription()
+    queue = CircularDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    queue.maxsize = 2
+    queue.put_nowait("test")
+    assert queue.qsize() == 1
+    assert queue.get_nowait() == "test"
+
+
+@pytest.mark.asyncio()
+async def test_circular_data_queue_put_no_wait_full():
+    subscription = FakeSubscription()
+    queue = CircularDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    queue.maxsize = 2
+    queue.put_nowait("test1")
+    queue.put_nowait("test2")
+    queue.put_nowait("test3")
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == "test2"
+    assert queue.get_nowait() == "test3"
+
+
+def test_circular_data_queue_fork():
+    subscription = FakeSubscription()
+    queue = CircularDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    assert len(subscription.data_queues) == 1
+    forked_queue = queue.fork()
+    assert isinstance(forked_queue, CircularDataQueue)
+    assert len(subscription.data_queues) == 2
+    assert forked_queue.path == queue.path
+    assert forked_queue.connected
 
 
 def test_streaming_handle_register(reflection_server):

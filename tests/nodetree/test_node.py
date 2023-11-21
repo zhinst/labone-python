@@ -798,6 +798,7 @@ class TestLeafNode:
         node._tree_manager.session.subscribe.assert_called_once_with(
             "path",
             parser_callback=node._tree_manager.parser,
+            queue_type=DataQueue,
         )
 
     @pytest.mark.parametrize(

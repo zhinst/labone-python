@@ -15,7 +15,7 @@ if t.TYPE_CHECKING:
     from typing_extensions import TypeAlias
 
     from labone.core.session import NodeInfo
-    from labone.core.subscription import DataQueue
+    from labone.core.subscription import QueueProtocol
 
 
 NormalizedPathSegment: TypeAlias = str
@@ -111,7 +111,8 @@ class Session(t.Protocol):
         path: LabOneNodePath,
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-    ) -> DataQueue:
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
         """Register a new subscription to a node."""
         ...
 

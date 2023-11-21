@@ -31,7 +31,7 @@ from labone.core.helper import (
     request_field_type_description,
 )
 from labone.core.result import unwrap
-from labone.core.subscription import DataQueue, streaming_handle_factory
+from labone.core.subscription import DataQueue, QueueProtocol, streaming_handle_factory
 from labone.core.value import AnnotatedValue
 
 if t.TYPE_CHECKING:
@@ -553,11 +553,33 @@ class Session:
             for raw_result in response.result
         ]
 
+    @t.overload
     async def subscribe(
         self,
         path: LabOneNodePath,
+        *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        queue_type: None,
     ) -> DataQueue:
+        ...
+
+    @t.overload
+    async def subscribe(
+        self,
+        path: LabOneNodePath,
+        *,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
+
+    async def subscribe(
+        self,
+        path: LabOneNodePath,
+        *,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> QueueProtocol | DataQueue:
         """Register a new subscription to a node.
 
         Registers a new subscription to a node on the kernel/server. All
@@ -581,6 +603,10 @@ class Session:
             parser_callback: Function to bring values obtained from
                 data-queue into desired format. This may involve parsing
                 them or putting them into an enum.
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
 
         Returns:
             An instance of the DataQueue class. This async queue will receive
@@ -611,7 +637,8 @@ class Session:
         request.subscription = subscription
         response = await _send_and_wait_request(request)
         unwrap(response.result)  # Result(Void, Error)
-        return DataQueue(
+        new_queue_type = queue_type or DataQueue
+        return new_queue_type(
             path=path,
             register_function=streaming_handle.register_data_queue,
         )
