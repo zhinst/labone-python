@@ -22,7 +22,7 @@ from labone.core.connection_layer import (
     ServerInfo,
     create_session_client_stream,
 )
-from labone.core.errors import LabOneConnectionError, LabOneVersionMismatchError
+from labone.core.errors import LabOneCoreError, UnavailableError
 from labone.core.helper import (
     ensure_capnp_event_loop,
 )
@@ -99,18 +99,12 @@ class KernelSession(Session):
             A new session to the specified kernel.
 
         Raises:
-            KernelNotFoundError: If the kernel was not found.
-            IllegalDeviceIdentifierError: If the device identifier is invalid.
-            DeviceNotFoundError: If the device was not found.
-            KernelLaunchFailureError: If the kernel could not be launched.
-            FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-            InterfaceMismatchError: If the interface does not match the device.
-            DifferentInterfaceInUseError: If the device is visible, but cannot be
-                connected through the requested interface.
-            DeviceInUseError: If the device is already in use.
+            UnavailableError: If the kernel was not found or unable to connect.
             BadRequestError: If there is a generic problem interpreting the incoming
-                request.
-            LabOneConnectionError: If another error happens during the session creation.
+                request
+            InternalError: If the kernel could not be launched or another internal
+                error occurred.
+            LabOneCoreError: If another error happens during the session creation.
         """
         sock, kernel_info_extended, server_info_extended = create_session_client_stream(
             kernel_info=kernel_info,
@@ -122,13 +116,13 @@ class KernelSession(Session):
             reflection_server = await ReflectionServer.create_from_connection(
                 connection,
             )
-        except LabOneConnectionError as e:
+        except LabOneCoreError as e:
             msg = str(
                 f"Unable to connect to the server at ({server_info.host}:"
                 f"{server_info.port}). Please update the LabOne software to the "
                 f"latest version. (extended information: {e})",
             )
-            raise LabOneVersionMismatchError(msg) from e
+            raise UnavailableError(msg) from e
 
         return KernelSession(
             reflection_server=reflection_server,

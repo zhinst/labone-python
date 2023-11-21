@@ -150,7 +150,7 @@ async def _send_and_wait_request(
     """Send a request and wait for the response.
 
     The main purpose of this function is to take care of the error handling
-    for the capnp communication. If an error occurs a LabOneConnectionError is
+    for the capnp communication. If an error occurs a LabOneCoreError is
     raised.
 
     Args:
@@ -160,7 +160,9 @@ async def _send_and_wait_request(
         Successful response.
 
     Raises:
-        LabOneConnectionError: If sending the message or receiving the response failed.
+        LabOneCoreError: If sending the message or receiving the response failed.
+        UnavailableError: If the server has not implemented the requested
+            method.
     """
     try:
         return await request.send()
@@ -175,12 +177,12 @@ async def _send_and_wait_request(
                 "This most likely that the LabOne version is outdated. "
                 "Please update the LabOne software to the latest version.",
             )
-            raise errors.LabOneVersionMismatchError(msg) from None
+            raise errors.UnavailableError(msg) from None
         msg = error.description
-        raise errors.LabOneConnectionError(msg) from None
+        raise errors.LabOneCoreError(msg) from None
     except Exception as error:  # noqa: BLE001
         msg = str(error)
-        raise errors.LabOneConnectionError(msg) from None
+        raise errors.LabOneCoreError(msg) from None
 
 
 class Session:
@@ -241,7 +243,13 @@ class Session:
         Raises:
             TypeError: If `path` is not a string or `flags` is not an integer.
             ValueError: If `flags` value is out-of-bounds.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            UnimplementedError: If the list nodes request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
+
 
         Examples:
             Getting all the nodes:
@@ -314,7 +322,12 @@ class Session:
         Raises:
             TypeError: If `path` is not a string or `flags` is not an integer.
             ValueError: If `flags` value is out-of-bounds.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            UnimplementedError: If the list nodes info request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
 
         Example:
             Using a wildcard in the node path that matches multiple nodes:
@@ -396,8 +409,14 @@ class Session:
 
         Raises:
             TypeError: If the node path is of wrong type.
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            NotFoundError: If the node path does not exist.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not settable.
+            UnimplementedError: If the set request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         capnp_value = value.to_capnp(reflection=self._reflection_server)
         request = self._session.setValue_request()
@@ -440,8 +459,14 @@ class Session:
 
         Raises:
             TypeError: If the node path is of wrong type.
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            NotFoundError: If the node path does not exist.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not settable.
+            UnimplementedError: If the set with expression request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         capnp_value = value.to_capnp(reflection=self._reflection_server)
         request = self._session.setValue_request()
@@ -477,12 +502,15 @@ class Session:
             >>> await session.get('/zi/devices/visible')
 
         Raises:
-             TypeError: If `path` is not a string.
-             LabOneConnectionError: If there is a problem in the connection.
-             errors.LabOneTimeoutError: If the operation timed out.
-             errors.LabOneWriteOnlyError: If a read operation was attempted on a
-                 write-only node.
-             errors.LabOneCoreError: If something else went wrong.
+            TypeError: If `path` is not a string.
+            NotFoundError: If the path does not exist.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not readable.
+            UnimplementedError: If the get request is not supported
+                by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         request = self._session.getValue_request()
         try:
@@ -534,8 +562,13 @@ class Session:
 
         Raises:
             TypeError: If the node path is of wrong type.
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not readable.
+            UnimplementedError: If the get with expression request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         request = self._session.getValue_request()
         try:
@@ -618,7 +651,14 @@ class Session:
 
         Raises:
             TypeError: If `path` is not a string
-            LabOneConnectionError: If there is a problem in the connection.
+            NotFoundError: If the path does not exist.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path can not be subscribed.
+            UnimplementedError: If the subscribe request is not supported
+                by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         streaming_handle = streaming_handle_factory(self._reflection_server)(
             parser_callback=parser_callback,

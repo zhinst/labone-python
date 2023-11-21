@@ -24,7 +24,7 @@ def test_open_socket_ok():
 
 def test_open_socket_non_existing():
     server_info = connection_layer.ServerInfo(host="127.0.0.1", port=1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._open_socket(server_info)
     assert "Connection refused" in err.value.args[0]
 
@@ -64,7 +64,7 @@ def test_client_handshake_ok(socket_mock, hello_msg):
 def test_client_handshake_invalid_json(socket_mock, hello_msg):
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)[1:]
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "Invalid JSON during Handshake" in err.value.args[0]
 
@@ -75,7 +75,7 @@ def test_client_handshake_empty_json(socket_mock):
     socket_mock.getpeername.return_value = ("localhost", 1234)
     # capnp is able to handle an empty json but the follwoing checks will fail
     # because the default values should do not match the expected criteria
-    with pytest.raises(errors.LabOneConnectionError):
+    with pytest.raises(errors.LabOneCoreError):
         connection_layer._client_handshake(socket_mock)
 
 
@@ -100,7 +100,7 @@ def test_client_handshake_wrong_kind(socket_mock, hello_msg):
     hello_msg.kind = hello_msg_capnp.HelloMsg.Kind.unknown
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "Reason: Invalid server kind: unknown" in err.value.args[0]
 
@@ -119,7 +119,7 @@ def test_client_handshake_wrong_protocol(socket_mock, hello_msg):
     hello_msg.protocol = hello_msg_capnp.HelloMsg.Protocol.capnp
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "Invalid protocol: capnp" in err.value.args[0]
 
@@ -129,7 +129,7 @@ def test_client_handshake_incompatible_capability_version(socket_mock, hello_msg
     hello_msg._set("schema", "1.3.0")
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "Unsupported LabOne Version: 99.99.99" in err.value.args[0]
 
@@ -139,7 +139,7 @@ def test_client_handshake_higher_capability_version(socket_mock, hello_msg):
     hello_msg._set("schema", "2.0.0")
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "newer LabOne version" in err.value.args[0]
 
@@ -149,7 +149,7 @@ def test_client_handshake_illegal_capability_version(socket_mock, hello_msg):
     hello_msg._set("schema", "unknown")
     socket_mock.recv.return_value = _hello_msg_to_bytes(hello_msg)
     socket_mock.getpeername.return_value = ("localhost", 1234)
-    with pytest.raises(errors.LabOneConnectionError) as err:
+    with pytest.raises(errors.LabOneCoreError) as err:
         connection_layer._client_handshake(socket_mock)
     assert "Unsupported LabOne Version: 99.99.99" in err.value.args[0]
 
@@ -157,16 +157,16 @@ def test_client_handshake_illegal_capability_version(socket_mock, hello_msg):
 def test_raise_orchestrator_error():
     error_map = {
         "ok": ValueError,
-        "unknown": errors.LabOneConnectionError,
-        "kernelNotFound": errors.KernelNotFoundError,
-        "illegalDeviceIdentifier": errors.IllegalDeviceIdentifierError,
-        "deviceNotFound": errors.DeviceNotFoundError,
-        "kernelLaunchFailure": errors.KernelLaunchFailureError,
-        "firmwareUpdateRequired": errors.FirmwareUpdateRequiredError,
-        "interfaceMismatch": errors.InterfaceMismatchError,
-        "differentInterfaceInUse": errors.DifferentInterfaceInUseError,
-        "deviceInUse": errors.DeviceInUseError,
-        "unsupportedApiLevel": errors.UnsupportedApiLevelError,
+        "unknown": errors.LabOneCoreError,
+        "kernelNotFound": errors.UnavailableError,
+        "illegalDeviceIdentifier": errors.BadRequestError,
+        "deviceNotFound": errors.UnavailableError,
+        "kernelLaunchFailure": errors.InternalError,
+        "firmwareUpdateRequired": errors.UnavailableError,
+        "interfaceMismatch": errors.UnavailableError,
+        "differentInterfaceInUse": errors.UnavailableError,
+        "deviceInUse": errors.UnavailableError,
+        "unsupportedApiLevel": errors.UnavailableError,
         "badRequest": errors.BadRequestError,
     }
     for value in orchestrator_capnp.Orchestrator.ErrorCode.schema.enumerants:
@@ -278,7 +278,7 @@ def test_protocol_upgrade_device_not_found(socket_mock):
         interface="1GbE",
     )
 
-    with pytest.raises(errors.DeviceNotFoundError):
+    with pytest.raises(errors.UnavailableError):
         connection_layer._protocol_upgrade(socket_mock, kernel_info=kernel_info)
 
 
@@ -303,7 +303,7 @@ def test_protocol_upgrade_device_different_interface(socket_mock):
         interface="USB",
     )
 
-    with pytest.raises(errors.InterfaceMismatchError):
+    with pytest.raises(errors.UnavailableError):
         connection_layer._protocol_upgrade(socket_mock, kernel_info=kernel_info)
 
 
@@ -327,7 +327,7 @@ def test_protocol_upgrade_unsuported_api_level(socket_mock):
         interface="USB",
     )
 
-    with pytest.raises(errors.LabOneConnectionError):
+    with pytest.raises(errors.LabOneCoreError):
         connection_layer._protocol_upgrade(socket_mock, kernel_info=kernel_info)
 
 
@@ -347,7 +347,7 @@ def test_protocol_upgrade_error_but_no_info(socket_mock):
         interface="1GbE",
     )
 
-    with pytest.raises(errors.LabOneConnectionError):
+    with pytest.raises(errors.LabOneCoreError):
         connection_layer._protocol_upgrade(socket_mock, kernel_info=kernel_info)
 
 
@@ -370,7 +370,7 @@ def test_protocol_upgrade_not_possible(socket_mock):
         interface="1GbE",
     )
 
-    with pytest.raises(errors.LabOneConnectionError):
+    with pytest.raises(errors.LabOneCoreError):
         connection_layer._protocol_upgrade(socket_mock, kernel_info=kernel_info)
 
 

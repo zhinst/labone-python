@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import capnp
 import labone.core.reflection.server as reflection_server
 import pytest
-from labone.core.errors import LabOneConnectionError
+from labone.core.errors import LabOneCoreError
 
 
 @pytest.mark.asyncio()
@@ -77,7 +77,7 @@ async def test_fetch_encoded_schema_err():
     client.bootstrap.return_value.cast_as.return_value.getTheSchema.side_effect = (
         capnp.lib.capnp.KjException("test")
     )
-    with pytest.raises(LabOneConnectionError):
+    with pytest.raises(LabOneCoreError):
         await reflection_server._fetch_encoded_schema(client)
 
 
