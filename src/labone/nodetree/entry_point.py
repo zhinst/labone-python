@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import typing as t
 
-if t.TYPE_CHECKING:
-    from labone.core import AnnotatedValue  # pragma: no cover
-    from labone.nodetree.helper import Session  # pragma: no cover
-    from labone.nodetree.node import Node  # pragma: no cover
 from labone.nodetree.enum import get_default_enum_parser
 from labone.nodetree.node import NodeTreeManager
+
+if t.TYPE_CHECKING:
+    from labone.core import AnnotatedValue
+    from labone.nodetree.helper import Session
+    from labone.nodetree.node import Node
 
 
 async def construct_nodetree(

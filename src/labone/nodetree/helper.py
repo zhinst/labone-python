@@ -12,10 +12,10 @@ from labone.core import AnnotatedValue, ListNodesFlags, ListNodesInfoFlags
 from labone.core.helper import LabOneNodePath
 
 if t.TYPE_CHECKING:
-    from typing_extensions import TypeAlias  # pragma: no cover
+    from typing_extensions import TypeAlias
 
-    from labone.core.session import NodeInfo  # pragma: no cover
-    from labone.core.subscription import DataQueue  # pragma: no cover
+    from labone.core.session import NodeInfo
+    from labone.core.subscription import DataQueue
 
 
 NormalizedPathSegment: TypeAlias = str
@@ -32,23 +32,23 @@ class NestedDict(t.Protocol[T]):  # type: ignore[misc]
     """Protocol representing a nested dictionary structure."""
 
     def __getitem__(self, key: str) -> T | NestedDict[T]:
-        ...  # pragma: no cover
+        ...
 
     # retyping dict method, because inheriting from non-protocal is prohibited
     def __setitem__(self, key: str, item: T | NestedDict) -> None:
-        ...  # pragma: no cover
+        ...
 
     def keys(self) -> t.KeysView[str]:
         """..."""
-        ...  # pragma: no cover
+        ...
 
     def items(self) -> t.ItemsView[str, T | NestedDict[T]]:
         """..."""
-        ...  # pragma: no cover
+        ...
 
     def __iter__(self) -> t.Iterator[str]:
         """..."""
-        ...  # pragma: no cover
+        ...
 
 
 FlatPathDict: TypeAlias = t.Dict[
@@ -67,7 +67,7 @@ class Session(t.Protocol):
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
     ) -> list[LabOneNodePath]:
         """List the nodes found at a given path."""
-        ...  # pragma: no cover
+        ...
 
     async def list_nodes_info(
         self,
@@ -76,22 +76,22 @@ class Session(t.Protocol):
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
     ) -> dict[LabOneNodePath, NodeInfo]:
         """List the nodes and their information found at a given path."""
-        ...  # pragma: no cover
+        ...
 
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
         """Set the value of a node."""
-        ...  # pragma: no cover
+        ...
 
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         """Set the value of all nodes matching the path expression."""
-        ...  # pragma: no cover
+        ...
 
     async def get(
         self,
         path: LabOneNodePath,
     ) -> AnnotatedValue:
         """Get the value of a node."""
-        ...  # pragma: no cover
+        ...
 
     async def get_with_expression(
         self,
@@ -104,7 +104,7 @@ class Session(t.Protocol):
         | ListNodesFlags.GET_ONLY,
     ) -> list[AnnotatedValue]:
         """Get the value of all nodes matching the path expression."""
-        ...  # pragma: no cover
+        ...
 
     async def subscribe(
         self,
@@ -113,7 +113,7 @@ class Session(t.Protocol):
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> DataQueue:
         """Register a new subscription to a node."""
-        ...  # pragma: no cover
+        ...
 
 
 class UndefinedStructure(dict):

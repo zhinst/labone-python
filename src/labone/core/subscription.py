@@ -235,7 +235,7 @@ class StreamingHandle(ABC):
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> None:
-        ...  # pragma: no cover
+        ...
 
     @abstractmethod
     def register_data_queue(self, data_queue: weakref.ReferenceType[DataQueue]) -> None:
@@ -245,7 +245,7 @@ class StreamingHandle(ABC):
             data_queue: Weak reference to the data queue to which the values
                 will be added.
         """
-        ...  # pragma: no cover
+        ...
 
     @abstractmethod
     async def sendValues(  # noqa: N802 (function name is enforced through the schema)
@@ -265,7 +265,7 @@ class StreamingHandle(ABC):
             capnp.KjException: If no data queues are registered any more and
                 the subscription should be removed.
         """
-        ...  # pragma: no cover
+        ...
 
 
 def streaming_handle_factory(

@@ -21,9 +21,9 @@ from enum import Enum, IntEnum
 from functools import lru_cache
 
 if t.TYPE_CHECKING:
-    from labone.core import AnnotatedValue  # pragma: no cover
-    from labone.core.helper import LabOneNodePath  # pragma: no cover
-    from labone.core.session import NodeInfo as NodeInfoType  # pragma: no cover
+    from labone.core import AnnotatedValue
+    from labone.core.helper import LabOneNodePath
+    from labone.core.session import NodeInfo as NodeInfoType
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +81,11 @@ class NodeEnum(IntEnum):
 
     # Required for typing
     def __init__(self, *args, **kwargs) -> None:
-        ...  # pragma: no cover
+        ...
 
     # Required for typing
-    def __call__(self, *args, **kwargs) -> None:  # noqa: D102 # pragma: no cover
-        ...  # pragma: no cover
+    def __call__(self, *args, **kwargs) -> None:  # noqa: D102
+        ...
 
     def __reduce_ex__(
         self,

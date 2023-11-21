@@ -13,12 +13,7 @@ import uuid
 from abc import ABC, abstractmethod
 from functools import cached_property
 
-from deprecation import deprecated  # type: ignore[import-untyped]
-
-if t.TYPE_CHECKING:
-    from labone.core.session import NodeInfo as NodeInfoType  # pragma: no cover
-    from labone.nodetree.enum import NodeEnum  # pragma: no cover
-
+from deprecation import deprecated
 
 from labone.core.value import AnnotatedValue, Value
 from labone.nodetree.errors import (
@@ -42,9 +37,11 @@ from labone.nodetree.helper import (
 )
 
 if t.TYPE_CHECKING:
-    from labone.core.helper import LabOneNodePath  # pragma: no cover
-    from labone.core.session import NodeType  # pragma: no cover
-    from labone.core.subscription import DataQueue  # pragma: no cover
+    from labone.core.helper import LabOneNodePath
+    from labone.core.session import NodeInfo as NodeInfoType
+    from labone.core.session import NodeType
+    from labone.core.subscription import DataQueue
+    from labone.nodetree.enum import NodeEnum
 
 T = t.TypeVar("T")
 
@@ -144,17 +141,17 @@ class NodeInfo:
     @property
     def description(self) -> str:
         """Description of the node."""
-        return self._info["Description"]  # pragma: no cover
+        return self._info["Description"]
 
     @property
     def type(self) -> str:  # noqa: A003
         """Type of the node."""
-        return self._info["Type"]  # pragma: no cover
+        return self._info["Type"]
 
     @property
     def unit(self) -> str:
         """Unit of the node."""
-        return self._info["Unit"]  # pragma: no cover
+        return self._info["Unit"]
 
     @cached_property
     def options(self) -> dict[int, OptionInfo]:
@@ -373,17 +370,17 @@ class NodeTreeManager:
     @property
     def paths(self) -> t.KeysView[LabOneNodePath]:
         """List of paths of all leaf-nodes."""
-        return self._paths  # pragma: no cover
+        return self._paths
 
     @property
     def parser(self) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
         """Parser for values received from the server."""
-        return self._parser  # pragma: no cover
+        return self._parser
 
     @property
     def session(self) -> Session:
         """Underlying Session to the server."""
-        return self._session  # pragma: no cover
+        return self._session
 
 
 class MetaNode(ABC):
@@ -438,7 +435,7 @@ class MetaNode(ABC):
             >>> node.demods  # where 'demods' is the next segment to enter
 
         """
-        ...  # pragma: no cover
+        ...
 
     @abstractmethod
     def __getitem__(self, path_extension: str | int) -> MetaNode | AnnotatedValue:
@@ -474,7 +471,7 @@ class MetaNode(ABC):
             >>> node.mds.groups[0]
 
         """
-        ...  # pragma: no cover
+        ...
 
     def __iter__(self) -> t.Iterator[MetaNode | AnnotatedValue]:
         """Iterating through direct sub-nodes.
@@ -984,14 +981,14 @@ class Node(MetaNode, ABC):
     async def _get(
         self,
     ) -> AnnotatedValue | ResultNode:
-        ...  # pragma: no cover
+        ...
 
     @abstractmethod
     async def _set(
         self,
         value: Value,
     ) -> AnnotatedValue | ResultNode:
-        ...  # pragma: no cover
+        ...
 
     @classmethod
     def build(
@@ -1070,7 +1067,7 @@ class Node(MetaNode, ABC):
             New node-object, representing the extended path.
 
         """
-        ...  # pragma: no cover
+        ...
 
     @abstractmethod
     async def wait_for_state_change(
@@ -1323,7 +1320,7 @@ class WildcardOrPartialNode(Node, ABC):
         Returns:
             Node-structure, representing the results.
         """
-        ...  # pragma: no cover
+        ...
 
     async def subscribe(self) -> DataQueue:
         """Subscribe to a node.

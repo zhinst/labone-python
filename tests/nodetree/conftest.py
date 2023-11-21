@@ -11,9 +11,7 @@ from unittest.mock import PropertyMock, create_autospec, patch
 import pytest
 from labone.core import KernelSession
 from labone.core.subscription import DataQueue
-
-if t.TYPE_CHECKING:
-    from labone.nodetree.enum import NodeEnum
+from labone.core.value import AnnotatedValue
 from labone.nodetree.helper import (
     NormalizedPathSegment,
     paths_to_nested_dict,
@@ -21,6 +19,7 @@ from labone.nodetree.helper import (
 from labone.nodetree.node import (
     LeafNode,
     MetaNode,
+    Node,
     NodeTreeManager,
     PartialNode,
     ResultNode,
@@ -28,9 +27,10 @@ from labone.nodetree.node import (
     WildcardOrPartialNode,
 )
 
-from src.labone.core.value import AnnotatedValue
-from src.labone.nodetree.node import Node
 from tests.nodetree.zi_responses import zi_get_responses
+
+if t.TYPE_CHECKING:
+    from labone.nodetree.enum import NodeEnum
 
 
 class StructureProvider:

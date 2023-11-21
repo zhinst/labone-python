@@ -125,7 +125,7 @@ class ReflectionServer:
         # close the rpc client connection in the destructor of the server.
         self._creation_loop = asyncio.get_event_loop()
 
-    async def _close_rpc_client(self) -> None:
+    async def _close_rpc_client(self) -> None:  # pragma: no cover
         """Close the rpc client connection.
 
         This function is called in the destructor of the server. It closes the
@@ -142,18 +142,18 @@ class ReflectionServer:
         needs to be closed in the same thread as the kj event loop. Thats why
         this function is async even though it does not need to be.
         """
-        self._client.close()  # pragma: no cover
+        self._client.close()
 
-    def __del__(self) -> None:
+    def __del__(self) -> None:  # pragma: no cover
         # call the close_rpc_client function in the event loop the server
         # was created in. See the docstring of the function for more details.
-        if (  # pragma: no cover
+        if (
             hasattr(self, "_creation_loop")
             and self._creation_loop is not None
             and self._creation_loop.is_running()
             and asyncio.get_event_loop() != self._creation_loop
         ):
-            _ = asyncio.ensure_future(  # pragma: no cover
+            _ = asyncio.ensure_future(
                 self._close_rpc_client(),
                 loop=self._creation_loop,
             )
