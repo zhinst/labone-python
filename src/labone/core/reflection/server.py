@@ -14,7 +14,7 @@ import re
 
 import capnp
 
-from labone.core.errors import LabOneConnectionError
+from labone.core.errors import UnavailableError
 from labone.core.helper import ensure_capnp_event_loop
 from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
     reflection_capnp,
@@ -55,7 +55,7 @@ async def _fetch_encoded_schema(
         The encoded schema and the id of the bootstrap capability.
 
     Raises:
-        LabOneConnectionError: If the schema cannot be fetched from the server.
+        LabOneUnavailableError: If the schema cannot be fetched from the server.
     """
     reflection = client.bootstrap().cast_as(reflection_capnp.Reflection)
     try:
@@ -65,7 +65,7 @@ async def _fetch_encoded_schema(
             "Unable to connect to the server. Could not fetch the schema "
             "from the server.",
         )
-        raise LabOneConnectionError(msg) from e
+        raise UnavailableError(msg) from e
     server_schema = schema_and_bootstrap_cap.theSchema.theSchema
     bootstrap_capability_id = schema_and_bootstrap_cap.theSchema.typeId
     return bootstrap_capability_id, server_schema

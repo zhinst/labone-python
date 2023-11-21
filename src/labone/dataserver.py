@@ -94,18 +94,12 @@ class DataServer(PartialNode):
             The connected DataServer.
 
         Raises:
-            LabOneError: If an error appeared in the connection to the Data Server.
-            KernelNotFoundError: If the kernel was not found.
-            DeviceNotFoundError: If the device was not found.
-            KernelLaunchFailureError: If the kernel could not be launched.
-            FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-            InterfaceMismatchError: If the interface does not match the device.
-            DifferentInterfaceInUseError: If the device is visible, but cannot be
-                connected through the requested interface.
-            DeviceInUseError: If the device is already in use.
+            UnavailableError: If the data server was not found or unable to connect.
             BadRequestError: If there is a generic problem interpreting the incoming
-                request.
-            LabOneConnectionError: If another error happens during the session creation.
+                request
+            InternalError: If the kernel could not be launched or another internal
+                error occurred.
+            LabOneCoreError: If another error happens during the session creation.
         """
         session = await KernelSession.create(
             kernel_info=ZIKernelInfo(),
@@ -156,19 +150,12 @@ class DataServer(PartialNode):
             The connected device.
 
         Raises:
-            LabOneError: If an error appeared in the connection to the device.
-            KernelNotFoundError: If the kernel was not found.
-            IllegalDeviceIdentifierError: If the device identifier is invalid.
-            DeviceNotFoundError: If the device was not found.
-            KernelLaunchFailureError: If the kernel could not be launched.
-            FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-            InterfaceMismatchError: If the interface does not match the device.
-            DifferentInterfaceInUseError: If the device is visible, but cannot be
-                connected through the requested interface.
-            DeviceInUseError: If the device is already in use.
+            UnavailableError: If the device was not found or unable to connect.
             BadRequestError: If there is a generic problem interpreting the incoming
-                request.
-            LabOneConnectionError: If another error happens during the session creation.
+                request
+            InternalError: If the device kernel could not be launched or another
+                internal error occurred.
+            LabOneCoreError: If another error happens during the session creation.
         """
         return await Instrument.create(
             serial=serial,

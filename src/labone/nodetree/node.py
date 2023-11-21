@@ -966,12 +966,13 @@ class Node(MetaNode, ABC):
             a node-structure representing the results of all sub-paths is returned.
 
         Raises:
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
-            errors.LabOneTimeoutError: If the operation timed out.
-            errors.LabOneWriteOnlyError: If a read operation was attempted on a
-                write-only node.
-            errors.LabOneCoreError: If something else went wrong.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not writeable or readable.
+            UnimplementedError: If the get or set request is not supported
+                by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         if value is None:
             return await self._get()
@@ -1152,11 +1153,13 @@ class LeafNode(Node):
             The current value of the node.
 
         Raises:
-             LabOneConnectionError: If there is a problem in the connection.
-             errors.LabOneTimeoutError: If the operation timed out.
-             errors.LabOneWriteOnlyError: If a read operation was attempted on a
-                 write-only node.
-             errors.LabOneCoreError: If something else went wrong.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not readable.
+            UnimplementedError: If the get request is not supported
+                by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         return self._tree_manager.parser(
             await self._tree_manager.session.get(self.path),
@@ -1175,8 +1178,13 @@ class LeafNode(Node):
             The new value of the node.
 
         Raises:
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not settable.
+            UnimplementedError: If the set request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs.
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         return self._tree_manager.parser(
             await self._tree_manager.session.set(
@@ -1322,8 +1330,13 @@ class WildcardOrPartialNode(Node, ABC):
         """Get the value of the node.
 
         Raises:
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not readable.
+            UnimplementedError: If the get with expression request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         return self._package_get_response(
             await self._tree_manager.session.get_with_expression(self.path),
@@ -1339,8 +1352,13 @@ class WildcardOrPartialNode(Node, ABC):
             value: Value, which should be set to the node.
 
         Raises:
-            LabOneCoreError: If the node value type is not supported.
-            LabOneConnectionError: If there is a problem in the connection.
+            OverwhelmedError: If the kernel is overwhelmed.
+            BadRequestError: If the path is not readable.
+            UnimplementedError: If the get with expression request is not
+                supported by the server.
+            InternalError: If an unexpected internal error occurs
+            LabOneCoreError: If something else went wrong that can not be
+                mapped to one of the other errors.
         """
         return self._package_get_response(
             await self._tree_manager.session.set_with_expression(

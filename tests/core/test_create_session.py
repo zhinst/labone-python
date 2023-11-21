@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from labone.core import connection_layer, kernel_session
-from labone.core.errors import LabOneConnectionError, LabOneVersionMismatchError
+from labone.core.errors import LabOneCoreError, UnavailableError
 
 
 @patch("labone.core.kernel_session.create_session_client_stream", autospec=True)
@@ -68,9 +68,9 @@ async def test_session_create_err_zi(
     kernel_info = connection_layer.ZIKernelInfo()
     server_info = connection_layer.ServerInfo(host="localhost", port=8004)
 
-    reflection_server.create_from_connection.side_effect = LabOneConnectionError("Test")
+    reflection_server.create_from_connection.side_effect = LabOneCoreError("Test")
 
-    with pytest.raises(LabOneVersionMismatchError):
+    with pytest.raises(UnavailableError):
         await kernel_session.KernelSession.create(
             kernel_info=kernel_info,
             server_info=server_info,

@@ -215,7 +215,7 @@ def _open_socket(server_info: ServerInfo) -> socket.socket:
         Socket to the server.
 
     Raises:
-        LabOneConnectionError: If the connection to the server could not be established.
+        UnavailableError: If the connection to the server could not be established.
     """
     try:
         sock = socket.create_connection((server_info.host, server_info.port))
@@ -226,7 +226,7 @@ def _open_socket(server_info: ServerInfo) -> socket.socket:
             "Make sure that the server is running, host / port names are correct. "
             f"(Reason: {e})"
         )
-        raise errors.LabOneConnectionError(msg) from e
+        raise errors.UnavailableError(msg) from e
     return sock
 
 
@@ -276,7 +276,7 @@ def _client_handshake(
         Received hello message.
 
     Raises:
-        LabOneConnectionError: If the server is not compatible with the labone api.
+        UnavailableError: If the server is not compatible with the labone api.
             (Only if `check` == True)
     """
     raw_hello_msg = sock.recv(HELLO_MSG_FIXED_LENGTH).rstrip(b"\x00")
@@ -290,7 +290,7 @@ def _client_handshake(
             *sock.getpeername(),
             f"Invalid JSON during Handshake: {raw_hello_msg.decode()}",
         )
-        raise errors.LabOneConnectionError(msg) from err
+        raise errors.UnavailableError(msg) from err
     if not check:
         return hello_msg
     if hello_msg.get("kind") != "orchestrator":  # type: ignore [attr-defined]
@@ -298,13 +298,13 @@ def _client_handshake(
             *sock.getpeername(),
             f"Invalid server kind: {hello_msg.get('kind')}",
         )
-        raise errors.LabOneVersionMismatchError(msg)
+        raise errors.UnavailableError(msg)
     if hello_msg.get("protocol") != "http":
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
             f" Invalid protocol: {hello_msg.get('protocol')}",
         )
-        raise errors.LabOneVersionMismatchError(msg)
+        raise errors.UnavailableError(msg)
 
     try:
         capability_version = version.Version(hello_msg.get("schema", "0.0.0"))
@@ -313,13 +313,13 @@ def _client_handshake(
             *sock.getpeername(),
             f"Unsupported LabOne Version: {hello_msg.get('l1Ver')}",
         )
-        raise errors.LabOneVersionMismatchError(msg) from err
+        raise errors.UnavailableError(msg) from err
     if capability_version < MIN_ORCHESTRATOR_CAPABILITY_VERSION:
         msg = _construct_handshake_error_msg(  # type: ignore [call-arg]
             *sock.getpeername(),
             f"Unsupported LabOne Version: {hello_msg.get('l1Ver')}",
         )
-        raise errors.LabOneVersionMismatchError(msg)
+        raise errors.UnavailableError(msg)
     if capability_version.major > TESTED_ORCHESTRATOR_CAPABILITY_VERSION.major:
         msg = str(
             "Unable to open connection to the data server at {host}:{port}. "
@@ -327,7 +327,7 @@ def _client_handshake(
             "with the version of this api. Please update the latest version "
             "of the python package.",
         )
-        raise errors.LabOneVersionMismatchError(msg)
+        raise errors.UnavailableError(msg)
     return hello_msg
 
 
@@ -340,43 +340,36 @@ def _raise_orchestrator_error(code: str, message: str) -> None:
 
     Raises:
         ValueError: If the error code is ok.
-        KernelNotFoundError: If the kernel was not found.
-        IllegalDeviceIdentifierError: If the device identifier is invalid.
-        DeviceNotFoundError: If the device was not found.
-        KernelLaunchFailureError: If the kernel could not be launched.
-        FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-        InterfaceMismatchError: If the interface does not match the device.
-        DifferentInterfaceInUseError: If the device is visible, but cannot be
-            connected through the requested interface.
-        DeviceInUseError: If the device is already in use.
-        UnsupportedApiLevelError: If the api level is not supported.
+        UnavailableError: If the kernel was not found or unable to connect.
         BadRequestError: If there is a generic problem interpreting the incoming request
-        LabOneConnectionError: If the error can not be mapped to a known error.
+        InternalError: If the kernel could not be launched or another internal
+            error occurred.
+        LabOneCoreError: If the error can not be mapped to a known error.
     """
     if code == "kernelNotFound":
-        raise errors.KernelNotFoundError(message)
+        raise errors.UnavailableError(message)
     if code == "illegalDeviceIdentifier":
-        raise errors.IllegalDeviceIdentifierError(message)
+        raise errors.BadRequestError(message)
     if code == "deviceNotFound":
-        raise errors.DeviceNotFoundError(message)
+        raise errors.UnavailableError(message)
     if code == "kernelLaunchFailure":
-        raise errors.KernelLaunchFailureError(message)
+        raise errors.InternalError(message)
     if code == "firmwareUpdateRequired":
-        raise errors.FirmwareUpdateRequiredError(message)
+        raise errors.UnavailableError(message)
     if code == "interfaceMismatch":
-        raise errors.InterfaceMismatchError(message)
+        raise errors.UnavailableError(message)
     if code == "differentInterfaceInUse":
-        raise errors.DifferentInterfaceInUseError(message)
+        raise errors.UnavailableError(message)
     if code == "deviceInUse":
-        raise errors.DeviceInUseError(message)
+        raise errors.UnavailableError(message)
     if code == "unsupportedApiLevel":
-        raise errors.UnsupportedApiLevelError(message)
+        raise errors.UnavailableError(message)
     if code == "badRequest":
         raise errors.BadRequestError(message)
     if code == "ok":
         msg = "Error expected but status code is ok"
         raise ValueError(msg)
-    raise errors.LabOneConnectionError(message)
+    raise errors.LabOneCoreError(message)
 
 
 def _raise_connection_error(
@@ -390,21 +383,14 @@ def _raise_connection_error(
         response_info: Result message from the server.
 
     Raises:
-        KernelNotFoundError: If the kernel was not found.
-        IllegalDeviceIdentifierError: If the device identifier is invalid.
-        DeviceNotFoundError: If the device was not found.
-        KernelLaunchFailureError: If the kernel could not be launched.
-        FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-        InterfaceMismatchError: If the interface does not match the device.
-        DifferentInterfaceInUseError: If the device is visible, but cannot be
-            connected through the requested interface.
-        DeviceInUseError: If the device is already in use.
-        UnsupportedApiLevelError: If the api level is not supported.
+        UnavailableError: If the kernel was not found or unable to connect.
         BadRequestError: If there is a generic problem interpreting the incoming request
-        LabOneConnectionError: If the error can not be mapped to a known error.
+        InternalError: If the kernel could not be launched or another internal
+            error occurred.
+        LabOneCoreError: If the error can not be mapped to a known error.
     """
     with contextlib.suppress(
-        capnp.lib.capnp.KjException,
+        capnp.KjException,
         AttributeError,
         KeyError,
         TypeError,
@@ -413,11 +399,11 @@ def _raise_connection_error(
             response_info["err"].get("code", "unknown"),  # type: ignore [union-attr, index]
             response_info["err"].get("message", ""),  # type: ignore [union-attr, index]
         )
-    # Nonexisting or malformed result message raise generic error
+    # None existing or malformed result message raise generic error
     msg = (
         f"Unexpected HTTP error {HTTPStatus(response_status).name} ({response_status})"
     )
-    raise errors.LabOneConnectionError(msg)
+    raise errors.LabOneCoreError(msg)
 
 
 def _http_get_info_request(
@@ -430,8 +416,6 @@ def _http_get_info_request(
     This data server is expected to respond with a
     Result(KernelDescriptor, Error) message from the orchetstrator.capnp.
 
-    In case an error is reported it is thrown as a LabOneConnectionError.
-
     Args:
         sock: Socket to the server.
         kernel_info: Information about the kernel to connect to.
@@ -439,6 +423,9 @@ def _http_get_info_request(
 
     Returns:
         Tuple of the status code, the updated KernelInfo and the KernelDescriptor.
+
+    Raises:
+        UnavailableError: If the kernel was not found or unable to connect.
     """
     host, port = sock.getpeername()
     connection = HTTPConnection(host, port)
@@ -464,13 +451,13 @@ def _http_get_info_request(
     if response.status >= HTTPStatus.MULTIPLE_CHOICES:
         try:
             _raise_connection_error(response.status, response_info)
-        except errors.UnsupportedApiLevelError as err:
+        except errors.UnavailableError as err:
             # this should not happen as the api level is fixed to be 6
             msg = (
                 f"The server at {host}:{port} is not compatible with the LabOne API. "
                 "Please update LabOne to the latest version."
             )
-            raise errors.LabOneVersionMismatchError(msg) from err
+            raise errors.UnavailableError(msg) from err
     # Update the capability version of the kernel info
     capability_version_raw = response.headers.get("Zhinst-Kernel-Version", None)
     kernel_info_extended = kernel_info.with_capability_version(
@@ -502,17 +489,11 @@ def _protocol_upgrade(
         HTTP response from the server.
 
     Raises:
-        KernelNotFoundError: If the kernel was not found.
-        IllegalDeviceIdentifierError: If the device identifier is invalid.
-        DeviceNotFoundError: If the device was not found.
-        KernelLaunchFailureError: If the kernel could not be launched.
-        FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-        InterfaceMismatchError: If the interface does not match the device.
-        DifferentInterfaceInUseError: If the device is visible, but cannot be
-            connected through the requested interface.
-        DeviceInUseError: If the device is already in use.
+        UnavailableError: If the kernel was not found or unable to connect.
         BadRequestError: If there is a generic problem interpreting the incoming request
-        LabOneConnectionError: If the error can not be mapped to a known error.
+        InternalError: If the kernel could not be launched or another internal
+            error occurred.
+        LabOneCoreError: If the error can not be mapped to a known error.
     """
     response_status, kernel_info_extended, _ = _http_get_info_request(
         sock,
@@ -526,7 +507,7 @@ def _protocol_upgrade(
             "The kernel is not not compatible with the LabOne API. "
             "Please update LabOne to the latest version."
         )
-        raise errors.LabOneConnectionError(
+        raise errors.UnavailableError(
             msg,
         )
     return kernel_info_extended
@@ -562,17 +543,11 @@ def create_session_client_stream(
 
     Raises:
         ValueError: If both `sock` and `host` are specified.
-        KernelNotFoundError: If the kernel was not found.
-        IllegalDeviceIdentifierError: If the device identifier is invalid.
-        DeviceNotFoundError: If the device was not found.
-        KernelLaunchFailureError: If the kernel could not be launched.
-        FirmwareUpdateRequiredError: If the firmware of the device is outdated.
-        InterfaceMismatchError: If the interface does not match the device.
-        DifferentInterfaceInUseError: If the device is visible, but cannot be
-            connected through the requested interface.
-        DeviceInUseError: If the device is already in use.
+        UnavailableError: If the kernel was not found or unable to connect.
         BadRequestError: If there is a generic problem interpreting the incoming request
-        LabOneConnectionError: If the error can not be mapped to a known error.
+        InternalError: If the kernel could not be launched or another internal
+            error occurred.
+        LabOneCoreError: If the error can not be mapped to a known error.
     """
     # The initialization of the connection is synchronous ...
     # This is due to the fact that capnp library does only support creating a connection

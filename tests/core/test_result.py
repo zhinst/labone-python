@@ -9,8 +9,10 @@ from labone.core.result import unwrap
 
 @dataclass
 class FakeError:
-    code: int
+    kind: int
     message: str
+    code: int = 0
+    category: str = ""
 
 
 class FakeResult:
@@ -48,25 +50,21 @@ def test_unwrap_ok():
 
 
 @pytest.mark.parametrize(
-    ("error_code", "exception"),
+    ("error_kind", "exception"),
     [
-        (0x8000, errors.LabOneCoreError),
-        (0x800C, errors.LabOneConnectionError),
-        (0x800D, errors.LabOneTimeoutError),
-        (0x8013, errors.LabOneReadOnlyError),
-        (0x8014, errors.KernelNotFoundError),
-        (0x8015, errors.DeviceInUseError),
-        (0x8016, errors.InterfaceMismatchError),
-        (0x8017, errors.LabOneTimeoutError),
-        (0x8018, errors.DifferentInterfaceInUseError),
-        (0x8019, errors.FirmwareUpdateRequiredError),
-        (0x801B, errors.DeviceNotFoundError),
-        (0x8020, errors.LabOneWriteOnlyError),
+        (1, errors.CancelledError),
+        (3, errors.NotFoundError),
+        (4, errors.OverwhelmedError),
+        (5, errors.BadRequestError),
+        (6, errors.UnimplementedError),
+        (7, errors.InternalError),
+        (8, errors.UnavailableError),
+        (9, errors.LabOneTimeoutError),
     ],
 )
-def test_unwrap_error_generic(error_code, exception):
+def test_unwrap_error_generic(error_kind, exception):
     msg = FakeResult()
-    msg.err = FakeError(code=error_code, message="test")
+    msg.err = FakeError(kind=error_kind, message="test")
     with pytest.raises(exception, match="test"):
         unwrap(msg)
 

@@ -263,7 +263,7 @@ class TestSendAndWaitRequest:
 
     @pytest.mark.asyncio()
     async def test_send_kj_error(self):
-        with pytest.raises(errors.LabOneConnectionError, match="error"):
+        with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(
                 MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
             )
@@ -271,7 +271,7 @@ class TestSendAndWaitRequest:
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_send_misc_error(self, error):
-        with pytest.raises(errors.LabOneConnectionError, match="error"):
+        with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(
                 MockRequest(send_raise_for=error("error")),
             )
@@ -283,26 +283,26 @@ class TestSendAndWaitRequest:
             await _send_and_wait_request(
                 MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
             )
-        except errors.LabOneConnectionError:
+        except errors.LabOneCoreError:
             assert "KjException" not in traceback.format_exc()
 
         promise = mock_remote_error(RuntimeError("error"))
         try:
             await _send_and_wait_request(MockRequest(promise))
-        except errors.LabOneConnectionError:
+        except errors.LabOneCoreError:
             assert "RuntimeError" not in traceback.format_exc()
 
     @pytest.mark.asyncio()
     async def test_a_wait_kj_error(self):
         promise = mock_remote_error(capnp.lib.capnp.KjException("error"))
-        with pytest.raises(errors.LabOneConnectionError, match="error"):
+        with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(MockRequest(promise))
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_a_wait_misc_error(self, error):
         promise = mock_remote_error(error("error"))
-        with pytest.raises(errors.LabOneConnectionError, match="error"):
+        with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(MockRequest(promise))
 
 
@@ -745,5 +745,5 @@ class TestKJErrors:
             kernel_info=ZIKernelInfo(),
             server_info=ServerInfo(host="localhost", port=8004),
         )
-        with pytest.raises(errors.LabOneVersionMismatchError):
+        with pytest.raises(errors.UnavailableError):
             await client.list_nodes("test")
