@@ -34,14 +34,14 @@ async def test_use_case(session_mock):
     result_node[0][0].status = 0
 
     # set to this before, see above
-    await zi.debug.level.wait_for_state_change(5, timeout=0.01)
+    await zi.debug.level.wait_for_state_change(5)
 
     with pytest.raises(asyncio.TimeoutError):
-        await zi.debug.level.wait_for_state_change(3, timeout=0.01)
+        await asyncio.wait_for(zi.debug.level.wait_for_state_change(3), timeout=0.01)
 
     node = zi.debug.level
 
     await asyncio.gather(
-        node.wait_for_state_change(3, timeout=0.01),
+        node.wait_for_state_change(3),
         node(3),
     )

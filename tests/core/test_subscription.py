@@ -203,6 +203,22 @@ async def test_streaming_handle_update_empty(reflection_server):
 
 
 @pytest.mark.asyncio()
+async def test_streaming_handle_update_deleted(reflection_server):
+    streaming_handle_class = streaming_handle_factory(reflection_server)
+    streaming_handle = streaming_handle_class()
+    queue = DataQueue(
+        path="dummy",
+        register_function=streaming_handle.register_data_queue,
+    )
+    del queue
+    values = []
+    value = value_capnp.AnnotatedValue.new_message()
+    values.append(value)
+    with pytest.raises(capnp.KjException):
+        await streaming_handle.sendValues(values)
+
+
+@pytest.mark.asyncio()
 async def test_streaming_handle_update_disconnect(reflection_server):
     streaming_handle_class = streaming_handle_factory(reflection_server)
     streaming_handle = streaming_handle_class()

@@ -408,7 +408,11 @@ class Session:
         )
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
+        try:
+            return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
+        except IndexError as e:
+            msg = f"No acknowledgement returned while setting {value.path}."
+            raise errors.LabOneCoreError(msg) from e
 
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         """Set the value of all nodes matching the path expression.
@@ -490,7 +494,11 @@ class Session:
         request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
+        try:
+            return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
+        except IndexError as e:
+            msg = f"No value returned for {path}."
+            raise errors.LabOneCoreError(msg) from e
 
     async def get_with_expression(
         self,

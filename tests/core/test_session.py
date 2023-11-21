@@ -341,7 +341,7 @@ class TestSetValue:
         mock_connection.server.setValue.side_effect = mock_method
 
         value = AnnotatedValue(value=12, path="/foo/bar")
-        with pytest.raises(IndexError):
+        with pytest.raises(errors.LabOneCoreError):
             await mock_connection.session.set(value)
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/bar"
@@ -599,7 +599,7 @@ class TestGetValue:
             recorder.params.append(param_builder)
 
         mock_connection.server.getValue.side_effect = mock_method
-        with pytest.raises(IndexError):
+        with pytest.raises(errors.LabOneCoreError):
             await mock_connection.session.get("/foo/bar")
         assert len(recorder.params) == 1
         assert recorder.params[0].pathExpression == "/foo/bar"

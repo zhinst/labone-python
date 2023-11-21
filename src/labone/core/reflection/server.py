@@ -8,13 +8,17 @@ capabilities directly through the server instance.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
 import capnp
 
-import labone.core.reflection.reflection_capnp  # type: ignore[attr-defined, import-untyped]
 from labone.core.errors import LabOneConnectionError
+from labone.core.helper import ensure_capnp_event_loop
+from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
+    reflection_capnp,
+)
 from labone.core.reflection.capnp_dynamic_type_system import build_type_system
 from labone.core.reflection.parsed_wire_schema import EncodedSchema, ParsedWireSchema
 
@@ -53,9 +57,7 @@ async def _fetch_encoded_schema(
     Raises:
         LabOneConnectionError: If the schema cannot be fetched from the server.
     """
-    reflection = client.bootstrap().cast_as(
-        labone.core.reflection.reflection_capnp.Reflection,
-    )
+    reflection = client.bootstrap().cast_as(reflection_capnp.Reflection)
     try:
         schema_and_bootstrap_cap = await reflection.getTheSchema()
     except capnp.lib.capnp.KjException as e:
@@ -119,6 +121,42 @@ class ReflectionServer:
             bootstrap_capability_name,
             instance_name,
         )
+        # Save the event loop the server was created in. This is needed to
+        # close the rpc client connection in the destructor of the server.
+        self._creation_loop = asyncio.get_event_loop()
+
+    async def _close_rpc_client(self) -> None:
+        """Close the rpc client connection.
+
+        This function is called in the destructor of the server. It closes the
+        rpc client connection.
+
+        There is a bit of a catch to this function. The capnp client does a lot
+        of stuff in the background for every client. Before the server can be
+        closed, the client needs to be closed. Python takes care of this
+        automatically since the client is a member of the server.
+        However the client MUST be closed in the same thread in which the kj
+        event loop is running. If everything is done in the same thread, then
+        there is not problem. However, if the kj event loop is running in a
+        different thread, e.g. when using the sync wrapper, then the client
+        needs to be closed in the same thread as the kj event loop. Thats why
+        this function is async even though it does not need to be.
+        """
+        self._client.close()  # pragma: no cover
+
+    def __del__(self) -> None:
+        # call the close_rpc_client function in the event loop the server
+        # was created in. See the docstring of the function for more details.
+        if (  # pragma: no cover
+            hasattr(self, "_creation_loop")
+            and self._creation_loop is not None
+            and self._creation_loop.is_running()
+            and asyncio.get_event_loop() != self._creation_loop
+        ):
+            _ = asyncio.ensure_future(  # pragma: no cover
+                self._close_rpc_client(),
+                loop=self._creation_loop,
+            )
 
     @staticmethod
     async def create(host: str, port: int) -> ReflectionServer:
@@ -131,6 +169,7 @@ class ReflectionServer:
         Returns:
             The reflection server instance.
         """
+        await ensure_capnp_event_loop()
         connection = await capnp.AsyncIoStream.create_connection(host=host, port=port)
         return await ReflectionServer.create_from_connection(connection)
 

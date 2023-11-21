@@ -345,12 +345,10 @@ def streaming_handle_factory(
                 StreamingError: If the data queue is full or disconnected.
                 AttributeError: If the data queue has been garbage collected.
             """
-            if data_queue is None or data_queue.full():
-                logger.warning(
-                    "Data queue %s is full. No more data will be pushed to the queue.",
-                    hex(id(data_queue)),
-                )
-                data_queue.disconnect()  # type: ignore[union-attr] # supposed to throw
+            if data_queue is None:
+                # The server holds only a weak reference to the data queue.
+                # If the data queue has been garbage collected, the weak reference
+                # will be None.
                 return False
             try:
                 data_queue.put_nowait(value)
@@ -359,6 +357,13 @@ def streaming_handle_factory(
                     "Data queue %s has disconnected. Removing from list of queues.",
                     hex(id(data_queue)),
                 )
+                return False
+            except asyncio.QueueFull:
+                logger.warning(
+                    "Data queue %s is full. No more data will be pushed to the queue.",
+                    hex(id(data_queue)),
+                )
+                data_queue.disconnect()  # type: ignore[union-attr] # supposed to throw
                 return False
             return True
 
@@ -379,6 +384,8 @@ def streaming_handle_factory(
                     the subscription should be removed.
             """
             parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
+            # distribute to all data queues and remove the ones that are not
+            # connected anymore.
             self._data_queues = [
                 data_queue
                 for data_queue in self._data_queues

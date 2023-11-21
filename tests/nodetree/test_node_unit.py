@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import MagicMock, Mock, create_autospec, patch
 
 import pytest
@@ -1051,6 +1050,7 @@ class TestLeafNode:
         node._tree_manager.session.subscribe.assert_called_once_with(
             "path",
             parser_callback=node._tree_manager.parser,
+            queue_type=DataQueue,
         )
 
     @pytest.mark.parametrize(
@@ -1095,30 +1095,6 @@ class TestLeafNode:
                     value=target_value,
                     invert=invert,
                 )
-
-    @pytest.mark.asyncio()
-    async def test_wait_for_state_change_timeout(self):
-        timeout = 0.02
-        node = MockLeafNode(())
-        node.subscribe = Mock(return_value=_get_future("queue"))
-        future = _get_future(AnnotatedValue(path="path", value=2))
-        node._wait_for_state_change_loop = Mock(return_value=asyncio.sleep(2 * timeout))
-
-        with patch(
-            "labone.nodetree.node.Node.__call__",
-            MagicMock(return_value=future),
-        ) as call_patch:
-            with pytest.raises(asyncio.TimeoutError):
-                await node.wait_for_state_change(value=1, invert=False, timeout=timeout)
-
-            call_patch.assert_called_once_with()
-            node.subscribe.assert_called_once_with()
-
-            node._wait_for_state_change_loop.assert_called_once_with(
-                "queue",
-                value=1,
-                invert=False,
-            )
 
     @pytest.mark.parametrize(
         ("target_value", "in_pipe", "invert", "nr_expected_calls"),
@@ -1336,12 +1312,12 @@ class TestWildcardNode:
             ["/a/b", "/a/c"],
         )
 
-        await node.wait_for_state_change(value=1, invert="invert", timeout="timeout")
+        await node.wait_for_state_change(value=1, invert="invert")
 
         mock_path.assert_called_once_with()
         node._tree_manager.session.list_nodes.assert_called_once_with("path")
         assert len(wait_mock.call_args_list) == 2
-        wait_mock.assert_called_with(1, invert="invert", timeout="timeout")
+        wait_mock.assert_called_with(1, invert="invert")
 
 
 class TestPartialNode:

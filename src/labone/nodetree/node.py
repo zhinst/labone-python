@@ -1078,7 +1078,6 @@ class Node(MetaNode, ABC):
         value: int | NodeEnum,
         *,
         invert: bool = False,
-        timeout: float = 2,
     ) -> None:
         """Waits until the node has the expected state/value.
 
@@ -1091,10 +1090,6 @@ class Node(MetaNode, ABC):
             invert: Instead of waiting for the value, the function will wait for
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
-            timeout: Maximum wait time in seconds. (default = 2)
-
-        Raises:
-            TimeoutError: Timeout exceeded.
         """
         ...  # pragma: no cover
 
@@ -1229,7 +1224,6 @@ class LeafNode(Node):
         value: int | NodeEnum,
         *,
         invert: bool = False,
-        timeout: float = 2,
     ) -> None:
         """Waits until the node has the expected state/value.
 
@@ -1242,10 +1236,6 @@ class LeafNode(Node):
             invert: Instead of waiting for the value, the function will wait for
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
-            timeout: Maximum wait time in seconds. (default = 2)
-
-        Raises:
-            TimeoutError: Timeout exceeded.
         """
         # order important so that no update can happen unseen by the queue after
         # regarding the current state
@@ -1255,10 +1245,7 @@ class LeafNode(Node):
         if (value == initial_state.value) ^ invert:
             return
 
-        await asyncio.wait_for(
-            self._wait_for_state_change_loop(queue, value=value, invert=invert),
-            timeout,
-        )
+        await self._wait_for_state_change_loop(queue, value=value, invert=invert)
 
     @staticmethod
     async def _wait_for_state_change_loop(
@@ -1308,6 +1295,9 @@ class WildcardOrPartialNode(Node, ABC):
         value: Value,
     ) -> ResultNode:
         """Set the value of the node.
+
+        Args:
+            value: Value, which should be set to the node.
 
         Raises:
             LabOneCoreError: If the node value type is not supported.
@@ -1437,7 +1427,6 @@ class WildcardNode(WildcardOrPartialNode):
         value: int | NodeEnum,
         *,
         invert: bool = False,
-        timeout: float = 2,
     ) -> None:
         """Waits until all wildcard-associated nodes have the expected state/value.
 
@@ -1450,10 +1439,6 @@ class WildcardNode(WildcardOrPartialNode):
             invert: Instead of waiting for the value, the function will wait for
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
-            timeout: Maximum wait time in seconds. (default = 2)
-
-        Raises:
-            TimeoutError: Timeout exceeded.
         """
         # find paths corresponding to this wildcard-path and put them into nodes
         resolved_nodes = [
@@ -1462,7 +1447,7 @@ class WildcardNode(WildcardOrPartialNode):
         ]
         await asyncio.gather(
             *[
-                node.wait_for_state_change(value, invert=invert, timeout=timeout)
+                node.wait_for_state_change(value, invert=invert)
                 for node in resolved_nodes
             ],
         )
@@ -1542,7 +1527,6 @@ class PartialNode(WildcardOrPartialNode):
         value: int | NodeEnum,  # noqa: ARG002
         *,
         invert: bool = False,  # noqa: ARG002
-        timeout: float = 2,  # noqa: ARG002
     ) -> None:
         """Not applicable for partial-nodes.
 
@@ -1551,7 +1535,6 @@ class PartialNode(WildcardOrPartialNode):
             invert: Instead of waiting for the value, the function will wait for
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
-            timeout: Maximum wait time in seconds. (default = 2)
 
         Raises:
             LabOneInappropriateNodeTypeError: Always, because partial nodes cannot be
