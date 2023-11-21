@@ -15,6 +15,7 @@ from functools import cached_property
 
 from deprecation import deprecated
 
+from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue, Value
 from labone.nodetree.errors import (
     LabOneInappropriateNodeTypeError,
@@ -40,7 +41,7 @@ if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
     from labone.core.session import NodeInfo as NodeInfoType
     from labone.core.session import NodeType
-    from labone.core.subscription import DataQueue
+    from labone.core.subscription import QueueProtocol
     from labone.nodetree.enum import NodeEnum
 
 T = t.TypeVar("T")
@@ -1088,10 +1089,24 @@ class Node(MetaNode, ABC):
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
         """
-        ...  # pragma: no cover
+        ...
+
+    @t.overload
+    async def subscribe(self) -> DataQueue:
+        ...
+
+    @t.overload
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
 
     @abstractmethod
-    async def subscribe(self) -> DataQueue:
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 
         Subscribing to a node will cause the server to send updates that happen
@@ -1114,6 +1129,12 @@ class Node(MetaNode, ABC):
             automatically be cancelled when the queue is closed. This will
             happen when the queue is garbage collected or when the queue is
             closed manually.
+
+        Args:
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
 
         Returns:
             A DataQueue, which can be used to receive any changes to the node in a
@@ -1186,7 +1207,21 @@ class LeafNode(Node):
         )
         raise LabOneInvalidPathError(msg)
 
+    @t.overload
     async def subscribe(self) -> DataQueue:
+        ...
+
+    @t.overload
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
+
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 
         Subscribing to a node will cause the server to send updates that happen
@@ -1207,6 +1242,12 @@ class LeafNode(Node):
             happen when the queue is garbage collected or when the queue is
             closed manually.
 
+        Args:
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
+
         Returns:
             A DataQueue, which can be used to receive any changes to the node in a
             flexible manner.
@@ -1214,6 +1255,7 @@ class LeafNode(Node):
         return await self._tree_manager.session.subscribe(
             self.path,
             parser_callback=self._tree_manager.parser,
+            queue_type=queue_type or DataQueue,
         )
 
     async def wait_for_state_change(
@@ -1322,7 +1364,21 @@ class WildcardOrPartialNode(Node, ABC):
         """
         ...
 
+    @t.overload
     async def subscribe(self) -> DataQueue:
+        ...
+
+    @t.overload
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
+
+    async def subscribe(
+        self,
+        queue_type: type[QueueProtocol] | None = None,  # noqa: ARG002
+    ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 
         Currently not supported for wildcard and partial nodes.

@@ -103,7 +103,21 @@ class DataQueue(asyncio.Queue):
             f"connected={self.connected})",
         )
 
-    def fork(self) -> DataQueue:
+    @t.overload
+    def fork(self, queue_type: None) -> DataQueue:
+        ...
+
+    @t.overload
+    def fork(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
+
+    def fork(
+        self,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> DataQueue | QueueProtocol:
         """Create a fork of the subscription.
 
         The forked subscription will receive all updates that the original
@@ -114,6 +128,12 @@ class DataQueue(asyncio.Queue):
         Warning:
             The forked subscription will not contain any values before the fork.
 
+        Args:
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
+
         Returns:
             A new data queue to the same underlying subscription.
         """
@@ -123,7 +143,8 @@ class DataQueue(asyncio.Queue):
                 "sense as it would never receive data.",
             )
             raise errors.StreamingError(msg)
-        return DataQueue(
+        new_queue_type = queue_type or DataQueue
+        return new_queue_type(
             path=self._path,
             register_function=self._register_function,
         )
@@ -209,6 +230,89 @@ class DataQueue(asyncio.Queue):
         self._maxsize = maxsize
 
 
+QueueProtocol = t.TypeVar("QueueProtocol", bound=DataQueue)
+
+
+class CircularDataQueue(DataQueue):
+    """Circular data queue.
+
+    This data queue is identical to the DataQueue, with the exception that it
+    will remove the oldest item from the queue if the queue is full and a new
+    item is added.
+    """
+
+    async def put(self, item: AnnotatedValue) -> None:
+        """Put an item into the queue.
+
+        If the queue is full the oldest item will be removed and the new item
+        will be added to the end of the queue.
+
+        Args:
+            item: The item to the put in the queue.
+
+        Raises:
+            StreamingError: If the data queue has been disconnected.
+        """
+        if self.full():
+            self.get_nowait()
+        await super().put(item)
+
+    def put_nowait(self, item: AnnotatedValue) -> None:
+        """Put an item into the queue without blocking.
+
+        If the queue is full the oldest item will be removed and the new item
+        will be added to the end of the queue.
+
+        Args:
+            item: The item to the put in the queue.
+
+        Raises:
+            StreamingError: If the data queue has been disconnected.
+        """
+        if self.full():
+            self.get_nowait()
+        super().put_nowait(item)
+
+    @t.overload
+    def fork(self, queue_type: None) -> CircularDataQueue:
+        ...  # pragma: no cover
+
+    @t.overload
+    def fork(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...  # pragma: no cover
+
+    def fork(
+        self,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> CircularDataQueue | QueueProtocol:
+        """Create a fork of the subscription.
+
+        The forked subscription will receive all updates that the original
+        subscription receives. Its connection state is independent of the original
+        subscription, meaning even if the original subscription is disconnected,
+        the forked subscription will still receive updates.
+
+        Warning:
+            The forked subscription will not contain any values before the fork.
+
+        Args:
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
+
+        Returns:
+            A new data queue to the same underlying subscription.
+        """
+        return DataQueue.fork(
+            self,
+            queue_type=queue_type if queue_type is not None else CircularDataQueue,
+        )
+
+
 class StreamingHandle(ABC):
     """Streaming Handle server.
 
@@ -238,7 +342,10 @@ class StreamingHandle(ABC):
         ...
 
     @abstractmethod
-    def register_data_queue(self, data_queue: weakref.ReferenceType[DataQueue]) -> None:
+    def register_data_queue(
+        self,
+        data_queue: weakref.ReferenceType[QueueProtocol],
+    ) -> None:
         """Register a new data queue.
 
         Args:
@@ -303,7 +410,7 @@ def streaming_handle_factory(
             *,
             parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         ) -> None:
-            self._data_queues: list[weakref.ReferenceType[DataQueue]] = []
+            self._data_queues = []  # type: ignore[var-annotated]
 
             if parser_callback is None:
 
@@ -314,7 +421,7 @@ def streaming_handle_factory(
 
         def register_data_queue(
             self,
-            data_queue: weakref.ReferenceType[DataQueue],
+            data_queue: weakref.ReferenceType[QueueProtocol],
         ) -> None:
             """Register a new data queue.
 
@@ -326,7 +433,7 @@ def streaming_handle_factory(
 
         def _add_to_data_queue(
             self,
-            data_queue: DataQueue | None,
+            data_queue: QueueProtocol | None,
             value: AnnotatedValue,
         ) -> bool:
             """Add a value to the data queue.
