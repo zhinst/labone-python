@@ -24,6 +24,12 @@ class MockDataServer(DataServer):
         super().__init__(host="host", port="port", model_node=MockModelNode())
 
 
+def test_unerlying_server():
+    dataserver = MockDataServer()
+    dataserver._tree_manager = create_autospec(NodeTreeManager)
+    assert dataserver.kernel_session == dataserver._tree_manager.session
+
+
 @pytest.mark.asyncio()
 async def test_create():
     with patch.object(
@@ -123,28 +129,11 @@ async def test_create_raises():
 
 @pytest.mark.asyncio()
 async def test_connect_device():
-    with patch.object(
-        KernelSession,
-        "create",
-        autospec=True,
-        return_value="session",
-    ) as create_mock, patch(
-        "labone.dataserver.DeviceKernelInfo",
-        autospec=True,
-        return_value="kernel_info",
-    ) as kernelinfo_mock, patch(
-        "labone.dataserver.ServerInfo",
-        autospec=True,
-        return_value="server_info",
-    ) as serverinfo_mock, patch(
-        "labone.dataserver.Instrument",
-        autospec=True,
-        return_value="server_info",
-    ) as init_mock, patch(
-        "labone.dataserver.construct_nodetree",
+    with patch(
+        "labone.dataserver.Instrument.create",
         autospec=True,
         return_value="node",
-    ) as construct_mock:
+    ) as instrument_create_mock:
         dataserver = MockDataServer()
         dataserver._host = "host"
         dataserver._port = "port"
@@ -155,75 +144,13 @@ async def test_connect_device():
             interface="interface",
             use_enum_parser="use_enum_parser",
             custom_parser="custom_parser",
-            hide_kernel_prefix="hide_kernel_prefix",
         )
 
-        kernelinfo_mock.assert_called_once_with(
-            device_id="serial",
-            interface="interface",
-        )
-        serverinfo_mock.assert_called_once_with(host="host", port="port")
-        create_mock.assert_called_once_with(
-            kernel_info="kernel_info",
-            server_info="server_info",
-        )
-        construct_mock.assert_called_once_with(
-            "session",
-            hide_kernel_prefix="hide_kernel_prefix",
-            use_enum_parser="use_enum_parser",
-            custom_parser="custom_parser",
-        )
-        init_mock.assert_called_once_with(
+        instrument_create_mock.assert_called_once_with(
             serial="serial",
-            model_node="node",
-        )
-
-
-@pytest.mark.asyncio()
-async def test_connect_device_raises():
-    with patch.object(
-        KernelSession,
-        "create",
-        autospec=True,
-        return_value="session",
-    ) as create_mock, patch(
-        "labone.dataserver.DeviceKernelInfo",
-        autospec=True,
-        return_value="kernel_info",
-    ) as kernelinfo_mock, patch(
-        "labone.dataserver.ServerInfo",
-        autospec=True,
-        return_value="server_info",
-    ) as serverinfo_mock, patch(
-        "labone.dataserver.construct_nodetree",
-        autospec=True,
-        return_value="node",
-        side_effect=LabOneError(),
-    ) as construct_mock:
-        dataserver = MockDataServer()
-        dataserver._host = "host"
-        dataserver._port = "port"
-        with pytest.raises(LabOneError):
-            await DataServer.connect_device(
-                dataserver,
-                "serial",
-                interface="interface",
-                use_enum_parser="use_enum_parser",
-                custom_parser="custom_parser",
-                hide_kernel_prefix="hide_kernel_prefix",
-            )
-        kernelinfo_mock.assert_called_once_with(
-            device_id="serial",
+            host="host",
+            port="port",
             interface="interface",
-        )
-        serverinfo_mock.assert_called_once_with(host="host", port="port")
-        create_mock.assert_called_once_with(
-            kernel_info="kernel_info",
-            server_info="server_info",
-        )
-        construct_mock.assert_called_once_with(
-            "session",
-            hide_kernel_prefix="hide_kernel_prefix",
             use_enum_parser="use_enum_parser",
             custom_parser="custom_parser",
         )

@@ -642,3 +642,8 @@ class Session:
             path=path,
             register_function=streaming_handle.register_data_queue,
         )
+
+    @property
+    def reflection_server(self) -> ReflectionServer:
+        """Get the reflection server instance."""
+        return self._reflection_server  # pragma: no cover

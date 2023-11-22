@@ -6,7 +6,6 @@ import typing as t
 
 from labone.core import (
     AnnotatedValue,
-    DeviceKernelInfo,
     KernelSession,
     ServerInfo,
     ZIKernelInfo,
@@ -128,12 +127,11 @@ class DataServer(PartialNode):
         # previous type ignore is due to the implicit assumption that a device root
         # will always be a partial node
 
-    async def connect_device(  # noqa: PLR0913
+    async def connect_device(
         self,
         serial: str,
         *,
         interface: str = "",
-        hide_kernel_prefix: bool = True,
         use_enum_parser: bool = True,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> Instrument:
@@ -147,10 +145,6 @@ class DataServer(PartialNode):
                 interfaces, and a specific interface should be enforced. If no value is
                 provided, the data server will automatically choose an available
                 interface. (default = "")
-            hide_kernel_prefix: Enter a trivial first path-segment automatically.
-                E.g. having the result of this function in a variable `tree`
-                `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
-                Setting this option makes working with the tree easier.
             use_enum_parser: Whether enumerated integer values coming from the server
                 should be packaged into enum values, if applicable.
             custom_parser: A function that takes an annotated value and returns an
@@ -176,28 +170,13 @@ class DataServer(PartialNode):
                 request.
             LabOneConnectionError: If another error happens during the session creation.
         """
-        session = await KernelSession.create(
-            kernel_info=DeviceKernelInfo(device_id=serial, interface=interface),
-            server_info=ServerInfo(host=self.host, port=self.port),
-        )
-
-        try:
-            model_node = await construct_nodetree(
-                session,
-                hide_kernel_prefix=hide_kernel_prefix,
-                use_enum_parser=use_enum_parser,
-                custom_parser=custom_parser,
-            )
-        except LabOneError as e:
-            msg = (
-                f"While connecting to device {serial} through {interface},"
-                f" an error occured."
-            )
-            raise LabOneError(msg) from e
-
-        return Instrument(
+        return await Instrument.create(
             serial=serial,
-            model_node=model_node,
+            host=self.host,
+            port=self.port,
+            interface=interface,
+            use_enum_parser=use_enum_parser,
+            custom_parser=custom_parser,
         )
 
     async def check_firmware_compatibility(self) -> None:
@@ -263,3 +242,8 @@ class DataServer(PartialNode):
     def port(self) -> int:
         """Port of the Data Server."""
         return self._port
+
+    @property
+    def kernel_session(self) -> KernelSession:
+        """Kernel session used by the instrument."""
+        return self._tree_manager.session  # type: ignore[return-value]

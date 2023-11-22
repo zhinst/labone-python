@@ -275,14 +275,14 @@ class CircularDataQueue(DataQueue):
 
     @t.overload
     def fork(self, queue_type: None) -> CircularDataQueue:
-        ...  # pragma: no cover
+        ...
 
     @t.overload
     def fork(
         self,
         queue_type: type[QueueProtocol],
     ) -> QueueProtocol:
-        ...  # pragma: no cover
+        ...
 
     def fork(
         self,
