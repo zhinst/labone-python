@@ -52,9 +52,18 @@ class ShfResultLoggerVectorExtraHeader:
     """
 
     timestamp: int
-    timestamp_diff: int
+    job_id: int
+    repetition_id: int
+    data_source: int
     scaling: float
     center_freq: float
+    num_samples: int
+    num_spectr_samples: int
+    num_averages: int
+    num_acquired: int
+    holdoff_errors_reslog: int
+    holdoff_errors_readout: int
+    holdoff_errors_spectr: int
 
     @staticmethod
     def from_binary(
@@ -79,9 +88,18 @@ class ShfResultLoggerVectorExtraHeader:
         if version.minor >= 1:
             return ShfResultLoggerVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
-                timestamp_diff=struct.unpack("I", binary[8:12])[0],
+                job_id=struct.unpack("H", binary[8:10])[0],
+                repetition_id=struct.unpack("H", binary[10:12])[0],
+                data_source=struct.unpack("I", binary[12:16])[0],
                 scaling=struct.unpack("d", binary[16:24])[0],
                 center_freq=struct.unpack("d", binary[24:32])[0],
+                num_samples=struct.unpack("I", binary[32:36])[0],
+                num_spectr_samples=struct.unpack("I", binary[36:40])[0],
+                num_averages=struct.unpack("I", binary[40:44])[0],
+                num_acquired=struct.unpack("I", binary[44:48])[0],
+                holdoff_errors_reslog=struct.unpack("H", binary[48:50])[0],
+                holdoff_errors_readout=struct.unpack("H", binary[50:52])[0],
+                holdoff_errors_spectr=struct.unpack("H", binary[52:54])[0],
             )
         msg = str(
             f"Unsupported extra header version: {version} for "
