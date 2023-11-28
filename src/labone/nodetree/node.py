@@ -1142,6 +1142,15 @@ class Node(MetaNode, ABC):
             flexible manner.
         """
 
+    @property
+    def root(self) -> Node:
+        """Providing root node.
+
+        Returns:
+            Root of the tree structure, this node is part of.
+        """
+        return self.tree_manager.path_segments_to_node(())
+
 
 class LeafNode(Node):
     """Node corresponding to a leaf in the path-structure."""
