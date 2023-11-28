@@ -33,7 +33,8 @@ async def test_construct_nodetree_custom_parser(
     session_mock.list_nodes_info = Mock(return_value=_get_future(list_node_info))
 
     nodetree_mock = Mock()
-    nodetree_mock.construct_nodetree = Mock(return_value="result")
+    nodetree_mock._root_prefix = ()
+    nodetree_mock.root = "result"
 
     with patch(
         "labone.nodetree.entry_point.NodeTreeManager",
@@ -59,8 +60,6 @@ async def test_construct_nodetree_custom_parser(
         session=session_mock,
         path_to_info=list_node_info,
         parser=ANY,
-    )
-    nodetree_mock.construct_nodetree.assert_called_once_with(
         hide_kernel_prefix="hide_kernel_prefix",
     )
     assert tree == "result"

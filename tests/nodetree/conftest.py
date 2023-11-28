@@ -147,7 +147,7 @@ async def session_zi(session_mock, zi_structure) -> Node:
             path_to_info=zi_structure.nodes_to_info,
             parser=lambda x: x,
         )
-    ).construct_nodetree(
+    ).root(
         hide_kernel_prefix=True,
     )
 
@@ -191,7 +191,8 @@ def zi(request, zi_structure) -> Node:
         session=None,
         path_to_info=nodes_to_info,
         parser=parser,
-    ).construct_nodetree(hide_kernel_prefix=True)
+        hide_kernel_prefix=True,
+    ).root
 
 
 @pytest.fixture()
@@ -341,6 +342,7 @@ class MockNodeTreeManager(NodeTreeManager):
             session=None,
             path_to_info=path_to_info,
             parser=None,
+            hide_kernel_prefix=True,
         )
 
 

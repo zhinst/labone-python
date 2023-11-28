@@ -56,8 +56,7 @@ async def construct_nodetree(
         session=session,
         parser=parser,
         path_to_info=path_to_info,
-    )
-
-    return nodetree_manager.construct_nodetree(
         hide_kernel_prefix=hide_kernel_prefix,
     )
+
+    return nodetree_manager.root

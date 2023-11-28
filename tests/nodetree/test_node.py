@@ -745,22 +745,12 @@ class TestNode:
         assert node._path_aliases == "path_aliases"
         assert node.subtree_paths == subtree_paths
 
-    @pytest.mark.parametrize(
-        "path_segments",
-        [
-            (),
-            ("a"),
-            ("a", "b"),
-            ("c", "v", "r"),
-        ],
-    )
-    def test_root(self, path_segments):
-        node = MockNode(path_segments=path_segments)
+    def test_root(self):
+        node = MockNode(())
         node._tree_manager = create_autospec(NodeTreeManager)
+        node._tree_manager.root = "root"
 
-        node.root  # noqa: B018
-
-        node.tree_manager.path_segments_to_node.assert_called_once_with(())
+        assert node.root == "root"
 
 
 class TestLeafNode:
