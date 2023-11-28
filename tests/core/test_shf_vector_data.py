@@ -212,7 +212,7 @@ def test_shf_result_logger_vector(vector_length, header_version, x, reflection_s
     input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA.value
     input_vector.vectorElementType = 2  # uint32
-    header_length = 56
+    header_length = 64
     input_vector.extraHeaderInfo = _construct_extra_header_value(
         header_length=header_length,
         major_version=0,
@@ -231,9 +231,9 @@ def test_shf_result_logger_vector(vector_length, header_version, x, reflection_s
     assert extra_header.timestamp == 0
     assert extra_header.job_id == 0
     assert extra_header.repetition_id == 0
-    assert extra_header.data_source == 0
     assert extra_header.scaling == 0.0
     assert extra_header.center_freq == 0.0
+    assert extra_header.data_source == 0
     assert extra_header.num_samples == 0
     assert extra_header.num_spectr_samples == 0
     assert extra_header.num_averages == 0
