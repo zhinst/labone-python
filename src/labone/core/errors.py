@@ -1,4 +1,6 @@
 """LabOne Error classes for the core component of the API."""
+from __future__ import annotations
+
 from asyncio import QueueEmpty
 
 from labone.errors import LabOneError
@@ -43,6 +45,17 @@ class LabOneTimeoutError(LabOneCoreError, TimeoutError):
 
 class UnavailableError(LabOneCoreError):
     """Raised when the kernel is unavailable."""
+
+
+class SHFHeaderVersionNotSupportedError(LabOneCoreError):
+    """Raised when the SHF header version is not supported."""
+
+    def __init__(self, version: tuple[int, int]):
+        msg = (
+            f"The SHF extra header version {version[0]}.{version[1]} "
+            "is not supported in this context."
+        )
+        super().__init__(msg, code=0, category="SHFHeaderVersionNotSupported")
 
 
 ##################################################################

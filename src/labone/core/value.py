@@ -23,6 +23,7 @@ from labone.core.helper import (
 from labone.core.shf_vector_data import (
     ExtraHeader,
     SHFDemodSample,
+    encode_shf_vector_data_struct,
     get_header_length,
     parse_shf_vector_data_struct,
 )
@@ -274,7 +275,7 @@ def _value_from_python_types(
     value: t.Any,  # noqa: ANN401
     *,
     reflection: ReflectionServer,
-) -> capnp.lib.capnp._DynamicStructBuilder:  # noqa: SLF001
+) -> capnp.lib.capnp._DynamicStructBuilder:
     """Create `Value` builder from Python types.
 
     Args:
@@ -322,3 +323,72 @@ def _value_from_python_types(
             msg,
         )
     return request_value
+
+
+def value_from_python_types_dict(
+    annotated_value: AnnotatedValue,
+) -> capnp.lib.capnp._DynamicStructBuilder:
+    """Create `Value` builder from Python types.
+
+    Note:
+        This function is logically similar to `_value_from_python_types`,
+        except for its extension of handling numpy arrays and shf vectors.
+        However, this function does not require a reflection server as an argument.
+        Instead of creating a capnp message via new_message, it does so by
+        defining a dictionary as a return value. Both approaches are
+        accepted by the capnp library.
+
+    Args:
+        annotated_value: The value to be converted.
+
+    Returns:
+        A new message builder for `capnp:Value`.
+
+    Raises:
+        LabOneCoreError: If the data type of the value to be set is not supported.
+    """
+    if annotated_value.extra_header is not None and isinstance(
+        annotated_value.value,
+        (np.ndarray, SHFDemodSample),
+    ):
+        return {
+            "vectorData": encode_shf_vector_data_struct(
+                data=annotated_value.value,
+                extra_header=annotated_value.extra_header,
+            ),
+        }
+
+    type_to_message = {
+        bool: lambda x: {"int64": int(x)},
+        np.integer: lambda x: {"int64": x},
+        np.floating: lambda x: {"double": x},
+        complex: lambda x: {"complex": {"real": x.real, "imag": x.imag}},
+        str: lambda x: {"string": x},
+        bytes: lambda x: {
+            "vectorData": {
+                "valueType": VectorValueType.BYTE_ARRAY.value,
+                "extraHeaderInfo": 0,
+                "vectorElementType": VectorElementType.UINT8.value,
+                "data": x,
+            },
+        },
+        np.ndarray: lambda x: {
+            "vectorData": {
+                "valueType": VectorValueType.VECTOR_DATA.value,
+                "extraHeaderInfo": 0,
+                "vectorElementType": VectorElementType.from_numpy_type(x.dtype).value,
+                "data": x.tobytes(),
+            },
+        },
+    }
+
+    value = annotated_value.value
+    for type_, message_builder in type_to_message.items():  # pragma: no cover
+        if isinstance(value, type_) or np.issubdtype(type(value), type_):
+            return message_builder(value)
+
+    msg = (
+        "The provided value has an invalid type "
+        "or missing extra header: {type(value)}"
+    )  # pragma: no cover
+    raise ValueError(msg)  # pragma: no cover

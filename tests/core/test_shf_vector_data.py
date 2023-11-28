@@ -3,7 +3,12 @@ import struct
 import numpy as np
 import pytest
 from labone.core.shf_vector_data import (
+    SHFDemodSample,
+    ShfDemodulatorVectorExtraHeader,
+    ShfResultLoggerVectorExtraHeader,
+    ShfScopeVectorExtraHeader,
     VectorValueType,
+    encode_shf_vector_data_struct,
     get_header_length,
     parse_shf_vector_data_struct,
 )
@@ -83,7 +88,7 @@ def test_invalid_header_version(value_type, reflection_server):
         minor_version=0,
     )
     input_vector.data = b"\x00" * 16
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(Exception):  # noqa: B017
         parse_shf_vector_data_struct(input_vector)
 
 
@@ -259,3 +264,215 @@ def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
         + 1j * const_scaling * y * np.ones(vector_length, dtype=np.complex128),
     )
     assert extra_header is None
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        ShfScopeVectorExtraHeader(
+            timestamp=21,
+            timestamp_diff=22,
+            interleaved=False,
+            scaling=3.0,
+            average_count=7,
+            center_freq=23,
+            input_select=24,
+            num_missed_triggers=25,
+            num_segments=26,
+            num_total_segments=27,
+            first_segment_index=28,
+            trigger_timestamp=29,
+        ),
+        ShfResultLoggerVectorExtraHeader(
+            timestamp=1,
+            job_id=2,
+            repetition_id=3,
+            scaling=50,
+            center_freq=4,
+            data_source=5,
+            num_samples=6,
+            num_spectr_samples=7,
+            num_averages=8,
+            num_acquired=9,
+            holdoff_errors_reslog=10,
+            holdoff_errors_readout=11,
+            holdoff_errors_spectr=12,
+        ),
+        ShfDemodulatorVectorExtraHeader(
+            timestamp=1,
+            timestamp_diff=0,
+            abort_config=False,
+            trigger_source=4,
+            trigger_length=5,
+            trigger_index=6,
+            trigger_tag=7,
+            awg_tag=8,
+            scaling=0.5,
+            center_freq=10,
+            oscillator_source=11,
+            signal_source=12,
+        ),
+    ],
+)
+@pytest.mark.asyncio()
+async def test_header_to_binary_from_binary_invers(header):
+    binary, encoding_version = header.to_binary()
+    assert header == header.__class__.from_binary(
+        binary=binary,
+        version=encoding_version,
+    )
+
+
+class GetAttrAbleDict(dict):
+    def __getattr__(self, item):
+        return self[item]
+
+
+@pytest.mark.parametrize(
+    ("header", "data"),
+    [
+        (
+            ShfScopeVectorExtraHeader(
+                timestamp=0,
+                timestamp_diff=0,
+                interleaved=False,
+                scaling=3.0,
+                average_count=7,
+                center_freq=23,
+                input_select=24,
+                num_missed_triggers=25,
+                num_segments=26,
+                num_total_segments=27,
+                first_segment_index=28,
+                trigger_timestamp=29,
+            ),
+            np.array([6 + 6j, 3 + 3j], dtype=np.complex64),
+        ),
+        (
+            ShfResultLoggerVectorExtraHeader(
+                timestamp=1,
+                job_id=2,
+                repetition_id=3,
+                scaling=50,
+                center_freq=4,
+                data_source=5,
+                num_samples=6,
+                num_spectr_samples=7,
+                num_averages=8,
+                num_acquired=9,
+                holdoff_errors_reslog=10,
+                holdoff_errors_readout=11,
+                holdoff_errors_spectr=12,
+            ),
+            np.array([50 + 100j, 100 + 150j], dtype=np.complex64),
+        ),
+    ],
+)
+def test_encoding_decoding_are_invers(header, data):
+    data_copy = data.copy()
+    capnp = encode_shf_vector_data_struct(
+        data=data,
+        extra_header=header,
+    )
+    inp = GetAttrAbleDict()
+    inp.update(capnp)
+    extracted_data, extracted_header = parse_shf_vector_data_struct(inp)
+
+    assert extracted_header == header
+    assert np.array_equal(extracted_data, data_copy)
+
+
+@pytest.mark.parametrize(
+    ("header", "data"),
+    [
+        (
+            ShfDemodulatorVectorExtraHeader(
+                timestamp=0,
+                timestamp_diff=0,
+                abort_config=False,
+                trigger_source=4,
+                trigger_length=5,
+                trigger_index=6,
+                trigger_tag=7,
+                awg_tag=8,
+                scaling=0.5,
+                center_freq=10,
+                oscillator_source=11,
+                signal_source=12,
+            ),
+            SHFDemodSample(
+                np.array([6, 3], dtype=np.int64),
+                np.array([7, 2], dtype=np.int64),
+            ),
+        ),
+    ],
+)
+def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
+    data_copy = SHFDemodSample(data.x.copy(), data.y.copy())
+
+    capnp = encode_shf_vector_data_struct(
+        data=data,
+        extra_header=header,
+    )
+    inp = GetAttrAbleDict()
+    inp.update(capnp)
+    extracted_data, extracted_header = parse_shf_vector_data_struct(inp)
+
+    assert extracted_header == header
+    assert np.array_equal(extracted_data.x, data_copy.x)
+    assert np.array_equal(extracted_data.y, data_copy.y)
+
+
+@pytest.mark.parametrize(
+    ("header", "data"),
+    [
+        (
+            ShfDemodulatorVectorExtraHeader(
+                timestamp=0,
+                timestamp_diff=0,
+                abort_config=False,
+                trigger_source=4,
+                trigger_length=5,
+                trigger_index=6,
+                trigger_tag=7,
+                awg_tag=8,
+                scaling=0.5,
+                center_freq=10,
+                oscillator_source=11,
+                signal_source=12,
+            ),
+            np.array([50 + 100j, 100 + 150j], dtype=np.complex64),
+        ),
+        (
+            ShfScopeVectorExtraHeader(
+                timestamp=0,
+                timestamp_diff=0,
+                interleaved=False,
+                scaling=3.0,
+                average_count=7,
+                center_freq=23,
+                input_select=24,
+                num_missed_triggers=25,
+                num_segments=26,
+                num_total_segments=27,
+                first_segment_index=28,
+                trigger_timestamp=29,
+            ),
+            SHFDemodSample(
+                np.array([6, 3], dtype=np.int64),
+                np.array([7, 2], dtype=np.int64),
+            ),
+        ),
+        (
+            ShfResultLoggerVectorExtraHeader(0, 0, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            SHFDemodSample(
+                np.array([6, 3], dtype=np.int64),
+                np.array([7, 2], dtype=np.int64),
+            ),
+        ),
+    ],
+)
+@pytest.mark.asyncio()
+async def test_encode_shf_vector_wrong_data_header_combination_raises(header, data):
+    with pytest.raises(Exception):  # noqa: B017
+        encode_shf_vector_data_struct(data=data, extra_header=header)

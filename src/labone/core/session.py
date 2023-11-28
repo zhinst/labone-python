@@ -146,8 +146,8 @@ class ListNodesFlags(IntFlag):
 
 
 async def _send_and_wait_request(
-    request: capnp.lib.capnp._Request,  # noqa: SLF001
-) -> capnp.lib.capnp._Response:  # noqa: SLF001
+    request: capnp.lib.capnp._Request,
+) -> capnp.lib.capnp._Response:
     """Send a request and wait for the response.
 
     The main purpose of this function is to take care of the error handling

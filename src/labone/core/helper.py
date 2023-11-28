@@ -45,7 +45,7 @@ async def ensure_capnp_event_loop() -> None:
 
 
 def request_field_type_description(
-    request: capnp.lib.capnp._Request,  # noqa: SLF001
+    request: capnp.lib.capnp._Request,
     field: str,
 ) -> str:
     """Get given `capnp` request field type description.

@@ -13,11 +13,13 @@ field of the vector data. The extra header is then followed by the data.
 from __future__ import annotations
 
 import struct
+import typing as t
 from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
 
+from labone.core.errors import SHFHeaderVersionNotSupportedError
 from labone.core.helper import CapnpCapability, VectorElementType, VectorValueType
 
 
@@ -27,6 +29,10 @@ class _HeaderVersion:
 
     major: int
     minor: int
+
+    def as_tuple(self) -> tuple[int, int]:
+        """Return the version as tuple."""
+        return self.major, self.minor
 
 
 @dataclass
@@ -101,11 +107,35 @@ class ShfResultLoggerVectorExtraHeader:
                 holdoff_errors_readout=struct.unpack("H", binary[54:56])[0],
                 holdoff_errors_spectr=struct.unpack("H", binary[56:58])[0],
             )
-        msg = str(
-            f"Unsupported extra header version: {version} for "
-            "ShfResultLoggerVectorExtraHeader",
-        )
-        raise NotImplementedError(msg)
+        raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
+
+    def to_binary(self) -> tuple[bytes, _HeaderVersion]:
+        """Pack the extra header into a binary string.
+
+        Returns:
+            The binary string representing the extra header
+            and the version of the extra header used for
+            this encoding.
+        """
+        return struct.pack(
+            "qIIddIIIIIHHHH",
+            self.timestamp,
+            self.job_id,
+            self.repetition_id,
+            self.scaling,
+            self.center_freq,
+            self.data_source,
+            self.num_samples,
+            self.num_spectr_samples,
+            self.num_averages,
+            self.num_acquired,
+            self.holdoff_errors_reslog,
+            self.holdoff_errors_readout,
+            self.holdoff_errors_spectr,
+            0,  # padding to make the number of bytes divisible by 4
+            # this is necessary because the length of the header is encoded
+            # in multiples of 4 bytes (32 bit words)
+        ), _HeaderVersion(major=0, minor=2)
 
 
 @dataclass
@@ -198,11 +228,31 @@ class ShfScopeVectorExtraHeader:
                 first_segment_index=-1,
                 num_missed_triggers=-1,
             )
-        msg = str(
-            f"Unsupported extra header version: {version} for "
-            "ShfDemodulatorVectorExtraHeader",
-        )
-        raise NotImplementedError(msg)
+        raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
+
+    def to_binary(self) -> tuple[bytes, _HeaderVersion]:
+        """Pack the extra header into a binary string.
+
+        Returns:
+            The binary string representing the extra header
+            and the version of the extra header used for
+            this encoding.
+        """
+        return struct.pack(
+            "qIBddqIIIIII",
+            self.timestamp,
+            self.timestamp_diff,
+            self.interleaved,
+            self.scaling,
+            self.center_freq,
+            self.trigger_timestamp,
+            self.input_select,
+            self.average_count,
+            self.num_segments,
+            self.num_total_segments,
+            self.first_segment_index,
+            self.num_missed_triggers,
+        ), _HeaderVersion(major=0, minor=2)
 
 
 @dataclass
@@ -303,11 +353,34 @@ class ShfDemodulatorVectorExtraHeader:
                 oscillator_source=-1,
                 signal_source=-1,
             )
-        msg = str(
-            f"Unsupported extra header version: {version} for "
-            "ShfDemodulatorVectorExtraHeader",
-        )
-        raise NotImplementedError(msg)
+        raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
+
+    def to_binary(self) -> tuple[bytes, _HeaderVersion]:
+        """Pack the extra header into a binary string.
+
+        Returns:
+            The binary string representing the extra header
+            and the version of the extra header used for
+            this encoding.
+        """
+        timebase = 2.5e-10
+        max_demod_rate = 5e7
+
+        return struct.pack(
+            "qIBBIIIIddHH",
+            self.timestamp,
+            int(self.timestamp_diff * (timebase * max_demod_rate)),
+            self.abort_config,
+            self.trigger_source,
+            self.trigger_length,
+            self.trigger_index,
+            self.trigger_tag,
+            self.awg_tag,
+            self.scaling,
+            self.center_freq,
+            self.oscillator_source,
+            self.signal_source,
+        ), _HeaderVersion(major=0, minor=2)
 
 
 ExtraHeader = Union[
@@ -515,3 +588,92 @@ def parse_shf_vector_data_struct(
         return _deserialize_shf_waveform_vector(raw_data), None
     msg = f"Unsupported vector value type: {value_type}"
     raise ValueError(msg)
+
+
+def encode_shf_vector_data_struct(
+    *,
+    data: np.ndarray | SHFDemodSample,
+    extra_header: ExtraHeader,
+) -> CapnpCapability:
+    """Encode the SHF vector data struct.
+
+    Build a capnp struct (in form of a dictionary) from data and
+    extra header to send.
+
+    Args:
+        data: The vector data.
+        extra_header: The extra header.
+
+    Returns:
+        The capnp struct to send.
+    """
+    if isinstance(extra_header, ShfScopeVectorExtraHeader):
+        if not isinstance(data, np.ndarray):
+            msg = "data must be of type np.ndarray for ShfScopeVectorExtraHeader"
+            raise TypeError(msg)
+        value_type = VectorValueType.SHF_SCOPE_VECTOR_DATA
+
+        # actually, this should be type int32, but signed int32 not supported
+        # by the LabOne type enum. Using unsigned uint32 for transmission.
+        # (This ensures the same behaviour than in LabOne)
+        vector_element_type_np: t.Any = np.uint32
+
+        data /= extra_header.scaling
+
+        # bring into format [1_real, 1_imag, 2_real, 2_imag, ...]
+        # all values as int
+        data_to_send_np = np.empty((2 * data.size,), dtype=np.int32)
+        data_to_send_np[0::2] = data.real
+        data_to_send_np[1::2] = data.imag
+
+    elif isinstance(extra_header, ShfDemodulatorVectorExtraHeader):
+        if not isinstance(data, SHFDemodSample):
+            msg = (
+                "data must be of type SHFDemodSample "
+                "for ShfDemodulatorVectorExtraHeader"
+            )
+            raise TypeError(msg)
+
+        value_type = VectorValueType.SHF_DEMODULATOR_VECTOR_DATA
+
+        # actually, this should be type int64, but signed int64 not supported
+        # by the type enum. Using unsigned uint64 for transmission.
+        # (This ensures the same behaviour than in LabOne)
+        vector_element_type_np = np.uint64
+
+        data.x = np.array(data.x / extra_header.scaling, dtype=np.int64)
+        data.y = np.array(data.y / extra_header.scaling, dtype=np.int64)
+
+        data_to_send_np = np.empty((2 * data.x.size,), dtype=np.int64)
+        data_to_send_np[0::2] = data.x
+        data_to_send_np[1::2] = data.y
+
+    else:
+        # extra_header is a ShfResultLoggerVectorExtraHeader
+        if not isinstance(data, np.ndarray):
+            msg = "data must be of type np.ndarray for ShfResultLoggerVectorExtraHeader"
+            raise TypeError(msg)
+
+        value_type = VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA
+        vector_element_type_np = data.dtype
+        data_to_send_np = data
+
+    extra_header_bytes, version = extra_header.to_binary()
+
+    # >> 2 to get 32 bit words from bytes
+    len_extra_header: int = len(extra_header_bytes) >> 2
+
+    # encoding will be incorrect, if len_extra_header is >= 2^16
+    # or minor >= 2^3 or major >= 2^5
+    extra_header_info: int = (
+        version.major << (5 + 16) | version.minor << 16 | len_extra_header
+    )
+
+    return {
+        "valueType": value_type.value,
+        "vectorElementType": VectorElementType.from_numpy_type(
+            vector_element_type_np,
+        ).value,
+        "extraHeaderInfo": extra_header_info,
+        "data": extra_header_bytes + data_to_send_np.tobytes(),
+    }
