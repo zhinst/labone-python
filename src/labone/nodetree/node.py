@@ -186,6 +186,10 @@ class NodeTreeManager:
             tree plus information about each node.
         parser: Function, which is used to parse incoming values. It may do this
             in a path-specific manner.
+        hide_kernel_prefix: Enter a trivial first path-segment automatically.
+                E.g. having the result of this function in a variable `tree`
+                `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
+                Setting this option makes working with the tree easier.
     """
 
     def __init__(
@@ -194,6 +198,7 @@ class NodeTreeManager:
         session: Session,
         path_to_info: dict[LabOneNodePath, NodeInfoType],
         parser: t.Callable[[AnnotatedValue], AnnotatedValue],
+        hide_kernel_prefix: bool = True,
     ):
         self._session = session
         self.path_to_info = path_to_info
@@ -219,29 +224,13 @@ class NodeTreeManager:
             paths_as_segments,
         )  # type: ignore[assignment]
 
-    def construct_nodetree(
-        self,
-        *,
-        hide_kernel_prefix: bool = True,
-    ) -> Node:
-        """Create the root-node of the tree.
-
-        Args:
-            hide_kernel_prefix: Enter a trivial first path-segment automatically.
-                E.g. having the result of this function in a variable `tree`
-                `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
-                Setting this option makes working with the tree easier.
-
-        Returns:
-            Root-node of the tree.
-        """
         has_common_prefix = len(self._partially_explored_structure.keys()) == 1
 
         if not hide_kernel_prefix or not has_common_prefix:
-            return self.path_segments_to_node(())
-
-        common_prefix = next(iter(self._partially_explored_structure.keys()))
-        return self.path_segments_to_node((common_prefix,))
+            self._root_prefix = ()
+        else:
+            common_prefix = next(iter(self._partially_explored_structure.keys()))
+            self._root_prefix = (common_prefix,)
 
     def find_substructure(
         self,
@@ -382,6 +371,19 @@ class NodeTreeManager:
     def session(self) -> Session:
         """Underlying Session to the server."""
         return self._session
+
+    @property
+    def root(self) -> Node:
+        """Create the root-node of the tree.
+
+        Depending on the hide_kelnel_prefix-setting of the
+        NodeTreeManager, the root will either be '/' or
+        the directly entered device, like '/dev1234'
+
+        Returns:
+            Root-node of the tree.
+        """
+        return self.path_segments_to_node(self._root_prefix)
 
 
 class MetaNode(ABC):
@@ -1146,10 +1148,14 @@ class Node(MetaNode, ABC):
     def root(self) -> Node:
         """Providing root node.
 
+        Depending on the hide_kelnel_prefix-setting of the
+        NodeTreeManager, the root will either be '/' or
+        the directly entered device, like '/dev1234'
+
         Returns:
             Root of the tree structure, this node is part of.
         """
-        return self.tree_manager.path_segments_to_node(())
+        return self.tree_manager.root
 
 
 class LeafNode(Node):

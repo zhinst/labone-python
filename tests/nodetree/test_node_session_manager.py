@@ -30,22 +30,33 @@ class TestNodeTreeManager:
             prefix_mock.assert_called_once_with([["a", "b", "c"]])
 
     @pytest.mark.parametrize(
-        ("explored_structure", "hide_kernel_prefix", "expected_prefix"),
+        ("paths", "hide_kernel_prefix", "expected_prefix"),
         [
-            ({"a": [], "b": []}, False, ()),
-            ({"a": ["/b/c", "/e"], "x": []}, True, ()),
-            ({"a": ["/b/c", "/e"]}, True, ("a",)),
-            ({"a": ["/b/c", "/e"]}, False, ()),
+            (["/a", "/b"], False, ()),
+            (["/a/b/c", "/a/e", "/x"], True, ()),
+            (["/a/b/c", "/a/e"], True, ("a",)),
+            (["a/b/c", "/a/e"], False, ()),
         ],
     )
-    def test_construct_nodetree(
+    def test_init_root_prefix(
         self,
-        explored_structure,
+        paths,
         hide_kernel_prefix,
         expected_prefix,
     ):
+        manager = NodeTreeManager(
+            session="session",
+            parser="parser",
+            path_to_info={p: {} for p in paths},
+            hide_kernel_prefix=hide_kernel_prefix,
+        )
+        assert manager._root_prefix == expected_prefix
+
+    def test_construct_nodetree(
+        self,
+    ):
         manager = MockNodeTreeManager()
-        manager._partially_explored_structure = explored_structure
+        manager._root_prefix = "root_prefix"
 
         with patch.object(
             NodeTreeManager,
@@ -53,8 +64,8 @@ class TestNodeTreeManager:
             autospec=True,
             return_value="node",
         ) as patch_path_to_node:
-            result = manager.construct_nodetree(hide_kernel_prefix=hide_kernel_prefix)
-            patch_path_to_node.assert_called_once_with(manager, expected_prefix)
+            result = manager.root
+            patch_path_to_node.assert_called_once_with(manager, "root_prefix")
             assert result == "node"
 
     @pytest.mark.parametrize(
