@@ -722,6 +722,17 @@ class TestSessionSubscribe:
                 extra_header=None,
             )
 
+    @pytest.mark.asyncio()
+    async def test_subscribe_get_initial(self, mock_connection):
+        path = "/dev1234/demods/0/sample"
+        subscription_server = self.SubscriptionServer()
+        mock_connection.server.subscribe.side_effect = subscription_server.subscribe
+        mock_connection.session.get = AsyncMock(return_value=AnnotatedValue(value=1, path=path))
+        queue = await mock_connection.session.subscribe(path, get_initial_value=True)
+        
+        assert queue.qsize() == 1
+        assert queue.get_nowait() == AnnotatedValue(value=1, path=path)
+
 
 class BrokenSessionBootstrap(session_protocol_capnp.Session.Server):
     """A bootstrap of `labone.core.resource.session_protocol.Session` Server"""

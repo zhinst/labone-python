@@ -112,6 +112,7 @@ class Session(t.Protocol):
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: type[QueueProtocol],
+        get_initial_value: bool,
     ) -> QueueProtocol:
         """Register a new subscription to a node."""
         ...
