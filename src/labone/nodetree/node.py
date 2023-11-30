@@ -227,7 +227,7 @@ class NodeTreeManager:
         has_common_prefix = len(self._partially_explored_structure.keys()) == 1
 
         if not hide_kernel_prefix or not has_common_prefix:
-            self._root_prefix = ()
+            self._root_prefix: tuple[str, ...] = ()
         else:
             common_prefix = next(iter(self._partially_explored_structure.keys()))
             self._root_prefix = (common_prefix,)
@@ -1095,20 +1095,24 @@ class Node(MetaNode, ABC):
         ...
 
     @t.overload
-    async def subscribe(self) -> DataQueue:
+    async def subscribe(self, *, get_initial_value: bool) -> DataQueue:
         ...
 
     @t.overload
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol],
+        get_initial_value: bool,
     ) -> QueueProtocol:
         ...
 
     @abstractmethod
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol] | None = None,
+        get_initial_value: bool = False,
     ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 
@@ -1138,6 +1142,8 @@ class Node(MetaNode, ABC):
                 any class matching the DataQueue interface. Only needed if the
                 default DataQueue class is not sufficient. If None is passed
                 the default DataQueue class is used. (default=None)
+            get_initial_value: If True, the initial value of the node is
+                is placed in the queue. (default=False)
 
         Returns:
             A DataQueue, which can be used to receive any changes to the node in a
@@ -1231,19 +1237,23 @@ class LeafNode(Node):
         raise LabOneInvalidPathError(msg)
 
     @t.overload
-    async def subscribe(self) -> DataQueue:
+    async def subscribe(self, *, get_initial_value: bool) -> DataQueue:
         ...
 
     @t.overload
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol],
+        get_initial_value: bool,
     ) -> QueueProtocol:
         ...
 
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol] | None = None,
+        get_initial_value: bool = False,
     ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 
@@ -1271,6 +1281,9 @@ class LeafNode(Node):
                 default DataQueue class is not sufficient. If None is passed
                 the default DataQueue class is used. (default=None)
 
+            get_initial_value: If True, the initial value of the node is
+                is placed in the queue. (default=False)
+
         Returns:
             A DataQueue, which can be used to receive any changes to the node in a
             flexible manner.
@@ -1279,6 +1292,7 @@ class LeafNode(Node):
             self.path,
             parser_callback=self._tree_manager.parser,
             queue_type=queue_type or DataQueue,
+            get_initial_value=get_initial_value,
         )
 
     async def wait_for_state_change(
@@ -1398,19 +1412,27 @@ class WildcardOrPartialNode(Node, ABC):
         ...
 
     @t.overload
-    async def subscribe(self) -> DataQueue:
+    async def subscribe(
+        self,
+        *,
+        get_initial_value: bool,
+    ) -> DataQueue:
         ...
 
     @t.overload
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol],
+        get_initial_value: bool,
     ) -> QueueProtocol:
         ...
 
     async def subscribe(
         self,
+        *,
         queue_type: type[QueueProtocol] | None = None,  # noqa: ARG002
+        get_initial_value: bool = False,  # noqa: ARG002
     ) -> QueueProtocol | DataQueue:
         """Subscribe to a node.
 

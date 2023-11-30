@@ -592,7 +592,8 @@ class Session:
         path: LabOneNodePath,
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-        queue_type: None,
+        queue_type: None = None,
+        get_initial_value: bool,
     ) -> DataQueue:
         ...
 
@@ -603,6 +604,7 @@ class Session:
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: type[QueueProtocol],
+        get_initial_value: bool,
     ) -> QueueProtocol:
         ...
 
@@ -612,6 +614,7 @@ class Session:
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: type[QueueProtocol] | None = None,
+        get_initial_value: bool = False,
     ) -> QueueProtocol | DataQueue:
         """Register a new subscription to a node.
 
@@ -640,6 +643,8 @@ class Session:
                 any class matching the DataQueue interface. Only needed if the
                 default DataQueue class is not sufficient. If None is passed
                 the default DataQueue class is used. (default=None)
+            get_initial_value: If True, the initial value of the node is
+                is placed in the queue. (default=False)
 
         Returns:
             An instance of the DataQueue class. This async queue will receive
@@ -675,13 +680,26 @@ class Session:
             raise TypeError(msg) from None
         request = self._session.subscribe_request()
         request.subscription = subscription
-        response = await _send_and_wait_request(request)
+
+        if get_initial_value:
+            response, initial_value = await asyncio.gather(
+                _send_and_wait_request(request),
+                self.get(path),
+            )
+        else:
+            response = await _send_and_wait_request(request)
+            initial_value = None
+
         unwrap(response.result)  # Result(Void, Error)
         new_queue_type = queue_type or DataQueue
-        return new_queue_type(
+        queue = new_queue_type(
             path=path,
             register_function=streaming_handle.register_data_queue,
         )
+        if initial_value is not None:
+            queue.put_nowait(initial_value)
+        return queue
+
 
     @property
     def reflection_server(self) -> ReflectionServer:
