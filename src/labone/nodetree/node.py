@@ -1313,36 +1313,11 @@ class LeafNode(Node):
                 any value except the passed value. (default = False)
                 Useful when waiting for value to change from existing one.
         """
-        # order important so that no update can happen unseen by the queue after
-        # regarding the current state
-        queue, initial_state = await asyncio.gather(self.subscribe(), self())
-
-        # correct value right at the beginning
-        if (value == initial_state.value) ^ invert:
-            return
-
-        await self._wait_for_state_change_loop(queue, value=value, invert=invert)
-
-    @staticmethod
-    async def _wait_for_state_change_loop(
-        queue: DataQueue,
-        value: int | str | NodeEnum,
-        *,
-        invert: bool = False,
-    ) -> None:
-        """Loop, which waits for a state change.
-
-        Args:
-            queue: Queue, which is used to receive updates.
-            value: Expected value of the node.
-            invert: Instead of waiting for the value, the function will wait for
-                any value except the passed value. (default = False)
-                Useful when waiting for value to change from existing one.
-        """
-        while True:
-            new_value: AnnotatedValue = await queue.get()
-            if (value == new_value.value) ^ invert:  # pragma: no cover
-                return
+        await self._tree_manager.session.wait_for_state_change(
+            self.path,
+            value,
+            invert=invert,
+        )
 
     @cached_property
     def node_info(self) -> NodeInfo:

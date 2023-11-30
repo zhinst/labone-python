@@ -117,6 +117,16 @@ class Session(t.Protocol):
         """Register a new subscription to a node."""
         ...
 
+    async def wait_for_state_change(
+        self,
+        path: LabOneNodePath,
+        value: int,
+        *,
+        invert: bool = False,
+    ) -> None:
+        """Waits until the node has the expected state/value."""
+        ...
+
 
 class UndefinedStructure(dict):
     """A tree-structure allowing all kinds of indexation."""

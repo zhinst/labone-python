@@ -806,74 +806,42 @@ class TestLeafNode:
             "path",
             parser_callback=node._tree_manager.parser,
             queue_type=DataQueue,
+            get_initial_value=False,
         )
 
-    @pytest.mark.parametrize(
-        ("target_value", "current_value", "invert", "expect_early_termination"),
-        [
-            (1, 1, False, True),
-            (1, 1, True, False),
-            (1, 2, False, False),
-            (2, 1, False, False),
-            (1, 2, True, True),
-        ],
-    )
     @pytest.mark.asyncio()
-    async def test_wait_for_state_change(
-        self,
-        target_value,
-        current_value,
-        invert,
-        expect_early_termination,
-    ):
+    async def test_subscribe_initial_value(self, mock_path):
         node = MockLeafNode(())
-        node.subscribe = Mock(return_value=_get_future("queue"))
-        future = _get_future(AnnotatedValue(path="path", value=current_value))
+        node._tree_manager = create_autospec(NodeTreeManager)
+        node._tree_manager._parser = create_autospec(lambda x: x)
+        node._tree_manager.parser.return_value = "parser"
+        node._tree_manager._session = create_autospec(Session)
+        node._tree_manager.session.subscribe.return_value = _get_future(
+            "subscribe_response",
+        )
 
-        with patch(
-            "labone.nodetree.node.LeafNode._wait_for_state_change_loop",
-            autospec=True,
-        ) as loop_patch, patch(
-            "labone.nodetree.node.Node.__call__",
-            MagicMock(return_value=future),
-        ) as call_patch:
-            await node.wait_for_state_change(value=target_value, invert=invert)
+        await node.subscribe(get_initial_value=True)
 
-            call_patch.assert_called_once_with()
-            node.subscribe.assert_called_once_with()
+        mock_path.assert_called_once_with()
+        node._tree_manager.session.subscribe.assert_called_once_with(
+            "path",
+            parser_callback=node._tree_manager.parser,
+            queue_type=DataQueue,
+            get_initial_value=True,
+        )
 
-            if expect_early_termination:
-                loop_patch.assert_not_called()
-            else:
-                loop_patch.assert_called_once_with(
-                    "queue",
-                    value=target_value,
-                    invert=invert,
-                )
-
-    @pytest.mark.parametrize(
-        ("target_value", "in_pipe", "invert", "nr_expected_calls"),
-        [
-            (1, [1], False, 1),
-            (1, [1, 2, 3], False, 1),
-            (1, [4, 2, 1], False, 3),
-            (2, [2, 2, 2, 4, 2], True, 4),
-        ],
-    )
     @pytest.mark.asyncio()
-    async def test_wait_for_state_change_loop(
-        self,
-        target_value,
-        in_pipe,
-        invert,
-        nr_expected_calls,
-    ):
+    async def test_wait_for_state_change(self):
         node = MockLeafNode(())
-        queue = create_autospec(DataQueue)
-        queue.get.side_effect = [AnnotatedValue(value=i, path="/") for i in in_pipe]
+        node._tree_manager = MagicMock(spec=NodeTreeManager)
+        node._tree_manager.session = MagicMock(spec=Session)
+        await node.wait_for_state_change(value=1, invert=True)
 
-        await node._wait_for_state_change_loop(queue, target_value, invert=invert)
-        queue.get.call_count = nr_expected_calls
+        node._tree_manager.session.wait_for_state_change.assert_awaited_once_with(
+            "/",
+            1,
+            invert=True,
+        )
 
     def test_node_info(self, mock_path, zi_structure):
         node = MockLeafNode(())
