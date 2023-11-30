@@ -449,15 +449,7 @@ def _http_get_info_request(
         else None
     )
     if response.status >= HTTPStatus.MULTIPLE_CHOICES:
-        try:
-            _raise_connection_error(response.status, response_info)
-        except errors.UnavailableError as err:
-            # this should not happen as the api level is fixed to be 6
-            msg = (
-                f"The server at {host}:{port} is not compatible with the LabOne API. "
-                "Please update LabOne to the latest version."
-            )
-            raise errors.UnavailableError(msg) from err
+        _raise_connection_error(response.status, response_info)
     # Update the capability version of the kernel info
     capability_version_raw = response.headers.get("Zhinst-Kernel-Version", None)
     kernel_info_extended = kernel_info.with_capability_version(
