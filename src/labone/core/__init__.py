@@ -7,10 +7,13 @@ a python only interface to the rest of the API.
 from labone.core.connection_layer import DeviceKernelInfo, ServerInfo, ZIKernelInfo
 from labone.core.kernel_session import KernelSession
 from labone.core.session import ListNodesFlags, ListNodesInfoFlags, Session
+from labone.core.subscription import CircularDataQueue, DistinctConsecutiveDataQueue
 from labone.core.value import AnnotatedValue
 
 __all__ = [
     "AnnotatedValue",
+    "CircularDataQueue",
+    "DistinctConsecutiveDataQueue",
     "Session",
     "KernelSession",
     "ListNodesFlags",

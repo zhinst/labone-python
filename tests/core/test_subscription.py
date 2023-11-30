@@ -7,6 +7,7 @@ from labone.core import errors
 from labone.core.subscription import (
     CircularDataQueue,
     DataQueue,
+    DistinctConsecutiveDataQueue,
     streaming_handle_factory,
 )
 from labone.core.value import AnnotatedValue
@@ -305,6 +306,50 @@ async def test_streaming_handle_update_disconnect(reflection_server):
     values.append(value)
     with pytest.raises(capnp.KjException):
         await streaming_handle.sendValues(values)
+
+
+@pytest.mark.asyncio()
+async def test_distinct_data_queue_put_no_wait_new_value():
+    subscription = FakeSubscription()
+    queue = DistinctConsecutiveDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    value1 = AnnotatedValue(value=1, path="dummy")
+    value2 = AnnotatedValue(value=2, path="dummy")
+    queue.put_nowait(value1)
+    queue.put_nowait(value2)
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == value1
+    assert queue.get_nowait() == value2
+
+
+@pytest.mark.asyncio()
+async def test_distinct_data_queue_put_no_wait_same_value():
+    subscription = FakeSubscription()
+    queue = DistinctConsecutiveDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    value = AnnotatedValue(value=1, path="dummy")
+    queue.put_nowait(value)
+    queue.put_nowait(value)
+    assert queue.qsize() == 1
+    assert queue.get_nowait() == value
+
+
+def test_distinct_data_queue_fork():
+    subscription = FakeSubscription()
+    queue = DistinctConsecutiveDataQueue(
+        path="dummy",
+        register_function=subscription.register_data_queue,
+    )
+    assert len(subscription.data_queues) == 1
+    forked_queue = queue.fork()
+    assert isinstance(forked_queue, DistinctConsecutiveDataQueue)
+    assert len(subscription.data_queues) == 2
+    assert forked_queue.path == queue.path
+    assert forked_queue.connected
 
 
 @pytest.mark.asyncio()
