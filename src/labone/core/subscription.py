@@ -313,6 +313,89 @@ class CircularDataQueue(DataQueue):
         )
 
 
+class DistinctConsecutiveDataQueue(DataQueue):
+    """data queue that only accepts values that changed.
+
+    This data queue is identical to the DataQueue, with the exception that it
+    will accept new values that have a different value than the last value.
+
+    Args:
+        path: Path of the subscribed node.
+        register_function: Function to register this queue in the underlying
+            subscription handle.
+    """
+
+    def __init__(
+        self,
+        *,
+        path: LabOneNodePath,
+        register_function: t.Callable[[weakref.ReferenceType[DataQueue]], None],
+    ) -> None:
+        DataQueue.__init__(
+            self,
+            path=path,
+            register_function=register_function,
+        )
+        self._last_value = AnnotatedValue(value=None, path="unkown")
+
+    def put_nowait(self, item: AnnotatedValue) -> None:
+        """Put an item into the queue without blocking.
+
+        If the queue is full the oldest item will be removed and the new item
+        will be added to the end of the queue.
+
+        Args:
+            item: The item to the put in the queue.
+
+        Raises:
+            StreamingError: If the data queue has been disconnected.
+        """
+        if item.value != self._last_value.value:
+            DataQueue.put_nowait(self, item)
+            self._last_value = item
+
+    @t.overload
+    def fork(self, queue_type: None) -> CircularDataQueue:
+        ...
+
+    @t.overload
+    def fork(
+        self,
+        queue_type: type[QueueProtocol],
+    ) -> QueueProtocol:
+        ...
+
+    def fork(
+        self,
+        queue_type: type[QueueProtocol] | None = None,
+    ) -> CircularDataQueue | QueueProtocol:
+        """Create a fork of the subscription.
+
+        The forked subscription will receive all updates that the original
+        subscription receives. Its connection state is independent of the original
+        subscription, meaning even if the original subscription is disconnected,
+        the forked subscription will still receive updates.
+
+        Warning:
+            The forked subscription will not contain any values before the fork.
+
+        Args:
+            queue_type: The type of the queue to be returned. This can be
+                any class matching the DataQueue interface. Only needed if the
+                default DataQueue class is not sufficient. If None is passed
+                the default DataQueue class is used. (default=None)
+
+        Returns:
+            A new data queue to the same underlying subscription.
+        """
+        return DataQueue.fork(
+            self,
+            queue_type=queue_type
+            if queue_type is not None
+            else DistinctConsecutiveDataQueue,
+        )
+
+
 class StreamingHandle(ABC):
     """Streaming Handle server.
 
