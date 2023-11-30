@@ -39,6 +39,7 @@ def test_data_queue_maxsize_to_low():
     subscription = FakeSubscription()
     queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
     queue.put_nowait("test")
+    queue.put_nowait("test")
     queue.maxsize = 2
     with pytest.raises(errors.StreamingError):
         queue.maxsize = 1

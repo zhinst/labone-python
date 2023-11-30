@@ -8,8 +8,9 @@ import socket
 import traceback
 import typing
 from dataclasses import dataclass, field
+from itertools import cycle
 from typing import Any, Callable
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import capnp
 import pytest
@@ -23,6 +24,7 @@ from labone.core.session import (
     ListNodesInfoFlags,
     _send_and_wait_request,
 )
+from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue
 
 from .resources import session_protocol_capnp, testfile_capnp, value_capnp
@@ -727,11 +729,81 @@ class TestSessionSubscribe:
         path = "/dev1234/demods/0/sample"
         subscription_server = self.SubscriptionServer()
         mock_connection.server.subscribe.side_effect = subscription_server.subscribe
-        mock_connection.session.get = AsyncMock(return_value=AnnotatedValue(value=1, path=path))
+        mock_connection.session.get = AsyncMock(
+            return_value=AnnotatedValue(value=1, path=path),
+        )
         queue = await mock_connection.session.subscribe(path, get_initial_value=True)
-        
+
         assert queue.qsize() == 1
         assert queue.get_nowait() == AnnotatedValue(value=1, path=path)
+
+
+class TestSessionWaitForStateChange:
+    def create_queue(self, value, path):
+        queue = MagicMock(spec=DataQueue)
+        value = iter(cycle([value])) if isinstance(value, int) else iter(value)
+
+        async def mock_queue_get():
+            await asyncio.sleep(0.01)
+            return AnnotatedValue(value=next(value), path=path)
+
+        queue.get.side_effect = mock_queue_get
+        return queue
+
+    @pytest.mark.asyncio()
+    async def test_wait_for_state_change_already_correct(self, mock_connection):
+        path = "/foo/bar"
+
+        mock_connection.session.subscribe = AsyncMock(
+            return_value=self.create_queue(1, path),
+        )
+
+        await asyncio.wait_for(
+            mock_connection.session.wait_for_state_change("/foo/bar", 1),
+            0.1,
+        )
+
+        mock_connection.session.subscribe.assert_called_once_with(
+            path,
+            get_initial_value=True,
+        )
+
+    @pytest.mark.asyncio()
+    async def test_wait_for_state_change_timeout(self, mock_connection):
+        path = "/foo/bar"
+
+        mock_connection.session.subscribe = AsyncMock(
+            return_value=self.create_queue(999, path),
+        )
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                mock_connection.session.wait_for_state_change("/foo/bar", 1),
+                0.1,
+            )
+
+        mock_connection.session.subscribe.assert_called_once_with(
+            path,
+            get_initial_value=True,
+        )
+
+    @pytest.mark.asyncio()
+    async def test_wait_for_state_change_ok(self, mock_connection):
+        path = "/foo/bar"
+
+        mock_connection.session.subscribe = AsyncMock(
+            return_value=self.create_queue([0, 0, 1], path),
+        )
+
+        await asyncio.wait_for(
+            mock_connection.session.wait_for_state_change("/foo/bar", 1),
+            0.1,
+        )
+
+        mock_connection.session.subscribe.assert_called_once_with(
+            path,
+            get_initial_value=True,
+        )
 
 
 class BrokenSessionBootstrap(session_protocol_capnp.Session.Server):

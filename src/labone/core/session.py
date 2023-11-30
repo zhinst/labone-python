@@ -15,6 +15,7 @@ to the same capability.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import typing as t
 import uuid
@@ -686,20 +687,50 @@ class Session:
                 _send_and_wait_request(request),
                 self.get(path),
             )
-        else:
-            response = await _send_and_wait_request(request)
-            initial_value = None
-
+            unwrap(response.result)  # Result(Void, Error)
+            new_queue_type = queue_type or DataQueue
+            queue = new_queue_type(
+                path=path,
+                register_function=streaming_handle.register_data_queue,
+            )
+            queue.put_nowait(initial_value)
+            return queue
+        response = await _send_and_wait_request(request)
         unwrap(response.result)  # Result(Void, Error)
         new_queue_type = queue_type or DataQueue
-        queue = new_queue_type(
+        return new_queue_type(
             path=path,
             register_function=streaming_handle.register_data_queue,
         )
-        if initial_value is not None:
-            queue.put_nowait(initial_value)
-        return queue
 
+    async def wait_for_state_change(
+        self,
+        path: LabOneNodePath,
+        value: int,
+        *,
+        invert: bool = False,
+    ) -> None:
+        """Waits until the node has the expected state/value.
+
+        Warning:
+            Only supports integer and keyword nodes. (The value can either be the value
+            or its corresponding enum value as string)
+
+        Args:
+            path: LabOne node path.
+            value: Expected value of the node.
+            invert: Instead of waiting for the value, the function will wait for
+                any value except the passed value. (default = False)
+                Useful when waiting for value to change from existing one.
+        """
+        # order important so that no update can happen unseen by the queue after
+        # reading the current state
+        queue = await self.subscribe(path, get_initial_value=True)
+
+        # block until value is correct
+        node_value = await queue.get()
+        while (value != node_value.value) ^ invert:  # pragma: no cover
+            node_value = await queue.get()
 
     @property
     def reflection_server(self) -> ReflectionServer:

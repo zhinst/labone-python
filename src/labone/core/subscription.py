@@ -221,10 +221,10 @@ class DataQueue(asyncio.Queue):
                 "Changing the maxsize will not have any effect.",
             )
             raise errors.StreamingError(msg)
-        if self.qsize() >= maxsize:
+        if self.qsize() > maxsize:
             msg = str(
-                "The new maxsize is smaller or equal than the current qsize. "
-                "This can result in potential data loss and is forbidden.",
+                "The new maxsize is smaller than the current qsize. "
+                "This results in data loss and is forbidden.",
             )
             raise errors.StreamingError(msg)
         self._maxsize = maxsize
@@ -314,7 +314,7 @@ class CircularDataQueue(DataQueue):
 
 
 class DistinctConsecutiveDataQueue(DataQueue):
-    """data queue that only accepts values that changed.
+    """Data queue that only accepts values which have changed.
 
     This data queue is identical to the DataQueue, with the exception that it
     will accept new values that have a different value than the last value.
