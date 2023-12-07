@@ -11,16 +11,24 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import typing as t
+from functools import lru_cache
 
 import capnp
 
 from labone.core.errors import UnavailableError
-from labone.core.helper import ensure_capnp_event_loop
+from labone.core.helper import (
+    CapnpCapability,
+    CapnpStructBuilder,
+    CapnpStructReader,
+    ensure_capnp_event_loop,
+)
 from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
     reflection_capnp,
 )
 from labone.core.reflection.capnp_dynamic_type_system import build_type_system
 from labone.core.reflection.parsed_wire_schema import EncodedSchema, ParsedWireSchema
+from labone.core.result import unwrap
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +36,7 @@ SNAKE_CASE_REGEX_1 = re.compile(r"(.)([A-Z][a-z]+)")
 SNAKE_CASE_REGEX_2 = re.compile(r"([a-z0-9])([A-Z])")
 
 
+@lru_cache(maxsize=None)
 def _to_snake_case(word: str) -> str:
     """Convert camel case to snake case.
 
@@ -39,6 +48,12 @@ def _to_snake_case(word: str) -> str:
     """
     s1 = SNAKE_CASE_REGEX_1.sub(r"\1_\2", word)
     return SNAKE_CASE_REGEX_2.sub(r"\1_\2", s1).lower()
+
+
+@lru_cache(maxsize=None)
+def _to_camel_case(word: str) -> str:
+    temp = word.split("_")
+    return temp[0] + "".join(ele.title() for ele in temp[1:])
 
 
 async def _fetch_encoded_schema(
@@ -71,6 +86,209 @@ async def _fetch_encoded_schema(
     return bootstrap_capability_id, server_schema
 
 
+def _maybe_unwrap(maybe_result: CapnpStructReader) -> CapnpStructReader:
+    """Unwrap the result of an rpc call if possible.
+
+    Most rpc calls return a result object. This function unwraps the result
+    object if possible. If the result object is a list, then the function
+    unwraps every element of the list.
+
+    Unwrapping means that the result object is replaced by the result of the
+    call. If the call was successful, then the result is returned. If the call
+    failed, then the corresponding exception is raised.
+
+    Args:
+        maybe_result: The result of an rpc call.
+
+    Returns:
+        The unwrapped result.
+
+    Raises:
+        LabOneCancelledError: The request was cancelled.
+        NotFoundError: The requested value or node was not found.
+        OverwhelmedError: The server is overwhelmed.
+        BadRequestError: The request could not be interpreted.
+        UnimplementedError: The request is not implemented.
+        InternalError: An internal error occurred.
+        UnavailableError: The device is unavailable.
+        LabOneTimeoutError: A timeout occurred on the server.
+    """
+    if len(maybe_result.schema.fields_list) != 1 or not hasattr(maybe_result, "result"):
+        # For now we just do not handle this case ... Normally we have a single
+        # result or a list of results called result
+        return maybe_result
+    result = maybe_result.result
+    if isinstance(result, capnp.lib.capnp._DynamicListReader):  # noqa: SLF001
+        return [unwrap(item) for item in result]  # pragma: no cover
+    return unwrap(result)
+
+
+def _maybe_wrap_interface(maybe_capability: CapnpStructReader) -> CapnpStructReader:
+    """Wrap the result of an rpc call in the CapabilityWrapper if possible.
+
+    Some rpc calls return a new capability. In order to unwrap the result of
+    the new capability, it needs to be wrapped in the CapabilityWrapper.
+
+    Args:
+        maybe_capability: The result of an rpc call.
+
+    Returns:
+        The wrapped result.
+    """
+    if isinstance(
+        maybe_capability,
+        capnp.lib.capnp._DynamicCapabilityClient,  # noqa: SLF001
+    ):
+        return CapabilityWrapper(maybe_capability)
+    return maybe_capability
+
+
+class RequestWrapper:
+    """Wrapper around a capnp request.
+
+    This class is used to wrap a capnp request. Its main purpose is to
+    automatically unwrap the result of the request.
+
+    In addition it allows to access the attributes of the request in snake case.
+    Since the default in Capnp is camel case, this is a bit more pythonic.
+
+    Args:
+        request: The capnp request to wrap.
+    """
+
+    def __init__(self, request: CapnpStructBuilder):
+        object.__setattr__(self, "_request", request)
+
+    async def send(self) -> CapnpStructReader:
+        """Send the request via capnp and unwrap the result.
+
+        This functions mimics the capnp send function. In addition it unwraps
+        the result of the request.
+
+        Returns:
+            The unwrapped result of the request.
+        """
+        return _maybe_wrap_interface(
+            _maybe_unwrap(await object.__getattribute__(self, "_request").send()),
+        )
+
+    def __getattr__(self, name: str):  # noqa: ANN204
+        return getattr(
+            object.__getattribute__(self, "_request"),
+            _to_camel_case(name),
+        )
+
+    def __setattr__(self, name: str, value) -> None:  # noqa: ANN001
+        setattr(
+            object.__getattribute__(self, "_request"),
+            _to_camel_case(name),
+            value,
+        )
+
+    def __dir__(self) -> set[str]:
+        original_dir = dir(object.__getattribute__(self, "_request"))
+        snake_case_version = [
+            _to_snake_case(name) for name in original_dir if not name.startswith("_")
+        ]
+        return set(snake_case_version + original_dir)
+
+
+class CapabilityWrapper:
+    """Wrapper around a capnp capability.
+
+    This class is used to wrap a capnp capability. Its main purpose is to
+    automatically unwrap the result of the requests.
+
+    In addition it allows to access the attributes of the capability in snake
+    case. Since the default in Capnp is camel case, this is a bit more pythonic.
+
+    Args:
+    capability: The capnp capability to wrap.
+    """
+
+    def __init__(self, capability: CapnpCapability):
+        self._capability = capability
+
+    def _send_wrapper(self, func_name: str) -> t.Callable[..., CapnpStructReader]:
+        """Wrap the send function of the capability.
+
+        This function wraps the send function of the capability. It is used to
+        automatically unwrap the result of the request.
+
+        In pycapnp all rpc calls are done through the send function. It takes
+        the name of the function to call as the first argument and calls the right
+        function on the server. The result of the call is returned as a capnp
+        struct.
+
+        Args:
+            func_name: Name of the function to wrap.
+
+        Returns:
+            The wrapped function.
+        """
+
+        async def wrapper(*args, **kwargs) -> CapnpStructReader:
+            """Generic capnp rpc call."""
+            return _maybe_wrap_interface(
+                _maybe_unwrap(
+                    await self._capability._send(  # noqa: SLF001
+                        func_name,
+                        *args,
+                        **kwargs,
+                    ),
+                ),
+            )
+
+        return wrapper
+
+    def _request_wrapper(
+        self,
+        func_name: str,
+    ) -> t.Callable[..., RequestWrapper | CapnpStructBuilder]:
+        """Wrap the request function of the capability.
+
+        This function wraps the request function of the capability. It is used
+        to automatically unwrap the result of the request.
+
+        A request is a capnp struct that exposes all the attributes of the
+        request. The request is sent to the server by calling the `send`
+        function. The result of the call is returned as a capnp struct.
+
+        Args:
+            func_name: Name of the function to wrap.
+
+        Returns:
+            The wrapped function.
+        """
+
+        def wrapper(
+            *,
+            apply_wrapper: bool = True,
+        ) -> RequestWrapper | CapnpStructBuilder:
+            """Create a capnp rpc request."""
+            capnp_request = self._capability._request(func_name)  # noqa: SLF001
+            return RequestWrapper(capnp_request) if apply_wrapper else capnp_request
+
+        return wrapper
+
+    def __getattr__(self, name: str):  # noqa: ANN204
+        if name.endswith("_request"):
+            name_converted = _to_camel_case(name[:-8])
+            if name_converted in self._capability.schema.method_names_inherited:
+                return self._request_wrapper(name_converted)
+        name_converted = _to_camel_case(name)
+        if name_converted in self._capability.schema.method_names_inherited:
+            return self._send_wrapper(name_converted)
+        return getattr(self._capability, name)
+
+    def __dir__(self) -> set[str]:
+        original_dir = dir(self._capability)
+        snake_case_version = [
+            _to_snake_case(name) for name in original_dir if not name.startswith("_")
+        ]
+        return set(snake_case_version + original_dir)
+
+
 class ReflectionServer:
     """Basic dynamic reflection server.
 
@@ -88,18 +306,25 @@ class ReflectionServer:
         client: Basic capnp client.
         encoded_schema: The encoded schema of the server.
         bootstrap_capability_id: The id of the bootstrap capability.
+        unwrap_result: Flag if results should be unwrapped. Most rpc calls
+            return a result object. If this flag is the result of these
+            calls will be unwrapped with `labone.core.result.unwrap()`.
+            For more information see the documentation of the `unwrap()`.
+            (default: True)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         connection: capnp.AsyncIoStream,
         client: capnp.TwoPartyClient,
-        encoded_schema: bytes,
+        encoded_schema: EncodedSchema,
         bootstrap_capability_id: int,
+        unwrap_result: bool = True,
     ) -> None:
         self._connection = connection
         self._client = client
+        self._unwrap_result = unwrap_result
         self._parsed_schema = ParsedWireSchema(encoded_schema)
         build_type_system(self._parsed_schema.full_schema, self)
 
@@ -110,10 +335,14 @@ class ReflectionServer:
             bootstrap_capability_id
         ].name
         instance_name = _to_snake_case(bootstrap_capability_name)
+
+        capability = self._client.bootstrap().cast_as(
+            getattr(self, bootstrap_capability_name),
+        )
         setattr(
             self,
             instance_name,
-            self._client.bootstrap().cast_as(getattr(self, bootstrap_capability_name)),
+            CapabilityWrapper(capability) if unwrap_result else capability,
         )
 
         logger.info(
@@ -159,28 +388,49 @@ class ReflectionServer:
             )
 
     @staticmethod
-    async def create(host: str, port: int) -> ReflectionServer:
+    async def create(
+        host: str,
+        port: int,
+        *,
+        unwrap_result: bool = True,
+    ) -> ReflectionServer:
         """Connect to a reflection server.
 
         Args:
             host: Host of the server.
             port: Port of the server.
+            unwrap_result: Flag if results should be unwrapped. Most rpc calls
+                return a result object. If this flag is the result of these
+                calls will be unwrapped with `labone.core.result.unwrap()`.
+                For more information see the documentation of the `unwrap()`.
+                (default: True)
+
 
         Returns:
             The reflection server instance.
         """
         await ensure_capnp_event_loop()
         connection = await capnp.AsyncIoStream.create_connection(host=host, port=port)
-        return await ReflectionServer.create_from_connection(connection)
+        return await ReflectionServer.create_from_connection(
+            connection,
+            unwrap_result=unwrap_result,
+        )
 
     @staticmethod
     async def create_from_connection(
         connection: capnp.AsyncIoStream,
+        *,
+        unwrap_result: bool = True,
     ) -> ReflectionServer:
         """Create a reflection server from an existing connection.
 
         Args:
             connection: Raw capnp asyncio stream for the connection to the server.
+            unwrap_result: Flag if results should be unwrapped. Most rpc calls
+                return a result object. If this flag is the result of these
+                calls will be unwrapped with `labone.core.result.unwrap()`.
+                For more information see the documentation of the `unwrap()`.
+                (default: True)
 
         Returns:
             The reflection server instance.
@@ -195,4 +445,5 @@ class ReflectionServer:
             client=client,
             encoded_schema=encoded_schema,
             bootstrap_capability_id=bootstrap_capability_id,
+            unwrap_result=unwrap_result,
         )
