@@ -49,7 +49,7 @@ class Instrument(PartialNode):
         serial: str,
         *,
         host: str,
-        port: int,
+        port: int = 8004,
         interface: str = "",
         use_enum_parser: bool = True,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
