@@ -31,18 +31,18 @@ def unwrap(result: CapnpStructReader) -> CapnpStructReader:
         The unwrapped result.
 
     Raises:
-    LabOneCancelledError: The request was cancelled.
-    NotFoundError: The requested value or node was not found.
-    OverwhelmedError: The server is overwhelmed.
-    BadRequestError: The request could not be interpreted.
-    UnimplementedError: The request is not implemented.
-    InternalError: An internal error occurred.
-    UnavailableError: The device is unavailable.
-    LabOneTimeoutError: A timeout occurred on the server.
+        LabOneCancelledError: The request was cancelled.
+        NotFoundError: The requested value or node was not found.
+        OverwhelmedError: The server is overwhelmed.
+        BadRequestError: The request could not be interpreted.
+        UnimplementedError: The request is not implemented.
+        InternalError: An internal error occurred.
+        UnavailableError: The device is unavailable.
+        LabOneTimeoutError: A timeout occurred on the server.
     """
     try:
         return result.ok
-    except capnp.KjException:
+    except (capnp.KjException, AttributeError):
         pass
     try:
         raise _ZI_ERROR_MAP.get(result.err.kind, errors.LabOneCoreError)(

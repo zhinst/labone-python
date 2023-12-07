@@ -215,6 +215,11 @@ class Session:
     ):
         self._reflection_server = reflection_server
         self._session = capnp_session
+        # The reflection server might has enabled the automatic unwrapping
+        # of the result. To allow both cases we check if the capnp_session
+        # is wrapped and use the underlying capnp session instead.
+        if hasattr(capnp_session, "capnp_session"):
+            self._session = capnp_session.capnp_session
         # The client_id is required by most capnp messages to identify the client
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()

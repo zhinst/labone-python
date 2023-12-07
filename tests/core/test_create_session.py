@@ -41,7 +41,7 @@ async def test_session_create_ok_zi(
 
     assert (
         created_session._session
-        == reflection_server.create_from_connection.return_value.session
+        == reflection_server.create_from_connection.return_value.session.capnp_session
     )
     assert created_session.kernel_info == dummy_kernel_info_extended
     assert created_session.server_info == dummy_server_info_extended

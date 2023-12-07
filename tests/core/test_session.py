@@ -22,6 +22,7 @@ from labone.core.kernel_session import KernelSession
 from labone.core.session import (
     ListNodesFlags,
     ListNodesInfoFlags,
+    Session,
     _send_and_wait_request,
 )
 from labone.core.subscription import DataQueue
@@ -107,6 +108,17 @@ async def mock_connection(reflection_server) -> tuple[KernelSession, MagicMock]:
         server_info=ServerInfo(host="localhost", port=8004),
     )
     return MockServer(session=session, server=mock_server)
+
+
+def test_session_with_unwrapping_reflection(reflection_server):
+    reflection_server.session = MagicMock()
+
+    session = Session(
+        reflection_server.session,
+        reflection_server=reflection_server,
+    )
+
+    assert session._session == reflection_server.session.capnp_session
 
 
 class TestSessionListNodes:
