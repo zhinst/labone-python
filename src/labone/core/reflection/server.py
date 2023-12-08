@@ -288,6 +288,11 @@ class CapabilityWrapper:
         ]
         return set(snake_case_version + original_dir)
 
+    @property
+    def capnp_capability(self) -> CapnpCapability:
+        """Return the underlying capnp capability."""
+        return self._capability  # pragma: no cover
+
 
 class ReflectionServer:
     """Basic dynamic reflection server.

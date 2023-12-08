@@ -118,7 +118,7 @@ def test_session_with_unwrapping_reflection(reflection_server):
         reflection_server=reflection_server,
     )
 
-    assert session._session == reflection_server.session.capnp_session
+    assert session._session == reflection_server.session.capnp_capability
 
 
 class TestSessionListNodes:

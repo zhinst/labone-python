@@ -39,10 +39,10 @@ async def test_session_create_ok_zi(
     capnp_mock.AsyncIoStream.create_connection.assert_called_once_with(sock=dummy_sock)
     reflection_server.create_from_connection.assert_called_once()
 
-    assert (
-        created_session._session
-        == reflection_server.create_from_connection.return_value.session.capnp_session
+    original_capnp_session = (
+        reflection_server.create_from_connection.return_value.session.capnp_capability
     )
+    assert created_session._session == original_capnp_session
     assert created_session.kernel_info == dummy_kernel_info_extended
     assert created_session.server_info == dummy_server_info_extended
 
