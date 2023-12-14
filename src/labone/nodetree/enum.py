@@ -15,10 +15,11 @@ object the values can be treated as integers and used as such.
 from __future__ import annotations
 
 import logging
-import re
 import typing as t
 from enum import Enum, IntEnum
 from functools import lru_cache
+
+from labone.nodetree.node import _parse_option_keywords_description
 
 if t.TYPE_CHECKING:
     from labone.core import AnnotatedValue
@@ -104,20 +105,13 @@ def _get_enum(*, info: NodeInfoType, path: LabOneNodePath) -> NodeEnum | None:
     if "Options" not in info:
         return None
 
-    options_reversed = {}
-    for int_key, value in info["Options"].items():
-        # Find all the keywords associated to a integer key
-        # account for formats like: "\"sigin0\", \"signal_input0\": Sig In 1"
-        matches = list(re.finditer(r'"(?P<keyword>[a-zA-Z0-9-_"]+)"', value))
+    keyword_to_option = {}
+    for key, option_string in info["Options"].items():
+        keywords, _ = _parse_option_keywords_description(option_string)
+        for keywork in keywords:
+            keyword_to_option[keywork] = int(key)
 
-        if not matches:
-            # account for plain formats like: "Alive"
-            options_reversed[value] = int_key
-        for m in matches:
-            keyword = m.group("keyword")
-            options_reversed[keyword] = int_key
-
-    return NodeEnum(path, options_reversed, module=__name__)
+    return NodeEnum(path, keyword_to_option, module=__name__)
 
 
 def get_default_enum_parser(
@@ -154,28 +148,28 @@ def get_default_enum_parser(
         """
         try:
             enum = get_enum_cached(annotated_value.path)
-        except KeyError:
+        except KeyError:  # pragma: no cover
             # There is no sane scenario where this should happen. But the
             # parser should not raise an exception. Therefore we return the
             # original value.
-            logger.warning(
+            logger.warning(  # pragma: no cover
                 "Failed to parse the result for %s, its not part of the node tree.",
                 annotated_value.path,
             )
-            return annotated_value
+            return annotated_value  # pragma: no cover
         if enum is not None:
             try:
                 annotated_value.value = enum(annotated_value.value)
-            except ValueError:
+            except ValueError:  # pragma: no cover
                 # The value is not part of the enum. This is a critical error
                 # of the server. But the parser should not raise an exception.
                 # Therefore we return the original value.
-                logger.warning(
+                logger.warning(  # pragma: no cover
                     "Failed to parse the %s for %s, the value is not part of the enum.",
                     annotated_value.value,
                     annotated_value.path,
                 )
-                return annotated_value
+                return annotated_value  # pragma: no cover
         return annotated_value
 
     return default_enum_parser

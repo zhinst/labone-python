@@ -47,6 +47,39 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 
 
+def _parse_option_keywords_description(option_string: str) -> tuple[list[str], str]:
+    r"""Parse the option string into keywords and description.
+
+    Infos for enumerated nodes come with a string for each option.
+    This function parses this string into relevant information.
+
+    There are two valid formats for the option string:
+    1. Having a single keyword:
+        e.g. "Alive"
+        -> keyword: ["Alive"], description: ""
+
+    2. Having one or multiple keywords in parenthesis,
+        optionally followed by a colon and a description:
+        e.g. "\"sigin0\", \"signal_input0\": Sig In 1"
+        -> keyword: ["sigin0", "signal_input0"], description: "Sig In 1"
+
+    Args:
+        option_string: String, which should be parsed.
+
+    Returns:
+        List of keywords and the description.
+    """
+    # find all keywords in parenthesis
+    matches = list(re.finditer(r'"(?P<keyword>[a-zA-Z0-9-_"]+)"', option_string))
+    options = [option_string] if not matches else [m.group("keyword") for m in matches]
+
+    # take everythin after ": " as the description if present
+    description_match = re.search(r": (.*)", option_string)
+    description = description_match.group(1) if description_match else ""
+
+    return options, description
+
+
 class OptionInfo(t.NamedTuple):
     """Representing structure of options in NodeInfo."""
 
@@ -80,17 +113,6 @@ class NodeInfo:
         item: str,
     ) -> LabOneNodePath | str | NodeType | dict[str, str] | None:
         return self._info[item.capitalize()]  # type: ignore[literal-required]
-
-    def __contains__(self, item: str) -> bool:
-        return item in self.__dir__()
-
-    def __hash__(self) -> int:
-        return hash(self.path + "NodeInfo")
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, NodeInfo):
-            return False
-        return self._info == other._info
 
     def __dir__(self) -> list[str]:
         return [k.lower() for k in self._info] + [
@@ -157,20 +179,16 @@ class NodeInfo:
     @cached_property
     def options(self) -> dict[int, OptionInfo]:
         """Option mapping of the node."""
-        option_map = {}
-        for key, value in self._info.get("Options", {}).items():
-            # Find all the keywords. We use only the first one
-            # since it should be unambiguous
-            enum_re = re.findall(r'"([a-zA-Z0-9-_"]+)"', value)
-            enum = enum_re[0] if enum_re else ""
+        options_mapping = {}
+        for key, option_string in self._info.get("Options", {}).items():
+            options, description = _parse_option_keywords_description(option_string)
 
-            # The description is either what comes after
-            # the colon and space, or the whole string.
-            # This is the case for nameless options, when the
-            # key is an integer (for example demods/x/order)
-            desc = re.findall(r'(?:.+":\s)?(.+)$', value)[0]
-            option_map[int(key)] = OptionInfo(enum, desc)
-        return option_map
+            # Only use the first keyword as the enum value
+            options_mapping[int(key)] = OptionInfo(
+                enum=options[0],
+                description=description,
+            )
+        return options_mapping
 
 
 class NodeTreeManager:
@@ -263,17 +281,11 @@ class NodeTreeManager:
 
         # solving recursively, taking advantage of caching
         # makes usual indexing of lower nodes O(1)
-        reference = self.find_substructure(path_segments[:-1])
+        sub_solution = self.find_substructure(path_segments[:-1])
         segment = path_segments[-1]
 
-        if not reference:
-            msg = f"Path {join_path(path_segments)} "
-            f"is invalid, because {join_path(path_segments[:-1])} "
-            "is already a leaf-node."
-            raise LabOneInvalidPathError(msg)
-
         try:
-            reference[segment]
+            sub_solution[segment]
         except KeyError as e:
             if segment == WILDCARD:
                 msg = (
@@ -287,19 +299,19 @@ class NodeTreeManager:
                 f"Path '{join_path(path_segments)}' is illegal, because '{segment}' "
                 f"is not a viable extension of '{join_path(path_segments[:-1])}'. "
                 f"It does not correspond to any existing node."
-                f"\nViable extensions would be {list(reference.keys())}"
+                f"\nViable extensions would be {list(sub_solution.keys())}"
             )
             raise LabOneInvalidPathError(msg) from e
 
         # explore structure deeper on demand
-        # (and only once, as structure remains resolved via reference within
-        # self._partially_explored_structure)
-        if not isinstance(reference[segment], dict):
-            reference[segment] = build_prefix_dict(
-                reference[segment],  # type: ignore[arg-type]
-            )
+        # the path not being cached implies this is the first time
+        # this substructure is explored.
+        # So we know it is a list of paths, which we now build into a prefix dict.
+        sub_solution[segment] = build_prefix_dict(
+            sub_solution[segment],  # type: ignore[arg-type]
+        )
 
-        result: NestedDict[list[list[NormalizedPathSegment]] | dict] = (reference)[
+        result: NestedDict[list[list[NormalizedPathSegment]] | dict] = sub_solution[
             segment
         ]  # type: ignore[assignment]
         self._cache_find_substructure[unique_value] = result
@@ -360,7 +372,7 @@ class NodeTreeManager:
     @property
     def paths(self) -> t.KeysView[LabOneNodePath]:
         """List of paths of all leaf-nodes."""
-        return self._paths
+        return self._paths  # pragma: no cover
 
     @property
     def parser(self) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
@@ -498,6 +510,15 @@ class MetaNode(ABC):
 
     def __str__(self) -> str:
         return self.path
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, MetaNode):  # pragma: no cover
+            msg = (
+                f"'<' not supported between instances of "
+                f"'{type(self)}' and '{type(other)}'"
+            )  # pragma: no cover
+            raise TypeError(msg)  # pragma: no cover
+        return self.path < other.path
 
     def _redirect(
         self,
@@ -1417,14 +1438,40 @@ class WildcardOrPartialNode(Node, ABC):
             NotImplementedError: Always.
         """
         msg = (
-            "Subscribing to a wildcard or partial node is currently not supported. "
-            "Please subscribe to a specific node instead."
+            "Subscribing to paths with wildcards "
+            "or non-leaf paths is not supported. "
+            "Subscribe to a leaf node instead "
+            "and make sure to not use wildcards in the path."
         )
         raise LabOneNotImplementedError(msg)
 
 
 class WildcardNode(WildcardOrPartialNode):
     """Node corresponding to a path containing one or more wildcards."""
+
+    def __contains__(self, item: str | int | Node) -> bool:
+        msg = (
+            "Checking if a wildcard-node contains a subnode is not supported."
+            "For checking if a path is contained in a node, make sure to not use"
+            "wildcards in the path."
+        )
+        raise LabOneInappropriateNodeTypeError(msg)
+
+    def __iter__(self) -> t.Iterator[Node]:
+        msg = (
+            "Iterating through a wildcard-node is not supported. "
+            "For iterating through child nodes, make sure to not "
+            "use wildcards in the path."
+        )
+        raise LabOneInappropriateNodeTypeError(msg)
+
+    def __len__(self) -> int:
+        msg = (
+            "Getting the length of a wildcard-node is not supported."
+            "For getting the length of a node, make sure to not "
+            "use wildcards in the path."
+        )
+        raise LabOneInappropriateNodeTypeError(msg)
 
     def _package_get_response(
         self,
