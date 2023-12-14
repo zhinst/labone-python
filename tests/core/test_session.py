@@ -72,7 +72,7 @@ class CapnpServer:
         """Create a server for the given object."""
         read, write = socket.socketpair()
         write = await capnp.AsyncIoStream.create_connection(sock=write)
-        _ = asyncio.create_task(cls._new_connection(write, obj))
+        _ = asyncio.create_task(cls._new_connection(write, obj))  # noqa: RUF006
         return cls(await capnp.AsyncIoStream.create_connection(sock=read))
 
     @staticmethod

@@ -387,7 +387,7 @@ class ReflectionServer:
             and self._creation_loop.is_running()
             and asyncio.get_event_loop() != self._creation_loop
         ):
-            _ = asyncio.ensure_future(
+            _ = asyncio.ensure_future(  # noqa: RUF006
                 self._close_rpc_client(),
                 loop=self._creation_loop,
             )
