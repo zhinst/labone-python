@@ -60,7 +60,6 @@ class DataServer(PartialNode):
         super().__init__(
             tree_manager=model_node.tree_manager,
             path_segments=model_node.path_segments,
-            path_aliases=model_node.path_aliases,
             subtree_paths=model_node.subtree_paths,
         )
 

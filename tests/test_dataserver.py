@@ -15,7 +15,6 @@ class MockModelNode:
     def __init__(self):
         self.tree_manager = "tree_manager"
         self.path_segments = "path_segments"
-        self.path_aliases = "path_aliases"
         self.subtree_paths = "subtree_paths"
 
 

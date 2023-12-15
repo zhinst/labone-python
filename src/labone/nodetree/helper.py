@@ -168,22 +168,6 @@ def split_path(path: LabOneNodePath) -> list[NormalizedPathSegment]:
     return path_segments[first_item_index:]
 
 
-def get_prefix(path: LabOneNodePath, segment_count: int) -> LabOneNodePath:
-    """Get a path consisting only of the first n segments of the original path.
-
-    Args:
-        path: Path, the prefix should be taken from.
-        segment_count: Number of segments, which should be included. If there are
-            not enough segments, all available ones are included.
-
-    Returns:
-        A path, similar to the given one, but bounded in terms of number of segments.
-    """
-    segments = split_path(path)
-    first_segments = segments[:segment_count]
-    return join_path(first_segments)
-
-
 def normalize_path_segment(path_segment: str | int) -> NormalizedPathSegment:
     """Bring segment into a standard form.
 

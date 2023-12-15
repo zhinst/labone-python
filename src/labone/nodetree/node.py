@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import re
 import typing as t
-import uuid
 from abc import ABC, abstractmethod
 from functools import cached_property
 
@@ -30,7 +29,6 @@ from labone.nodetree.helper import (
     TreeProp,
     UndefinedStructure,
     build_prefix_dict,
-    get_prefix,
     join_path,
     normalize_path_segment,
     pythonify_path_segment,
@@ -402,8 +400,8 @@ class MetaNode(ABC):
     """Basic functionality of all nodes.
 
     This class provides common behavior for all node classes, both normal nodes
-    and result nodes. This includes the traversal of the tree, the redirection
-    of paths and the generation of sub-nodes.
+    and result nodes. This includes the traversal of the tree and the generation
+    of sub-nodes.
 
     Args:
         tree_manager: Interface managing the node-tree and the corresponding
@@ -412,9 +410,6 @@ class MetaNode(ABC):
         subtree_paths: Structure, defining which sub-nodes exist.
             May contain a Nested dictionary or a list of paths. If a list is
             passed, a prefix-to-suffix-dictionary will be created out of it.
-        path_aliases: When creating sub-nodes, these aliases are used to redirect
-            certain paths. This attribute is useful for creating artificial nodes
-            outside the normal structure. It will not be used in most other cases.
     """
 
     def __init__(
@@ -424,15 +419,9 @@ class MetaNode(ABC):
         path_segments: tuple[NormalizedPathSegment, ...],
         subtree_paths: NestedDict[list[list[NormalizedPathSegment]] | dict]
         | UndefinedStructure,
-        path_aliases: dict[
-            tuple[NormalizedPathSegment, ...],
-            tuple[NormalizedPathSegment, ...],
-        ]
-        | None = None,
     ):
         self._tree_manager = tree_manager
         self._path_segments = path_segments
-        self._path_aliases = path_aliases if path_aliases is not None else {}
         self._subtree_paths = subtree_paths
 
     @abstractmethod
@@ -520,27 +509,6 @@ class MetaNode(ABC):
             raise TypeError(msg)  # pragma: no cover
         return self.path < other.path
 
-    def _redirect(
-        self,
-        path_segments: tuple[NormalizedPathSegment, ...],
-    ) -> tuple[NormalizedPathSegment, ...]:
-        """Use path aliases to redirect a path.
-
-        An alias can can be used to redirect artificial nodes to their
-        underlying nodes. This is useful for creating nodes outside the normal
-        structure. The redirection is done recursively, so that multiple
-        aliases can be used in a row.
-
-        Args:
-            path_segments: Path, which should be redirected.
-
-        Returns:
-            Redirected path.
-        """
-        while path_segments in self._path_aliases:
-            path_segments = self._path_aliases[path_segments]
-        return path_segments
-
     def is_child_node(
         self,
         child_node: MetaNode | t.Sequence[NormalizedPathSegment],
@@ -548,8 +516,7 @@ class MetaNode(ABC):
         """Checks if a node is a direct child node of this node.
 
         Children of children (etc.) will not be counted as direct children.
-        The node itself is also not counted as its child. Path redirection will be
-        taken into account.
+        The node itself is also not counted as its child.
 
         Args:
             child_node: Potential child node.
@@ -563,9 +530,11 @@ class MetaNode(ABC):
             else tuple(child_node)
         )
 
-        return path_segments in {
-            self._redirect((*self.path_segments, e)) for e in self._subtree_paths
-        }
+        return (
+            len(path_segments) == len(self.path_segments) + 1
+            and path_segments[: len(self.path_segments)] == self.path_segments
+            and path_segments[-1] in self._subtree_paths
+        )
 
     @property
     def tree_manager(self) -> NodeTreeManager:
@@ -587,18 +556,6 @@ class MetaNode(ABC):
     def raw_tree(self) -> tuple[NormalizedPathSegment, ...]:
         """The underlying segments of the path, this node corresponds to."""
         return self.path_segments
-
-    @property
-    def path_aliases(
-        self,
-    ) -> dict[tuple[NormalizedPathSegment, ...], tuple[NormalizedPathSegment, ...]]:
-        """Path aliases of this node.
-
-        When creating sub-nodes, these aliases are used to redirect
-        certain paths. This attribute is useful for creating artificial nodes
-        outside the normal structure. It will not be used in most other cases.
-        """
-        return self._path_aliases  # pragma: no cover
 
     @property
     def subtree_paths(
@@ -632,10 +589,6 @@ class ResultNode(MetaNode):
             returned once the tree is traversed.
         timestamp:
             The time the results where created.
-        path_aliases:
-            When creating sub-nodes, these aliases are used to redirect
-            certain paths. This attribute is useful for creating artificial nodes
-            outside the normal structure. It will not be used in most other cases.
 
     Example:
         >>> result = device.demods[0]
@@ -649,17 +602,11 @@ class ResultNode(MetaNode):
         subtree_paths: NestedDict[list[list[NormalizedPathSegment]] | dict],
         value_structure: TreeProp,
         timestamp: int,
-        path_aliases: dict[
-            tuple[NormalizedPathSegment, ...],
-            tuple[NormalizedPathSegment, ...],
-        ]
-        | None = None,
     ):
         super().__init__(
             tree_manager=tree_manager,
             path_segments=path_segments,
             subtree_paths=subtree_paths,
-            path_aliases=path_aliases,
         )
         self._value_structure = value_structure
         self._timestamp = timestamp
@@ -770,7 +717,9 @@ class ResultNode(MetaNode):
 
     def __str__(self) -> str:
         value_dict = {
-            path: self._value_structure[path].value for path in self._value_structure
+            path: self._value_structure[path].value
+            for path in self._value_structure
+            if path.startswith(self.path)
         }
         return (
             f"{self.__class__.__name__}('{self.path}', time: #{self._timestamp}, "
@@ -814,11 +763,10 @@ class ResultNode(MetaNode):
             LabOneInvalidPathError: If the extension leads to an invalid path or if it
                 is tried to use wildcards in ResultNodes.
         """
-        extended_path = self._redirect((*self._path_segments, next_path_segment))
-
+        extended_path = (*self._path_segments, next_path_segment)
         try:
-            next_subtree = self.tree_manager.find_substructure(extended_path)
-        except LabOneInvalidPathError as e:
+            next_subtree = self.subtree_paths[next_path_segment]
+        except KeyError as e:
             if next_path_segment == WILDCARD:
                 msg = (
                     f"Wildcards '*' are not allowed in a tree representing "
@@ -826,23 +774,38 @@ class ResultNode(MetaNode):
                     f"with a wildcard."
                 )
                 raise LabOneInvalidPathError(msg) from e
-            raise LabOneInvalidPathError from e
+
+            # this call checks whether the path is in the nodetree itself
+            # if this is not the case, this line will raise the appropriate error
+            # otherwise, the path is in the tree, but not captured in this particular
+            # result node.
+            self.tree_manager.find_substructure(extended_path)
+
+            msg = (
+                f"Path '{join_path(extended_path)}' is not captured in this "
+                "result node. It corresponds to an existing node, but the "
+                "request producing this result collection was make such that "
+                "this result is not included. Change either the request or "
+                "access a different node."
+            )
+            raise LabOneInvalidPathError(msg) from e
+
+        # exploring deeper tree stucture if it is not aleady known
+        if isinstance(next_subtree, list):  # pragma: no cover
+            next_subtree = build_prefix_dict(next_subtree)
 
         deeper_node = ResultNode(
             tree_manager=self.tree_manager,
             path_segments=extended_path,
-            subtree_paths=next_subtree,
+            subtree_paths=next_subtree,  # type: ignore[arg-type]
             value_structure=self._value_structure,
             timestamp=self._timestamp,
-            path_aliases=self._path_aliases,
         )
 
         if not next_subtree:
             # give value instead of subnode if already at a leaf
-            # generate hypothetical node in order to apply normal behavior,
-            # including path alias redirection
+            # generate hypothetical node in order to apply normal behavior
             return self._value_structure[deeper_node.path]
-
         return deeper_node
 
 
@@ -1021,11 +984,6 @@ class Node(MetaNode, ABC):
         *,
         tree_manager: NodeTreeManager,
         path_segments: tuple[NormalizedPathSegment, ...],
-        path_aliases: dict[
-            tuple[NormalizedPathSegment, ...],
-            tuple[NormalizedPathSegment, ...],
-        ]
-        | None = None,
     ) -> Node:
         """Construct a matching subnode.
 
@@ -1036,10 +994,6 @@ class Node(MetaNode, ABC):
             tree_manager: Interface managing the node-tree and the corresponding
                 session.
             path_segments: A tuple describing the path.
-            path_aliases: When creating sub-nodes, these aliases are used to
-                redirect certain paths. This attribute is useful for creating
-                artificial nodes outside the normal structure. It will not be
-                used in most other cases.
 
         Returns:
             A node of the appropriate type.
@@ -1060,7 +1014,6 @@ class Node(MetaNode, ABC):
                 tree_manager=tree_manager,
                 path_segments=path_segments,
                 subtree_paths=subtree_paths,
-                path_aliases=path_aliases,
             )
 
         if is_leaf:
@@ -1068,14 +1021,12 @@ class Node(MetaNode, ABC):
                 tree_manager=tree_manager,
                 path_segments=path_segments,
                 subtree_paths=subtree_paths,
-                path_aliases=path_aliases,
             )
 
         return PartialNode(
             tree_manager=tree_manager,
             path_segments=path_segments,
             subtree_paths=subtree_paths,
-            path_aliases=path_aliases,
         )
 
     @abstractmethod
@@ -1363,7 +1314,7 @@ class WildcardOrPartialNode(Node, ABC):
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        return self._package_get_response(
+        return self._package_response(
             await self._tree_manager.session.get_with_expression(self.path),
         )
 
@@ -1385,27 +1336,59 @@ class WildcardOrPartialNode(Node, ABC):
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        return self._package_get_response(
+        return self._package_response(
             await self._tree_manager.session.set_with_expression(
                 AnnotatedValue(value=value, path=self.path),
             ),
         )
 
-    @abstractmethod
-    def _package_get_response(
+    def _package_response(
         self,
         raw_response: list[AnnotatedValue],
     ) -> ResultNode:
-        """Package server-response to wildcard-get-request in a friendly way.
+        """Package server-response of wildcard or partial get-request.
+
+        The result node will start to index from the root of the tree:
+
+        >>> result_node = device.demods["*"].sample["*"].x()
+        >>> result_node.demods[0].sample[0].x
+
+        Of course, only the paths matching the wildcard/partial path
+        will be available in the result node.
 
         Args:
-            raw_response:
-                server-response to get (or set) request
+            raw_response: server-response to get (or set) request
 
         Returns:
             Node-structure, representing the results.
         """
-        ...
+        timestamp = raw_response[0].timestamp if raw_response else None
+        path_segments = (
+            self.tree_manager.root.path_segments
+        )  # same starting point as root
+
+        # replace values by enum values and parse if applicable
+        raw_response = [self._tree_manager.parser(r) for r in raw_response]
+
+        # package into dict
+        response_dict = {
+            annotated_value.path: annotated_value for annotated_value in raw_response
+        }
+
+        subtree_paths = build_prefix_dict(
+            [
+                split_path(ann.path)[len(path_segments) :]  # suffix after root path
+                for ann in raw_response
+            ],
+        )
+
+        return ResultNode(
+            tree_manager=self.tree_manager,
+            path_segments=path_segments,
+            subtree_paths=subtree_paths,  # type: ignore[arg-type]
+            value_structure=response_dict,
+            timestamp=timestamp if timestamp else 0,
+        )
 
     @t.overload
     async def subscribe(
@@ -1473,66 +1456,6 @@ class WildcardNode(WildcardOrPartialNode):
         )
         raise LabOneInappropriateNodeTypeError(msg)
 
-    def _package_get_response(
-        self,
-        raw_response: list[AnnotatedValue],
-    ) -> ResultNode:
-        """Package server-response to wildcard-get-request in a friendly way.
-
-        There may be multiple matches to a wildcard-path. The function identifies
-        those and builds an auxiliary ResultNode, which can be indexed e.g. [0] and
-        will redirect to a certain match. (In this context, a 'match' means one
-        specific path-prefix, which fits to the given wildcard-path.)
-
-        Args:
-            raw_response: server-response to get (or set) request
-
-        Returns:
-            Node-structure, representing the results.
-        """
-        timestamp = raw_response[0].timestamp if raw_response else None
-
-        # replace values by enum values and parse if applicable
-        raw_response = [self._tree_manager.parser(r) for r in raw_response]
-
-        # package into dict
-        response_dict = {
-            annotated_value.path: annotated_value for annotated_value in raw_response
-        }
-
-        # find out which prefixes the wildcard-path has matched to
-        prefix_length = len(self._path_segments)
-        prefixes = list(
-            {get_prefix(a.path, prefix_length) for a in raw_response},
-        )
-
-        # guarantee sorted matches later on
-        prefixes.sort()
-
-        # build a combined tree structure
-        nodes = [
-            self._tree_manager.path_segments_to_node(tuple(split_path(prefix)))
-            for prefix in prefixes
-        ]
-        structure = {str(i): node.subtree_paths for i, node in enumerate(nodes)}
-
-        # define redirection to original paths
-        match_segment = f"matches_{uuid.uuid4()}_id"
-        path_aliases: dict[tuple[str, ...], tuple[str, ...]] = {
-            (match_segment, str(i)): node.path_segments for i, node in enumerate(nodes)
-        }
-
-        # define an auxiliary node, which bundles the results, but is not part of
-        # the normal node-tree-structure
-        return ResultNode(
-            tree_manager=self.tree_manager,
-            path_segments=(match_segment,),
-            subtree_paths=structure,  # type: ignore[arg-type]
-            value_structure=response_dict,
-            timestamp=timestamp if timestamp is not None else 0,
-            path_aliases=path_aliases,
-        )
-
     def try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
@@ -1549,7 +1472,7 @@ class WildcardNode(WildcardOrPartialNode):
             New node-object, representing the extended path.
 
         """
-        extended_path = self._redirect((*self._path_segments, next_path_segment))
+        extended_path = (*self._path_segments, next_path_segment)
         return self._tree_manager.path_segments_to_node(extended_path)
 
     async def wait_for_state_change(
@@ -1586,39 +1509,6 @@ class WildcardNode(WildcardOrPartialNode):
 class PartialNode(WildcardOrPartialNode):
     """Node corresponding to a path, which has not reached a leaf yet."""
 
-    def _package_get_response(
-        self,
-        raw_response: list[AnnotatedValue],
-    ) -> ResultNode:
-        """Package server-response to wildcard-get-request in a friendly way.
-
-        If a node is not a leaf, but partial, multiple paths and values will
-        be returned. Instead of giving a list, they are grouped into a tree.
-
-        Args:
-            raw_response: server-response to get (or set) request
-
-        Returns:
-            Node-structure, representing the results.
-        """
-        timestamp = raw_response[0].timestamp if raw_response else None
-
-        # replace values by enum values and parse if applicable
-        raw_response = [self._tree_manager.parser(r) for r in raw_response]
-
-        # package into dict
-        response_dict = {
-            annotated_value.path: annotated_value for annotated_value in raw_response
-        }
-
-        return ResultNode(
-            tree_manager=self.tree_manager,
-            path_segments=self.path_segments,
-            subtree_paths=self._subtree_paths,  # type: ignore[arg-type]
-            value_structure=response_dict,
-            timestamp=timestamp if timestamp else 0,
-        )
-
     def try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
@@ -1639,7 +1529,7 @@ class PartialNode(WildcardOrPartialNode):
             LabOneInvalidPathError: If the extension leads to an invalid path.
 
         """
-        extended_path = self._redirect((*self._path_segments, next_path_segment))
+        extended_path = (*self._path_segments, next_path_segment)
 
         # first try to extend the path. Will fail if the resulting path is invalid
         try:

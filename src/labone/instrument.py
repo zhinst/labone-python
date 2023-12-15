@@ -41,7 +41,6 @@ class Instrument(PartialNode):
             tree_manager=model_node.tree_manager,
             path_segments=model_node.path_segments,
             subtree_paths=model_node.subtree_paths,
-            path_aliases=model_node.path_aliases,
         )
 
     @staticmethod
