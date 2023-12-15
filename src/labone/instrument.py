@@ -45,13 +45,12 @@ class Instrument(PartialNode):
         )
 
     @staticmethod
-    async def create(  # noqa: PLR0913
+    async def create(
         serial: str,
         *,
         host: str,
         port: int = 8004,
         interface: str = "",
-        use_enum_parser: bool = True,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> Instrument:
         """Connect to a device.
@@ -66,8 +65,6 @@ class Instrument(PartialNode):
                 interfaces, and a specific interface should be enforced. If no value is
                 provided, the data server will automatically choose an available
                 interface. (default = "")
-            use_enum_parser: Whether enumerated integer values coming from the server
-                should be packaged into enum values, if applicable.
             custom_parser: A function that takes an annotated value and returns an
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
@@ -99,7 +96,6 @@ class Instrument(PartialNode):
         try:
             model_node = await construct_nodetree(
                 session,
-                use_enum_parser=use_enum_parser,
                 custom_parser=custom_parser,
             )
         except LabOneError as e:

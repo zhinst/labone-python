@@ -20,7 +20,6 @@ async def construct_nodetree(
     session: Session,
     *,
     hide_kernel_prefix: bool = True,
-    use_enum_parser: bool = True,
     custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
 ) -> Node:
     """Create a nodetree structure from a LabOne session.
@@ -34,8 +33,6 @@ async def construct_nodetree(
             E.g. having the result of this function in a variable `tree`
             `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
             Setting this option makes working with the tree easier.
-        use_enum_parser: Whether enumerated integer values coming from the server
-            should be packaged into enum values, if applicable.
         custom_parser: A function that takes an annotated value and returns an
             annotated value. This function is applied to all values coming from
             the server. It is applied after the default enum parser, if
@@ -46,7 +43,7 @@ async def construct_nodetree(
     """
     path_to_info = await session.list_nodes_info("*")
 
-    parser = get_default_enum_parser(path_to_info) if use_enum_parser else lambda x: x
+    parser = get_default_enum_parser(path_to_info)
 
     if custom_parser is not None:
         first_parser = parser  # this assignment prevents infinite recursion
