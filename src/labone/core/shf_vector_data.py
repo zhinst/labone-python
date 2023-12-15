@@ -12,6 +12,7 @@ field of the vector data. The extra header is then followed by the data.
 """
 from __future__ import annotations
 
+import logging
 import struct
 import typing as t
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ import numpy as np
 
 from labone.core.errors import SHFHeaderVersionNotSupportedError
 from labone.core.helper import CapnpCapability, VectorElementType, VectorValueType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -89,7 +92,7 @@ class ShfResultLoggerVectorExtraHeader:
             The parsed extra header.
 
         Raises:
-            NotImplementedError: If the version is not supported.
+            SHFHeaderVersionNotSupportedError: If the version is not supported.
         """
         if (version.major == 0) and (version.minor >= 1):
             return ShfResultLoggerVectorExtraHeader(
@@ -196,9 +199,9 @@ class ShfScopeVectorExtraHeader:
             The parsed extra header.
 
         Raises:
-            NotImplementedError: If the version is not supported.
+            SHFHeaderVersionNotSupportedError: If the version is not supported.
         """
-        if version.minor >= 2:  # noqa: PLR2004
+        if (version.major == 0) and (version.minor >= 2):  # noqa: PLR2004
             return ShfScopeVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
                 timestamp_diff=struct.unpack("I", binary[8:12])[0],
@@ -213,7 +216,7 @@ class ShfScopeVectorExtraHeader:
                 first_segment_index=struct.unpack("I", binary[56:60])[0],
                 num_missed_triggers=struct.unpack("I", binary[60:64])[0],
             )
-        if version.minor >= 1:
+        if (version.major == 0) and (version.minor >= 1):
             return ShfScopeVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
                 timestamp_diff=struct.unpack("I", binary[8:12])[0],
@@ -265,33 +268,35 @@ class ShfDemodulatorVectorExtraHeader:
         timestamp_diff: Timestamp delta between samples
             (unit: number of clock ticks on the max. sampling rate,
             e.g. 50MHz for demod samples)
-        abort_config: Flag if a configuration change has taken place
-        trigger_source: Index of the trigger used for this acquisition.
-        trigger_length: Total number of samples associated with this trigger
-        trigger_index: Index of the first sample in this block within the total
-            sequence of triggered samples
-        trigger_tag: Trigger number that activated the recording of this
-            sequence of samples
-        awg_tag: AWG tag present when the trigger was activated
-        scaling: Scaling value to convert X/Y from fixed point two's
-            complement to Volts
-        center_freq: Configured center frequency
-        oscillator_source: 	Index of the oscillator used for this acquisition.
+        burst_length: Length of the burst in samples
+        burst_offset: Index of the first sample in this block within the total
+            sequence of the burst
+        trigger_index: Trigger counter (including missed triggers). Each vector
+            contains actual counter value.
+        trigger_timestamp: Timestamp of the moment when a trigger happened.
+        center_freq: Center frequency
+        rf_path: Flag that indicates if RF-path is selected
+        oscillator_source: Index of the oscillator used for this acquisition.
+        harmonic: Harmonic of the oscillator used for this acquisition.
+        trigger_source: Index of the trigger source used for this acquisition.
         signal_source: Index of the signal input used for this acquisition.
+        oscillator_freq: Current oscillator frequency.
     """
 
     timestamp: int
     timestamp_diff: int
-    abort_config: bool
-    trigger_source: int
-    trigger_length: int
+    burst_length: int
+    burst_offset: int
     trigger_index: int
-    trigger_tag: int
-    awg_tag: int
-    scaling: float
-    center_freq: float
+    trigger_timestamp: int
+    center_freq: int
+    rf_path: bool
     oscillator_source: int
+    harmonic: int
+    trigger_source: int
     signal_source: int
+    oscillator_freq: int
+    scaling: float
 
     @staticmethod
     def from_binary(
@@ -311,7 +316,7 @@ class ShfDemodulatorVectorExtraHeader:
             The parsed extra header.
 
         Raises:
-            NotImplementedError: If the version is not supported.
+            SHFHeaderVersionNotSupportedError: If the version is not supported.
         """
         # To be correct, these values should be read from
         # /dev.../system/properties/timebase and
@@ -319,39 +324,25 @@ class ShfDemodulatorVectorExtraHeader:
         # Here we have read them once and hardcoded for simplicity
         timebase = 2.5e-10
         max_demod_rate = 5e7
-        if version.minor >= 2:  # noqa: PLR2004
-            timestamp_diff = struct.unpack("I", binary[8:12])[0]
-            timestamp_diff *= 1 / (timebase * max_demod_rate)
+        if version.major == 1:
+            timestamp_delta = struct.unpack("I", binary[8:12])[0]
+            timestamp_diff = int(timestamp_delta / (timebase * max_demod_rate))
+            source_field = struct.unpack("I", binary[36:40])[0]
             return ShfDemodulatorVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
                 timestamp_diff=timestamp_diff,
-                abort_config=struct.unpack("?", binary[12:13])[0],
-                trigger_source=struct.unpack("B", binary[13:14])[0],
-                trigger_length=struct.unpack("I", binary[16:20])[0],
+                burst_length=struct.unpack("I", binary[12:16])[0],
+                burst_offset=struct.unpack("I", binary[16:20])[0],
                 trigger_index=struct.unpack("I", binary[20:24])[0],
-                trigger_tag=struct.unpack("I", binary[24:28])[0],
-                awg_tag=struct.unpack("I", binary[28:32])[0],
-                scaling=struct.unpack("d", binary[32:40])[0],
-                center_freq=struct.unpack("d", binary[40:48])[0],
-                oscillator_source=struct.unpack("H", binary[48:50])[0],
-                signal_source=struct.unpack("H", binary[50:52])[0],
-            )
-        if version.minor >= 1:
-            timestamp_diff = struct.unpack("I", binary[8:12])[0]
-            timestamp_diff *= 1 / (timebase * max_demod_rate)
-            return ShfDemodulatorVectorExtraHeader(
-                timestamp=struct.unpack("q", binary[0:8])[0],
-                timestamp_diff=timestamp_diff,
-                abort_config=struct.unpack("?", binary[12:13])[0],
-                trigger_source=struct.unpack("B", binary[13:14])[0],
-                trigger_length=struct.unpack("I", binary[16:20])[0],
-                trigger_index=struct.unpack("I", binary[20:24])[0],
-                trigger_tag=struct.unpack("I", binary[24:28])[0],
-                awg_tag=struct.unpack("I", binary[28:32])[0],
-                scaling=struct.unpack("d", binary[32:40])[0],
-                center_freq=struct.unpack("d", binary[40:48])[0],
-                oscillator_source=-1,
-                signal_source=-1,
+                trigger_timestamp=struct.unpack("q", binary[24:32])[0],
+                center_freq=struct.unpack("h", binary[32:34])[0],
+                rf_path=struct.unpack("?", binary[34:35])[0],
+                oscillator_source=source_field & 0b111,
+                harmonic=(source_field >> 3) & 0b1111111111,
+                trigger_source=(source_field >> 13) & 0b111111,
+                signal_source=(source_field >> 18) & 0b111111,
+                oscillator_freq=struct.unpack("q", binary[40:48])[0],
+                scaling=struct.unpack("f", binary[48:52])[0],
             )
         raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
 
@@ -366,21 +357,26 @@ class ShfDemodulatorVectorExtraHeader:
         timebase = 2.5e-10
         max_demod_rate = 5e7
 
+        source_field = (
+            (self.signal_source << 18)
+            | (self.trigger_source << 13)
+            | (self.harmonic << 3)
+            | self.oscillator_source
+        )
         return struct.pack(
-            "qIBBIIIIddHH",
+            "qIIIIqhBIqf",
             self.timestamp,
             int(self.timestamp_diff * (timebase * max_demod_rate)),
-            self.abort_config,
-            self.trigger_source,
-            self.trigger_length,
+            self.burst_length,
+            self.burst_offset,
             self.trigger_index,
-            self.trigger_tag,
-            self.awg_tag,
-            self.scaling,
+            self.trigger_timestamp,
             self.center_freq,
-            self.oscillator_source,
-            self.signal_source,
-        ), _HeaderVersion(major=0, minor=2)
+            self.rf_path,
+            source_field,
+            self.oscillator_freq,
+            self.scaling,
+        ), _HeaderVersion(major=1, minor=0)
 
 
 ExtraHeader = Union[
@@ -447,6 +443,9 @@ def _deserialize_shf_result_logger_vector(
 
     Returns:
         The deserialized vector and the extra header
+
+    Raises:
+        SHFHeaderVersionNotSupportedError: If the version is not supported.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
@@ -479,6 +478,9 @@ def _deserialize_shf_scope_vector(
 
     Returns:
         The deserialized vector and the extra header
+
+    Raises:
+        SHFHeaderVersionNotSupportedError: If the version is not supported.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
@@ -512,6 +514,9 @@ def _deserialize_shf_demodulator_vector(
 
     Returns:
         The deserialized vector and the extra header
+
+    Raises:
+        SHFHeaderVersionNotSupportedError: If the version is not supported.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
@@ -559,6 +564,7 @@ def parse_shf_vector_data_struct(
 
     Raises:
         ValueError: If the vector value type is not supported.
+        SHFHeaderVersionNotSupportedError: If the version is not supported.
     """
     raw_data = vector_data.data
     extra_header_info: int = vector_data.extraHeaderInfo

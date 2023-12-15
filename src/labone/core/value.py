@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import capnp
 import numpy as np
 
+from labone.core.errors import SHFHeaderVersionNotSupportedError
 from labone.core.helper import (
     LabOneNodePath,
     VectorElementType,
@@ -24,7 +25,6 @@ from labone.core.shf_vector_data import (
     ExtraHeader,
     SHFDemodSample,
     encode_shf_vector_data_struct,
-    get_header_length,
     parse_shf_vector_data_struct,
 )
 
@@ -69,6 +69,9 @@ class AnnotatedValue:
 
         Returns:
             The converted AnnotatedValue.
+
+        Raises:
+            ValueError: If the capnp value has an unknown type or can not be parsed.
         """
         value, extra_header = _capnp_value_to_python_value(raw.value)
         return AnnotatedValue(
@@ -208,6 +211,9 @@ def _capnp_vector_to_value(
 
     Returns:
         Numpy array containing the vector data and the extra header if present.
+
+    Raises:
+        ValueError: If the vector data can not be parsed.
     """
     raw_data = vector_data.data
     element_type = VectorElementType(vector_data.vectorElementType)
@@ -218,16 +224,19 @@ def _capnp_vector_to_value(
         # is outsourced in a different module.
         try:
             return parse_shf_vector_data_struct(vector_data)
-        except ValueError:
-            # Even though we are unable to parse the shf vector data we should
-            # still return the data without the extra header info.
-            logger.exception("Unknown shf vector type.")
-            bytes_to_skip = get_header_length(vector_data)
-            parse_vector = np.frombuffer(
-                raw_data[bytes_to_skip:],
-                dtype=element_type.to_numpy_type(),
+        except ValueError:  # pragma: no cover
+            logger.error(  # noqa: TRY400
+                "received unknown shf vector type. Please update the API to the "
+                "latest version.",
             )
-            return parse_vector, None
+            raise
+        except SHFHeaderVersionNotSupportedError as e:  # pragma: no cover
+            # The version of the shf vector data is not supported by the client.
+            logger.error(  # noqa: TRY400
+                "%s Please update the API to the latest version.",
+                e.args[0],
+            )
+            raise ValueError(e.args[0]) from e
 
     if element_type == VectorElementType.STRING:
         # Special case for strings which are send as byte arrays
@@ -248,7 +257,7 @@ def _capnp_value_to_python_value(
         The converted value.
 
     Raises:
-        ValueError: If the capnp value has an unknown type.
+        ValueError: If the capnp value has an unknown type or can not be parsed.
     """
     capnp_type = capnp_value.which()
     if capnp_type == "int64":

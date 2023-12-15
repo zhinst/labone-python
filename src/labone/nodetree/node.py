@@ -1644,11 +1644,11 @@ class PartialNode(WildcardOrPartialNode):
         # first try to extend the path. Will fail if the resulting path is invalid
         try:
             self.tree_manager.find_substructure(extended_path)
-        except LabOneInvalidPathError as e:
+        except LabOneInvalidPathError:
             # wildcards are always legal
             if next_path_segment == WILDCARD:
                 return self._tree_manager.path_segments_to_node(extended_path)
-            raise LabOneInvalidPathError from e
+            raise
 
         return self._tree_manager.path_segments_to_node(extended_path)
 
