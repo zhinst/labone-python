@@ -61,7 +61,6 @@ async def test_connect_device():
             host="host",
             port="port",
             interface="interface",
-            use_enum_parser="use_enum_parser",
             custom_parser="custom_parser",
         )
 
@@ -76,7 +75,6 @@ async def test_connect_device():
         )
         construct_mock.assert_called_once_with(
             "session",
-            use_enum_parser="use_enum_parser",
             custom_parser="custom_parser",
         )
         init_mock.assert_called_once_with(
@@ -112,7 +110,6 @@ async def test_connect_device_raises():
                 host="host",
                 port="port",
                 interface="interface",
-                use_enum_parser="use_enum_parser",
                 custom_parser="custom_parser",
             )
         kernelinfo_mock.assert_called_once_with(
@@ -126,6 +123,5 @@ async def test_connect_device_raises():
         )
         construct_mock.assert_called_once_with(
             "session",
-            use_enum_parser="use_enum_parser",
             custom_parser="custom_parser",
         )

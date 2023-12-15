@@ -65,12 +65,11 @@ class DataServer(PartialNode):
         )
 
     @classmethod
-    async def create(  # noqa: PLR0913
+    async def create(
         cls,
         host: str,
         port: int = 8004,
         *,
-        use_enum_parser: bool = True,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         hide_kernel_prefix: bool = True,
     ) -> DataServer:
@@ -83,8 +82,6 @@ class DataServer(PartialNode):
                 E.g. having the result of this function in a variable `tree`
                 `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
                 Setting this option makes working with the tree easier.
-            use_enum_parser: Whether enumerated integer values coming from the server
-                should be packaged into enum values, if applicable.
             custom_parser: A function that takes an annotated value and returns an
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
@@ -110,7 +107,6 @@ class DataServer(PartialNode):
             model_node = await construct_nodetree(
                 session,
                 hide_kernel_prefix=hide_kernel_prefix,
-                use_enum_parser=use_enum_parser,
                 custom_parser=custom_parser,
             )
         except LabOneError as e:
@@ -126,7 +122,6 @@ class DataServer(PartialNode):
         serial: str,
         *,
         interface: str = "",
-        use_enum_parser: bool = True,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
     ) -> Instrument:
         """Connect to a device.
@@ -139,8 +134,6 @@ class DataServer(PartialNode):
                 interfaces, and a specific interface should be enforced. If no value is
                 provided, the data server will automatically choose an available
                 interface. (default = "")
-            use_enum_parser: Whether enumerated integer values coming from the server
-                should be packaged into enum values, if applicable.
             custom_parser: A function that takes an annotated value and returns an
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
@@ -162,7 +155,6 @@ class DataServer(PartialNode):
             host=self.host,
             port=self.port,
             interface=interface,
-            use_enum_parser=use_enum_parser,
             custom_parser=custom_parser,
         )
 
