@@ -573,7 +573,15 @@ def streaming_handle_factory(
                 capnp.KjException: If no data queues are registered any more and
                     the subscription should be removed.
             """
-            parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
+            try:
+                parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
+            except ValueError as err:  # pragma: no cover
+                logger.error(  # noqa: TRY400
+                    "Disconnecting subscription. Could not parse value.  Error: %s",
+                    err.args[0],
+                )
+                raise
+
             # distribute to all data queues and remove the ones that are not
             # connected anymore.
             self._data_queues = [

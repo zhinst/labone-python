@@ -160,18 +160,20 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
         np.array([7, 2], dtype=np.int64),
     )
     extra_header = ShfDemodulatorVectorExtraHeader(
-        0,
-        0,
-        False,  # noqa: FBT003
-        0,
-        0,
-        0,
-        0,
-        0,
-        0.5,
-        -3,
-        0,
-        0,
+        timestamp=0,
+        timestamp_diff=0,
+        burst_length=4,
+        burst_offset=5,
+        trigger_index=6,
+        trigger_timestamp=7,
+        center_freq=8,
+        rf_path=True,
+        oscillator_source=3,
+        harmonic=10,
+        trigger_source=2,
+        signal_source=4,
+        oscillator_freq=13,
+        scaling=4.0000000467443897e-07,
     )
 
     functionality = AutomaticSessionFunctionality({"/a/b": {}})
@@ -187,5 +189,5 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
         ),
     )
     subscription_value = await queue.get()
-    assert list(subscription_value.value.x) == list(value.x)
-    assert list(subscription_value.value.y) == list(value.y)
+    assert np.allclose(subscription_value.value.x, value.x)
+    assert np.allclose(subscription_value.value.y, value.y)

@@ -148,7 +148,12 @@ def test_shf_scope_vector(  # noqa: PLR0913
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
 @pytest.mark.parametrize("timestamp_diff", range(0, 100, 25))
-@pytest.mark.parametrize("header_version", [1, 2])
+@pytest.mark.parametrize(
+    "header_version",
+    [
+        0,
+    ],
+)
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
 def test_shf_demodulator_vector(  # noqa: PLR0913
     vector_length,
@@ -164,16 +169,15 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
     header_length = 64
     input_vector.extraHeaderInfo = _construct_extra_header_value(
         header_length=header_length,
-        major_version=0,
+        major_version=1,
         minor_version=header_version,
     )
     # Manually set the scaling Factor
     header = (
         b"\x00" * 8
         + struct.pack("I", timestamp_diff)
-        + b"\x00" * 20
-        + struct.pack("d", scaling)
-        + b"\x00"
+        + b"\x00" * 36
+        + struct.pack("f", scaling)
     )
 
     header = header + b"\x00" * (header_length - len(header))
@@ -193,21 +197,18 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
 
     assert extra_header.timestamp == 0
     assert extra_header.timestamp_diff == timestamp_diff * 80
-    assert extra_header.abort_config is False
-    assert extra_header.trigger_source == 0
-    assert extra_header.trigger_length == 0
+    assert extra_header.burst_length == 0
+    assert extra_header.burst_offset == 0
     assert extra_header.trigger_index == 0
-    assert extra_header.trigger_tag == 0
-    assert extra_header.awg_tag == 0
+    assert extra_header.trigger_timestamp == 0
+    assert extra_header.center_freq == 0
+    assert extra_header.rf_path is False
+    assert extra_header.oscillator_source == 0
+    assert extra_header.harmonic == 0
+    assert extra_header.trigger_source == 0
+    assert extra_header.signal_source == 0
+    assert extra_header.oscillator_freq == 0
     assert extra_header.scaling == scaling
-    assert extra_header.center_freq == 0.0
-    # Unknown values are marked with -1
-    if header_version == 1:
-        assert extra_header.oscillator_source == -1
-        assert extra_header.signal_source == -1
-    else:
-        assert extra_header.oscillator_source == 0
-        assert extra_header.signal_source == 0
 
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
@@ -299,18 +300,20 @@ def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
             holdoff_errors_spectr=12,
         ),
         ShfDemodulatorVectorExtraHeader(
-            timestamp=1,
+            timestamp=0,
             timestamp_diff=0,
-            abort_config=False,
-            trigger_source=4,
-            trigger_length=5,
+            burst_length=4,
+            burst_offset=5,
             trigger_index=6,
-            trigger_tag=7,
-            awg_tag=8,
-            scaling=0.5,
-            center_freq=10,
-            oscillator_source=11,
-            signal_source=12,
+            trigger_timestamp=7,
+            center_freq=8,
+            rf_path=True,
+            oscillator_source=3,
+            harmonic=10,
+            trigger_source=2,
+            signal_source=4,
+            oscillator_freq=13,
+            scaling=4.0000000467443897e-07,
         ),
     ],
 )
@@ -389,20 +392,22 @@ def test_encoding_decoding_are_invers(header, data):
             ShfDemodulatorVectorExtraHeader(
                 timestamp=0,
                 timestamp_diff=0,
-                abort_config=False,
-                trigger_source=4,
-                trigger_length=5,
+                burst_length=4,
+                burst_offset=5,
                 trigger_index=6,
-                trigger_tag=7,
-                awg_tag=8,
-                scaling=0.5,
-                center_freq=10,
-                oscillator_source=11,
-                signal_source=12,
+                trigger_timestamp=7,
+                center_freq=8,
+                rf_path=True,
+                oscillator_source=3,
+                harmonic=10,
+                trigger_source=2,
+                signal_source=4,
+                oscillator_freq=13,
+                scaling=4.0000000467443897e-07,
             ),
             SHFDemodSample(
-                np.array([6, 3], dtype=np.int64),
-                np.array([7, 2], dtype=np.int64),
+                np.array([6, 4], dtype=np.int64),
+                np.array([8, 2], dtype=np.int64),
             ),
         ),
     ],
@@ -419,8 +424,8 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
     extracted_data, extracted_header = parse_shf_vector_data_struct(inp)
 
     assert extracted_header == header
-    assert np.array_equal(extracted_data.x, data_copy.x)
-    assert np.array_equal(extracted_data.y, data_copy.y)
+    assert np.allclose(extracted_data.x, data_copy.x, atol=1e-7)
+    assert np.allclose(extracted_data.y, data_copy.y, atol=1e-7)
 
 
 @pytest.mark.parametrize(
@@ -430,16 +435,18 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
             ShfDemodulatorVectorExtraHeader(
                 timestamp=0,
                 timestamp_diff=0,
-                abort_config=False,
-                trigger_source=4,
-                trigger_length=5,
+                burst_length=4,
+                burst_offset=5,
                 trigger_index=6,
-                trigger_tag=7,
-                awg_tag=8,
-                scaling=0.5,
-                center_freq=10,
-                oscillator_source=11,
-                signal_source=12,
+                trigger_timestamp=7,
+                center_freq=8,
+                rf_path=True,
+                oscillator_source=3,
+                harmonic=10,
+                trigger_source=2,
+                signal_source=4,
+                oscillator_freq=13,
+                scaling=4e-07,
             ),
             np.array([50 + 100j, 100 + 150j], dtype=np.complex64),
         ),
@@ -459,8 +466,8 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
                 trigger_timestamp=29,
             ),
             SHFDemodSample(
-                np.array([6, 3], dtype=np.int64),
-                np.array([7, 2], dtype=np.int64),
+                np.array([6, 4], dtype=np.int64),
+                np.array([8, 2], dtype=np.int64),
             ),
         ),
         (

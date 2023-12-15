@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "labone"
 dynamic = ["version"]
 description = "Python API for Zurich Instruments LabOne software."
-license = {text = "Apache 2.0"}
+license = { text = "Apache 2.0" }
 requires-python = ">=3.8"
 authors = [
   { name = "Zurich Instruments Development Team", email = "info@zhinst.com" },
@@ -38,7 +38,6 @@ Issues = "https://github.com/zhinst/labone-python/issues"
 Source = "https://github.com/zhinst/labone-python"
 
 
-
 [tool.hatch.version]
 source = "vcs"
 
@@ -61,7 +60,7 @@ dependencies = ["coverage[toml]>=6.5", "pytest", "hypothesis", "pytest-asyncio"]
 markers = [
   "mock_compatibility: Testing that session mock (still) behaves like hpk server",
 ]
-    
+
 
 [tool.hatch.envs.test.scripts]
 test = "pytest {args:tests} -m 'not mock_compatibility'"
@@ -133,7 +132,16 @@ ban-relative-imports = "all"
 
 [tool.ruff.per-file-ignores]
 # Tests can use magic values, assertions, and relative imports
-"tests/**/*" = ["PLR2004", "S101", "TID252", "ANN", "D", "SLF001", "PT011"]
+"tests/**/*" = [
+  "PLR2004",
+  "S101",
+  "TID252",
+  "ANN",
+  "D",
+  "SLF001",
+  "PT011",
+  "RUF006",
+]
 
 [tool.coverage.run]
 source_pkgs = ["labone"]
@@ -150,7 +158,7 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
   "if t.TYPE_CHECKING:",
-  "\\.\\.\\."
+  "\\.\\.\\.",
 ]
 
 [[tool.mypy.overrides]]

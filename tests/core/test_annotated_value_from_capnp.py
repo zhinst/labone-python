@@ -195,22 +195,20 @@ def test_shf_vector(mock_method):
     assert parsed_value.value == "array"
 
 
-@pytest.mark.parametrize("vector_length", range(0, 200, 32))
-@pytest.mark.parametrize("header_length", range(0, 200, 32))
 @patch.object(
     value_module,
     "parse_shf_vector_data_struct",
     autospec=True,
 )
-def test_unknown_shf_vector(mock_method, vector_length, header_length):
-    input_array = np.linspace(0, 1, vector_length, dtype=np.uint32)
+def test_unknown_shf_vector(mock_method):
+    input_array = np.linspace(0, 1, 200, dtype=np.uint32)
     input_dict = {
         "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
         "value": {
             "vectorData": {
                 "valueType": 69,
                 "vectorElementType": 2,
-                "extraHeaderInfo": header_length,
+                "extraHeaderInfo": 32,
                 "data": input_array.tobytes(),
             },
         },
@@ -218,10 +216,7 @@ def test_unknown_shf_vector(mock_method, vector_length, header_length):
     msg = value_capnp.AnnotatedValue.new_message()
     msg.from_dict(input_dict)
     mock_method.side_effect = ValueError("Unknown SHF vector type")
-    parsed_value = value_module.AnnotatedValue.from_capnp(msg)
+    with pytest.raises(ValueError):
+        value_module.AnnotatedValue.from_capnp(msg)
     mock_method.assert_called_once()
     assert mock_method.call_args[0][0].to_dict() == input_dict["value"]["vectorData"]
-    assert parsed_value.timestamp == input_dict["metadata"]["timestamp"]
-    assert parsed_value.path == input_dict["metadata"]["path"]
-    assert parsed_value.extra_header is None
-    assert np.array_equal(parsed_value.value, input_array[header_length:])
