@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
   "typing_extensions>=4.8.0",
   "numpy>=1.20",
-  "pycapnp==2.0.0b1",
+  "pycapnp~=2.0.0b2",
   "asyncio-atexit==1.0.1",
   "deprecation>=2.1.0",
 ]
