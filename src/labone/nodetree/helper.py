@@ -129,46 +129,7 @@ class Session(t.Protocol):
 
 
 class UndefinedStructure(dict):
-    """A tree-structure allowing all kinds of indexation."""
-
-    def __getitem__(self, _: object) -> UndefinedStructure:
-        return UndefinedStructure()
-
-    def __eq__(self, other: object) -> bool:
-        """All instances should have equal meaning."""
-        return self.__class__ == other.__class__
-
-
-def nested_dict_access(
-    key_chain: t.Iterable,
-    nested_dict: NestedDict[T],
-) -> NestedDict[T] | T:
-    """Recursively going deeper in a nested dictionary.
-
-    Args:
-        key_chain: keys to recursively index the nested dictionary
-        nested_dict: nested dictionaries
-
-    Returns:
-        The result at this position of the nested dictionary.
-
-    Raises:
-        KeyError: if any of the keys is not appropriate or the sequence of keys is
-            too long.
-    """
-    current_dict: NestedDict[T] | T = nested_dict
-    try:
-        for key in key_chain:
-            current_dict = current_dict[key]  # type: ignore[index]
-    except KeyError as e:
-        if current_dict:
-            raise KeyError from e
-        msg = (
-            f"{nested_dict} cannot be indexed with {key_chain}, because key-sequence"
-            f" is to long and hits a leaf early"
-        )
-        raise KeyError(msg) from e
-    return current_dict
+    """Representing the state that the substructure of a node is not known."""
 
 
 def join_path(path_segments: t.Iterable[NormalizedPathSegment]) -> LabOneNodePath:
@@ -254,30 +215,6 @@ def pythonify_path_segment(path_segment: NormalizedPathSegment) -> str:
         return path_segment + "_"
 
     return path_segment
-
-
-def paths_to_nested_dict(paths: list[LabOneNodePath]) -> NestedDict[dict]:
-    """Builds a nested dictionary structure out of a collection of paths.
-
-    Args:
-        paths: List of paths.
-
-    Returns:
-        A tree-like dictionary structure representing the paths.
-    """
-    return _build_nested_dict_recursively([split_path(path) for path in paths])
-
-
-def _build_nested_dict_recursively(
-    suffix_list: list[list[NormalizedPathSegment]],
-) -> NestedDict[dict]:
-    local_result = build_prefix_dict(suffix_list)
-
-    # recursively solve the emerging sub-problems
-    return {
-        first_segment: _build_nested_dict_recursively(local_suffixes)
-        for first_segment, local_suffixes in local_result.items()
-    }
 
 
 def build_prefix_dict(
