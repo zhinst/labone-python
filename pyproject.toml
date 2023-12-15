@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "labone"
 dynamic = ["version"]
 description = "Python API for Zurich Instruments LabOne software."
-license = { text = "MIT" }
+license = {text = "Apache 2.0"}
 requires-python = ">=3.8"
 authors = [
   { name = "Zurich Instruments Development Team", email = "info@zhinst.com" },
@@ -16,7 +16,7 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
