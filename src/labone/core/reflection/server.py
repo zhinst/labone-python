@@ -23,12 +23,19 @@ from labone.core.helper import (
     CapnpStructReader,
     ensure_capnp_event_loop,
 )
-from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
-    reflection_capnp,
-)
 from labone.core.reflection.capnp_dynamic_type_system import build_type_system
+from labone.core.reflection.helper import suppress_std_err
 from labone.core.reflection.parsed_wire_schema import EncodedSchema, ParsedWireSchema
 from labone.core.result import unwrap
+
+# During the import of the reflection module, the capnp library often prints the
+# following warning: `PWD environment variable doesn't match current directory`.
+# This only happens in a jupyter notebook environment and is expected. To avoid
+# confusion we suppress the warning.
+with suppress_std_err():
+    from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
+        reflection_capnp,
+    )
 
 logger = logging.getLogger(__name__)
 
