@@ -1,34 +1,24 @@
 """Helper module for the reflection module."""
 import os
-import sys
 import typing as t
 from contextlib import contextmanager
 
 
 @contextmanager
-def suppress_std_err() -> t.Generator[None, None, None]:
-    """Suppress stderr for the duration of the context.
+def enforce_pwd() -> t.Generator[None, None, None]:
+    """Enforces the PWD environment variable to be equal to the pythons cwd.
 
-    In contrast to the `contextlib.redirect_stderr()` this also works for
-    libraries that use the C-API for printing to stderr. This makes it
-    useful for suppressing the err output of the capnp library.
-
-    Warning: Everything that is printed to stderr during the context will be
-        lost. This can be problematic if the suppressed output contains
-        important information.
+    This context manager temporarily sets the PWD environment variable to the
+    current working directory, defined in the python os library. This is useful
+    when c++ code is called from python, which relies on the PWD environment
+    variable to be set correctly.
     """
-    fd_stderr = sys.stderr.fileno()
-
-    with os.fdopen(os.dup(fd_stderr), "w") as old_stderr:
-        # redirect stderr to devnull
-        with open(os.devnull, "w") as file:  # noqa: PTH123
-            sys.stderr.close()
-            os.dup2(file.fileno(), fd_stderr)
-            sys.stderr = os.fdopen(fd_stderr, "w")
-        try:
-            yield
-        finally:
-            # restore stderr to its previous value
-            sys.stderr.close()
-            os.dup2(old_stderr.fileno(), fd_stderr)
-            sys.stderr = os.fdopen(fd_stderr, "w")
+    old_pwd = os.environ.get("PWD")
+    try:
+        os.environ["PWD"] = os.getcwd()  # noqa: PTH109
+        yield
+    finally:
+        if old_pwd is not None:
+            os.environ["PWD"] = old_pwd
+        else:
+            del os.environ["PWD"]  # pragma: no cover

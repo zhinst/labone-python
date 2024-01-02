@@ -24,15 +24,19 @@ from labone.core.helper import (
     ensure_capnp_event_loop,
 )
 from labone.core.reflection.capnp_dynamic_type_system import build_type_system
-from labone.core.reflection.helper import suppress_std_err
+from labone.core.reflection.helper import enforce_pwd
 from labone.core.reflection.parsed_wire_schema import EncodedSchema, ParsedWireSchema
 from labone.core.result import unwrap
 
-# During the import of the reflection module, the capnp library often prints the
-# following warning: `PWD environment variable doesn't match current directory`.
-# This only happens in a jupyter notebook environment and is expected. To avoid
-# confusion we suppress the warning.
-with suppress_std_err():
+# The kj library (used by capnp) requires the PWD environment variable to be set.
+# This is needed to resolve relative paths. When using python from the command
+# line, the PWD variable is set automatically. However, this is not guaranteed.
+# E.g. when using python from a jupyter notebook, the PWD variable is not set
+# or set to `/`. This leads to a ugly warning inside the c++ code that can not
+# be caught using Python's built-in warning handling mechanisms. To avoid this
+# warning, we temporary set the PWD environment variable to the current working
+# directory.
+with enforce_pwd():
     from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
         reflection_capnp,
     )
