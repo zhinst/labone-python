@@ -7,6 +7,7 @@ import json
 import socket
 import traceback
 import typing
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from itertools import cycle
 from typing import Any, Callable
@@ -27,6 +28,7 @@ from labone.core.session import (
 )
 from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue
+from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
 
 from .resources import session_protocol_capnp, testfile_capnp, value_capnp
 
@@ -842,3 +844,106 @@ class TestKJErrors:
         )
         with pytest.raises(errors.UnavailableError):
             await client.list_nodes("test")
+
+
+@pytest.mark.asyncio()
+async def test_set_transaction_no_wrapper():
+    session = await spawn_hpk_mock(
+        AutomaticSessionFunctionality({"a": {"Type": "Integer"}}),
+    )
+    target_value = 4656
+    async with session.set_transaction() as transaction:
+        transaction.append(session.set(AnnotatedValue(path="a", value=target_value)))
+    assert (await session.get("a")).value == target_value
+    assert await session._supports_transaction() is False
+
+
+@pytest.mark.asyncio()
+async def test_set_transaction_additional_futures():
+    session = await spawn_hpk_mock(
+        AutomaticSessionFunctionality({"a": {"Type": "Integer"}}),
+    )
+    target_value = 4656
+    async with session.set_transaction() as transaction:
+        transaction.append(session.set(AnnotatedValue(path="a", value=target_value)))
+        transaction.append(session.get("a"))
+        transaction.append(asyncio.sleep(0.001))
+    assert (await session.get("a")).value == target_value
+
+
+@pytest.mark.asyncio()
+async def test_set_transaction_wrapper():
+    session = await spawn_hpk_mock(
+        AutomaticSessionFunctionality(
+            {
+                "a": {"Type": "Integer"},
+                "/ctrl/transaction/state": {"Type": "Integer"},
+            },
+        ),
+    )
+    subscription_state = await session.subscribe("/ctrl/transaction/state")
+    target_value = 4656
+
+    # Use function so that we can store the acknowledged value which required to
+    # compare the timestamps
+    result = None
+
+    async def set_value():
+        nonlocal result
+        result = await session.set(AnnotatedValue(path="a", value=target_value))
+
+    async with session.set_transaction() as transaction:
+        transaction.append(set_value())
+    assert (await session.get("a")).value == target_value
+
+    assert subscription_state.qsize() == 2
+    start = subscription_state.get_nowait()
+    assert start.value == 1
+    end = subscription_state.get_nowait()
+    assert end.value == 0
+    assert start.timestamp < result.timestamp < end.timestamp
+    assert await session._supports_transaction() is True
+
+
+@pytest.mark.asyncio()
+async def test_set_transaction_multiple_devices():
+    session_a = await spawn_hpk_mock(
+        AutomaticSessionFunctionality({"a": {"Type": "Integer"}}),
+    )
+    session_b = await spawn_hpk_mock(
+        AutomaticSessionFunctionality(
+            {
+                "a": {"Type": "Integer"},
+                "/ctrl/transaction/state": {"Type": "Integer"},
+            },
+        ),
+    )
+    async with AsyncExitStack() as stack:
+        transaction_a = await stack.enter_async_context(session_a.set_transaction())
+        transaction_b = await stack.enter_async_context(session_b.set_transaction())
+        transaction_a.append(session_a.set(AnnotatedValue(path="a", value=1)))
+        transaction_b.append(session_b.set(AnnotatedValue(path="a", value=2)))
+
+    assert (await session_a.get("a")).value == 1
+    assert (await session_b.get("a")).value == 2
+
+
+@pytest.mark.asyncio()
+async def test_set_transaction_mix_multiple_devices():
+    session_a = await spawn_hpk_mock(
+        AutomaticSessionFunctionality({"a": {"Type": "Integer"}}),
+    )
+    session_b = await spawn_hpk_mock(
+        AutomaticSessionFunctionality(
+            {
+                "a": {"Type": "Integer"},
+                "/ctrl/transaction/state": {"Type": "Integer"},
+            },
+        ),
+    )
+    async with session_b.set_transaction() as transaction:
+        transaction.append(session_a.set(AnnotatedValue(path="a", value=1)))
+        transaction.append(session_b.set(AnnotatedValue(path="a", value=2)))
+
+    assert (await session_a.get("a")).value == 1
+    assert (await session_b.get("a")).value == 2
