@@ -564,6 +564,11 @@ class MetaNode(ABC):
         """Structure defining which sub-nodes exist."""
         return self._subtree_paths
 
+    @property
+    def children(self) -> list[str]:
+        """List of direct sub-node names."""
+        return [pythonify_path_segment(p) for p in self._subtree_paths]
+
 
 class ResultNode(MetaNode):
     """Representing values of a get-request in form of a tree.
@@ -688,9 +693,7 @@ class ResultNode(MetaNode):
             Iterator of valid dot-access identifier.
 
         """
-        return [pythonify_path_segment(p) for p in self._subtree_paths] + list(
-            super().__dir__(),
-        )
+        return self.children + list(super().__dir__())
 
     def __contains__(self, item: str | int | ResultNode | AnnotatedValue) -> bool:
         """Checks if a path-segment or node is an immediate sub-node of this one."""
@@ -907,9 +910,7 @@ class Node(MetaNode, ABC):
             Iterator of valid dot-access identifier.
 
         """
-        return [pythonify_path_segment(p) for p in self._subtree_paths] + list(
-            super().__dir__(),
-        )
+        return self.children + list(super().__dir__())
 
     def __contains__(self, item: str | int | Node) -> bool:
         """Checks if a path-segment or node is an immediate sub-node of this one.
