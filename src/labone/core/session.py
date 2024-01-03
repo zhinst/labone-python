@@ -19,6 +19,7 @@ import asyncio
 import json
 import typing as t
 import uuid
+from contextlib import asynccontextmanager
 from enum import IntFlag
 from typing import Literal
 
@@ -39,6 +40,9 @@ if t.TYPE_CHECKING:
     from labone.core.reflection.server import ReflectionServer
 
 T = t.TypeVar("T")
+
+# Control node for transactions. This node is only available for UHF and MF devices.
+TRANSACTION_NODE_PATH = "/ctrl/transaction/state"
 
 NodeType: TypeAlias = Literal[
     "Integer (64 bit)",
@@ -223,6 +227,7 @@ class Session:
         # The client_id is required by most capnp messages to identify the client
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()
+        self._has_transaction_support: bool | None = None
 
     async def list_nodes(
         self,
@@ -736,6 +741,74 @@ class Session:
         node_value = await queue.get()
         while (value != node_value.value) ^ invert:  # pragma: no cover
             node_value = await queue.get()
+
+    async def _supports_transaction(self) -> bool:
+        """Check if the session supports transactions.
+
+        Transactions are only supported by MF and UHF devices. Transactions mitigate
+        the problem of the data server being blocking. Newer devices use a different
+        data server implementation which is non-blocking. Therefore transactions are
+        not required for these devices.
+
+        Returns:
+            True if the session supports transactions, False otherwise.
+        """
+        if self._has_transaction_support is None:
+            self._has_transaction_support = (
+                len(await self.get_with_expression(TRANSACTION_NODE_PATH)) == 1
+            )
+        return self._has_transaction_support
+
+    @asynccontextmanager
+    async def set_transaction(self) -> t.AsyncGenerator[list[t.Awaitable], None]:
+        """Context manager for a transactional set.
+
+        Once the context manager is entered, every set request that is added to the
+        `requests` list is executed in a single transaction. The transaction is
+        committed when the context manager is exited. Note that the transaction is
+        handled by the data server and there is no special handling required by
+        the client. The client can use the `set` function as usual. To ensure the
+        right order of execution every promise that contains a set request must be
+        added to the `requests` list. This ensures the requests are part of the
+        transaction and are executed in the right order.
+
+        By design a transaction does not return any values. This also means that
+        there is no error handling for the requests. If a request fails, the other
+        requests are still executed and no error is raised.
+
+        Important:
+            This function is only helpful for UHF and MF devices, since the
+            underlying data server only support blocking calls. Although it can be
+            used for all device types there is no benefit in this case, since it will
+            be equivalent to a simple asyncio.gather.
+
+        UHF and MF devices are not natively supported by the capnp interface of the
+        LabOne data server. Therefore a wrapper is used to emulate the capnp interface.
+        This wrapper uses the old LabOne Client API to communicate with the device.
+        The old Client is not asynchronous and therefore the communication is blocking.
+        When setting multiple nodes in a row, the blocking communication can lead to
+        a significant performance drop. To avoid this, the transactional set is used.
+        It allows to set multiple nodes in a single request.
+
+        Example:
+            >>> async with session.set_transaction() as requests:
+            ...     requests.append(session.set(value1))
+            ...     requests.append(session.set(value2))
+            ...     requests.append(custom_async_function_that_sets_nodes(...))
+        """
+        requests: list[t.Awaitable] = []
+        if await self._supports_transaction():
+            begin_request = self.set(
+                AnnotatedValue(path=TRANSACTION_NODE_PATH, value=1),
+            )
+            yield requests
+            requests = [begin_request, *requests]
+            requests.append(
+                self.set(AnnotatedValue(path=TRANSACTION_NODE_PATH, value=0)),
+            )
+        else:
+            yield requests
+        await asyncio.gather(*requests)
 
     @property
     def reflection_server(self) -> ReflectionServer:
