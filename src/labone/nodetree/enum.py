@@ -19,7 +19,7 @@ import typing as t
 from enum import Enum, IntEnum
 from functools import lru_cache
 
-from labone.nodetree.node import _parse_option_keywords_description
+from labone.node_info import _parse_option_keywords_description
 
 if t.TYPE_CHECKING:
     from labone.core import AnnotatedValue

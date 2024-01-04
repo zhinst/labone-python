@@ -8,7 +8,7 @@ customers.
 from __future__ import annotations
 
 import pytest
-from labone.nodetree.node import OptionInfo
+from labone.node_info import OptionInfo
 
 from tests.mock_server_for_testing import get_unittest_mocked_node
 

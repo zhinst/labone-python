@@ -404,7 +404,7 @@ class Session:
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
+    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
 
         Args:
