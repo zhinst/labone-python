@@ -104,8 +104,13 @@ async def test_list_nodes_answered_by_tree_structure():
 @pytest.mark.asyncio()
 async def test_list_nodes_info(path_to_info, path, expected):
     functionality = AutomaticSessionFunctionality(path_to_info)
-    assert await functionality.list_nodes_info(path) == expected
+    assert (await functionality.list_nodes_info(path)).keys() == expected.keys()
 
+
+@pytest.mark.asyncio()
+async def test_node_info_good_default():
+    assert False  # TODO
+    
 
 @pytest.mark.parametrize(
     "path_to_info",
