@@ -421,6 +421,18 @@ class MetaNode(ABC):
         return path_segments in {
             self._redirect((*self.path_segments, e)) for e in self._subtree_paths
         }
+    
+    def show_substructure(self, indend=0) -> str:
+        """Visualize the substructure of this node.
+
+        Returns:
+            String, representing the substructure.
+        """
+        representation = ""
+        representation += "-- " * indend + f"{self.path_segments[-1]}\n"
+        for segment in sorted(self._subtree_paths.keys()):
+            representation += self[segment].show_substructure(indend+1)
+        return representation
 
     @property
     def tree_manager(self) -> NodeTreeManager:

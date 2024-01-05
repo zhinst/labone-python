@@ -20,6 +20,7 @@ which version of the hpk the mock server is compared.
 
 import io
 from contextlib import redirect_stdout
+import numpy as np
 
 import pytest
 from labone.core import AnnotatedValue, KernelSession, ServerInfo, ZIKernelInfo
@@ -45,44 +46,49 @@ async def get_mock_session() -> MockSession:
     return await spawn_hpk_mock(functionality)
 
 
-def same_prints_and_exceptions_for_real_and_mock(test_function):
-    """
-    Calls the decorated function with both the real hpk and
-    the mock version. Compares the behavior by comparing the
-    printed output. Use print statements in the decorated function
-    to compare the behavior!
-    If exceptions are raised, it is compared that they are raised
-    in both cases and are of the same kind. However, the message
-    is not compared.
-    """
+def create_compare_function(session_source1, session_source2):
+    def same_prints_and_exceptions_for_real_and_mock(test_function):
+        """
+        Calls the decorated function with both the real hpk and
+        the mock version. Compares the behavior by comparing the
+        printed output. Use print statements in the decorated function
+        to compare the behavior!
+        If exceptions are raised, it is compared that they are raised
+        in both cases and are of the same kind. However, the message
+        is not compared.
+        """
 
-    async def new_test_function(*args, **kwargs):
-        session = await get_session()
-        mock_session = await get_mock_session()
+        async def new_test_function(*args, **kwargs):
+            session = await session_source1()
+            mock_session = await session_source2()
 
-        string_output = io.StringIO()
-        string_output_mock = io.StringIO()
+            string_output = io.StringIO()
+            string_output_mock = io.StringIO()
 
-        exception = None
-        exception_mock = None
-        try:
-            with redirect_stdout(string_output, *args, **kwargs):
-                await test_function(session)
-        except Exception as e:
-            exception = e
+            exception = None
+            exception_mock = None
+            try:
+                with redirect_stdout(string_output, *args, **kwargs):
+                    await test_function(session)
+            except Exception as e:
+                exception = e
 
-        try:
-            with redirect_stdout(string_output_mock, *args, **kwargs):
-                await test_function(mock_session)
-        except Exception as e:
-            exception_mock = e
+            try:
+                with redirect_stdout(string_output_mock, *args, **kwargs):
+                    await test_function(mock_session)
+            except Exception as e:
+                exception_mock = e
 
-        assert (exception is None) == (exception_mock is None)
-        if exception is not None:
-            assert type(exception) == type(exception_mock)
-        assert string_output.getvalue() == string_output_mock.getvalue()
+            assert (exception is None) == (exception_mock is None)
+            if exception is not None:
+                assert type(exception) == type(exception_mock)
+            assert string_output.getvalue() == string_output_mock.getvalue()
 
-    return new_test_function
+        return new_test_function
+    return same_prints_and_exceptions_for_real_and_mock
+
+
+same_prints_and_exceptions_for_real_and_mock = create_compare_function(get_session, get_mock_session)
 
 
 @pytest.mark.mock_compatibility()
@@ -158,10 +164,11 @@ async def test_list_nodes_info_compatible(path):
     [
         "/zi/debug/level",
         "/zi/debug/log",
+        "/zi/mds/groups/0/devices"
         "/a/b",  # test invalid node
     ],
 )
-@pytest.mark.parametrize("value", [1, 24, 0, -1])
+@pytest.mark.parametrize("value", [1, 24, 0, -1, "abc", "trace", 1+2j, True, np.array([1, 2, 3])])
 async def test_set_compatible(path, value):
     async def procedure(session):
         result = await session.set(
