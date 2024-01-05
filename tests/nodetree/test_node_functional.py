@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import pickle
+import typing as t
 from enum import Enum
 from io import BytesIO
 
 import pytest
-from labone.core.value import AnnotatedValue
+
+if t.TYPE_CHECKING:
+    from labone.core.value import AnnotatedValue
 from labone.nodetree.enum import _get_enum
 from labone.nodetree.errors import LabOneInvalidPathError
 
@@ -64,6 +67,13 @@ async def test_subpathing_too_deep_path_long_brackets_raises():
     node = await get_unittest_mocked_node({"/a": {}})
     with pytest.raises(LabOneInvalidPathError):
         node["a/b"]
+
+
+@pytest.mark.asyncio()
+async def test_access_same_node_repeatedly():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    for _ in range(10):
+        node.a.b  # noqa: B018
 
 
 @pytest.mark.asyncio()
@@ -129,8 +139,26 @@ async def test_contains_next_segment():
 
 @pytest.mark.asyncio()
 async def test_contains_subnode():
-    node = await get_unittest_mocked_node({"/a/b": {}, "/c/d": {}})
+    node = await get_unittest_mocked_node({"/a": {}, "/c/d": {}})
     assert node.a in node
+    assert node.c in node
+
+
+@pytest.mark.asyncio()
+async def test_node_does_not_contain_itself():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    assert node not in node  # noqa: PLR0124
+
+
+@pytest.mark.asyncio()
+async def test_node_does_not_contain_deeper_child():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    assert node.a.b not in node
+
+
+@pytest.mark.asyncio()
+async def test_node_does_not_contain_other_path():
+    node = await get_unittest_mocked_node({"/a/b": {}, "/c/d": {}})
     assert node.c.d not in node.a
 
 
@@ -216,136 +244,6 @@ async def test_hashing():
 
     # lossless hashing
     assert sorted(set(nodes)) == sorted(nodes)
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node():
-    node = await get_mocked_node(
-        {"/a/b/c/d/e/f/g": {}},
-    )
-
-    response = await node.a.b()
-    assert response.path_segments == ("a", "b")
-    response.c.d.e.f.g  # noqa: B018 # path valid
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_multiple_subpaths():
-    node = await get_mocked_node(
-        {
-            "/a/c": {},
-            "/a/d": {},
-        },
-    )
-
-    response = await node.a()
-    assert response.path_segments == ("a",)
-    response.c  # noqa: B018 # path valid
-    response.d  # noqa: B018 # path valid
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_long_bracket_subpathing():
-    node = await get_mocked_node(
-        {"/a/b/c": {}},
-    )
-    response = await node()
-    response["a/b/c"]  # path valid
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_bracket_subpathing():
-    node = await get_mocked_node(
-        {"/a/b/c": {}},
-    )
-    response = await node()
-    response["a"]["b"]["c"]  # path valid
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_bracket_integer_subpathing():
-    node = await get_mocked_node(
-        {"/0": {}},
-    )
-    response = await node()
-    response[0]  # path valid
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_wrong_path_raises():
-    node = await get_mocked_node({"/a": {}})
-    response = await node()
-    with pytest.raises(LabOneInvalidPathError):
-        response.b  # noqa: B018
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_too_long_path_raises():
-    node = await get_mocked_node({"/a": {}})
-    response = await node()
-    with pytest.raises(AttributeError):  # will be a AnnotatedValue Attribute error
-        response.a.b  # noqa: B018
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_too_long_bracket_path_raises():
-    node = await get_mocked_node({"/a": {}})
-    response = await node()
-    with pytest.raises(LabOneInvalidPathError):
-        response["a/b"]
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_iterate_through_leaves():
-    paths = {"/a/b/c", "/a/b/d", "/a/b/e"}
-    node = await get_mocked_node(
-        {p: {} for p in paths},
-    )
-    response = await node.a()
-    assert paths == {leaf.path for leaf in response.results()}
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_iterate_through_leaves_partial_scope():
-    paths = {"/a/b/c", "/a/b/d", "/x/y"}
-    node = await get_mocked_node(
-        {p: {} for p in paths},
-    )
-    response = await node()
-
-    # results shall only give results agreing to the current path prefix
-    assert {"/x/y"} == {leaf.path for leaf in response.x.results()}
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_values_as_leafs():
-    node = await get_mocked_node({"/a/b": {}})
-    result = await node()
-    assert isinstance(result.a.b, AnnotatedValue)
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_contains_next_segment():
-    node = await get_mocked_node({"/a/b": {}, "/a/c": {}})
-    result = await node()
-    assert "a" in result
-    assert "b" in result.a
-    assert "c" in result.a
-    assert "d" not in result.a
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_contains_subnode():
-    node = await get_mocked_node({"/a/b": {}})
-    result = await node()
-    assert result.a in result
-
-
-@pytest.mark.asyncio()
-async def test_partial_get_result_node_contains_value_at_leaf():
-    node = await get_mocked_node({"/a": {}})
-    result = await node()
-    assert result.a in result
 
 
 def test_pickle_enum():

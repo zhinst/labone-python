@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.mock_server_for_testing import get_unittest_mocked_node
+from tests.mock_server_for_testing import get_mocked_node, get_unittest_mocked_node
 
 
 def check_message_useful(message: str, keywords: list[str]) -> bool:
@@ -166,3 +166,56 @@ async def test_dir_shows_subpaths_keywords_with_underscore():
     """
     node = await get_unittest_mocked_node({"/in": {}})
     assert "in_" in dir(node)
+
+
+class TestResultNodesNotGotPaths:
+    """
+    Result Nodes can be used like the root node to
+    navigate to specific nodes. However, the get request of
+    a partial or wildcard node will only deliver a incomplete
+    snapshot. If the user now navigates to a node that was
+    not obtained, a useful error should be thrown
+    """
+
+    @pytest.mark.asyncio()
+    async def test_result_nodes_not_got_paths_partial(self):
+        node = await get_unittest_mocked_node({"/a/b": {}, "/a/c/d": {}})
+        result = await node.a.c()
+
+        with UsefulErrorMessage(["not", "result", "captured"]):
+            result.a.b  # noqa: B018
+
+    @pytest.mark.asyncio()
+    async def test_result_nodes_not_got_paths_wildcard(self):
+        node = await get_unittest_mocked_node({"/a/b/c": {}, "/a/b/d": {}})
+        result = await node.a["*"].c()  # pattern ends with c
+
+        with UsefulErrorMessage(["not", "result", "captured"]):
+            result.a.b.d  # noqa: B018
+
+
+class TestResultNodeSubindexingFiltersShownPaths:
+    """
+    On result node subindexing, the paths gets extended, but the dictionary
+    of all results (also the onces not matching the more precise path)
+    is just passed. This is expected, but may confuse the user. Therefore,
+    in representations, only the matching paths should be shown.
+    """
+
+    @pytest.mark.parametrize("method", [repr, str])
+    @pytest.mark.asyncio()
+    async def test_partial_nodes(self, method):
+        node = await get_mocked_node({"/a/b/c": {}, "/a/x/y": {}})
+        result = await node.a()
+        representation = method(result.a.b)
+        assert "/a/b/c" in representation
+        assert "/a/x/y" not in representation
+
+    @pytest.mark.parametrize("method", [repr, str])
+    @pytest.mark.asyncio()
+    async def test_wildcard_nodes(self, method):
+        node = await get_mocked_node({"/a/b/c": {}, "/a/x/c": {}})
+        result = await node.a["*"].c()
+        representation = method(result.a.b)
+        assert "/a/b/c" in representation
+        assert "/a/x/c" not in representation
