@@ -11,6 +11,7 @@ from labone.core.shf_vector_data import (
     encode_shf_vector_data_struct,
     get_header_length,
     parse_shf_vector_data_struct,
+    preprocess_complex_shf_waveform_vector,
 )
 
 
@@ -56,8 +57,8 @@ def test_missing_extra_header(value_type, reflection_server):
     input_vector = reflection_server.VectorData.new_message()
     input_vector.valueType = value_type.value
     input_vector.extraHeaderInfo = 0
-    with pytest.raises(ValueError):
-        parse_shf_vector_data_struct(input_vector)
+    result = parse_shf_vector_data_struct(input_vector)
+    assert result[1] is None
 
 
 def _construct_extra_header_value(header_length, major_version, minor_version):
@@ -483,3 +484,28 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
 async def test_encode_shf_vector_wrong_data_header_combination_raises(header, data):
     with pytest.raises(Exception):  # noqa: B017
         encode_shf_vector_data_struct(data=data, extra_header=header)
+
+
+@pytest.mark.parametrize(
+    ("source", "target"),
+    [
+        (
+            np.array([1 + 1j, 2 + 2j, 3 + 3j, 4 + 4j], dtype=np.complex64),
+            np.array(
+                [131071, 131071, 262142, 262142, 393213, 393213, 524284, 524284],
+                dtype=np.complex64,
+            ),
+        ),
+        (
+            np.array([1 + 2j, 3 + 4j, 5 + 6j, 7 + 8j], dtype=np.complex64),
+            np.array(
+                [131071, 262142, 393213, 524284, 655355, 786426, 917497, 1048568],
+                dtype=np.complex64,
+            ),
+        ),
+    ],
+)
+def test_preprocess_complex_shf_waveform_vector(source, target):
+    result, result_type = preprocess_complex_shf_waveform_vector(data=source)
+    assert result_type == np.uint32
+    assert np.array_equal(result, target)

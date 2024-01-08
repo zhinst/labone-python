@@ -26,6 +26,7 @@ from labone.core.shf_vector_data import (
     SHFDemodSample,
     encode_shf_vector_data_struct,
     parse_shf_vector_data_struct,
+    preprocess_complex_shf_waveform_vector,
 )
 
 if t.TYPE_CHECKING:
@@ -104,7 +105,11 @@ class AnnotatedValue:
             field_type = request_field_type_description(message.metadata, "path")
             msg = f"`path` attribute must be of type {field_type}."
             raise TypeError(msg) from None
-        message.value = _value_from_python_types(self.value, reflection=reflection)
+        message.value = _value_from_python_types(
+            self.value,
+            path=self.path,
+            reflection=reflection,
+        )
         return message
 
 
@@ -280,15 +285,54 @@ def _capnp_value_to_python_value(
     raise ValueError(msg)
 
 
+def _numpy_vector_to_capnp_vector(
+    np_vector: np.ndarray,
+    *,
+    path: LabOneNodePath,
+    reflection: ReflectionServer,
+) -> capnp.lib.capnp._DynamicStructBuilder:
+    """Convert a numpy vector to a capnp vector.
+
+    Args:
+        np_vector: The numpy vector to convert.
+        path: The path of the node the vector belongs to.
+        reflection: The reflection server used for the conversion.
+
+    Returns:
+        The converted capnp vector.
+
+    LabOneCoreError: If the numpy type has no corresponding
+        VectorElementType.
+    """
+    np_data = np_vector
+    np_vector_type = np_vector.dtype
+    if np.iscomplexobj(np_vector) and "waveforms" in path.lower():
+        np_data, np_vector_type = preprocess_complex_shf_waveform_vector(np_vector)
+    data = np_data.tobytes()
+    try:
+        capnp_vector_type = VectorElementType.from_numpy_type(np_vector_type).value
+    except ValueError as e:
+        msg = f"Unsupported numpy type: {np_vector_type}"
+        raise ValueError(msg) from e
+    return reflection.VectorData(  # type: ignore[attr-defined]
+        valueType=VectorValueType.VECTOR_DATA.value,
+        extraHeaderInfo=0,
+        vectorElementType=capnp_vector_type,
+        data=data,
+    )
+
+
 def _value_from_python_types(
     value: t.Any,  # noqa: ANN401
     *,
+    path: LabOneNodePath,
     reflection: ReflectionServer,
 ) -> capnp.lib.capnp._DynamicStructBuilder:
     """Create `Value` builder from Python types.
 
     Args:
         value: The value to be converted.
+        path: The path of the node the value belongs to.
         reflection: The reflection server used for the conversion.
 
     Returns:
@@ -319,13 +363,11 @@ def _value_from_python_types(
             data=value,
         )
     elif isinstance(value, np.ndarray):
-        vector_data = reflection.VectorData(  # type: ignore[attr-defined]
-            valueType=VectorValueType.VECTOR_DATA.value,
-            extraHeaderInfo=0,
-            vectorElementType=VectorElementType.from_numpy_type(value.dtype).value,
-            data=value.tobytes(),
+        request_value.vectorData = _numpy_vector_to_capnp_vector(
+            value,
+            path=path,
+            reflection=reflection,
         )
-        request_value.vectorData = vector_data
     else:
         msg = f"The provided value has an invalid type: {type(value)}"
         raise ValueError(

@@ -10,7 +10,10 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from labone.core.helper import VectorElementType
-from labone.core.shf_vector_data import VectorValueType
+from labone.core.shf_vector_data import (
+    VectorValueType,
+    preprocess_complex_shf_waveform_vector,
+)
 from labone.core.value import AnnotatedValue
 
 
@@ -151,6 +154,18 @@ def test_value_from_python_types_vector_data_complex_float(reflection_server, in
     assert vec_data.extraHeaderInfo == 0
     assert vec_data.vectorElementType == VectorElementType.COMPLEX_FLOAT.value
     assert vec_data.data == inp.tobytes()
+
+
+def test_value_from_python_types_vector_data_complex_waveform(reflection_server):
+    inp = np.array([1 + 2j, 3 + 4j], dtype=np.complex128)
+    value = AnnotatedValue(value=inp, path="test/waveforms/0/wave").to_capnp(
+        reflection=reflection_server,
+    )
+    vec_data = value.value.vectorData
+    assert vec_data.valueType == VectorValueType.VECTOR_DATA.value
+    assert vec_data.extraHeaderInfo == 0
+    assert vec_data.vectorElementType == VectorElementType.UINT32.value
+    assert vec_data.data == preprocess_complex_shf_waveform_vector(inp)[0].tobytes()
 
 
 @given(arrays(dtype=(np.cdouble), shape=(1, 2)))

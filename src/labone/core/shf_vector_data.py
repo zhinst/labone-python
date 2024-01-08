@@ -20,10 +20,14 @@ from typing import Union
 
 import numpy as np
 
-from labone.core.errors import SHFHeaderVersionNotSupportedError
+from labone.core.errors import LabOneCoreError, SHFHeaderVersionNotSupportedError
 from labone.core.helper import CapnpCapability, VectorElementType, VectorValueType
 
 logger = logging.getLogger(__name__)
+
+SHF_WAVEFORM_UNSIGNED_ENCODING_BITS = 18
+SHF_WAVEFORM_SIGNED_ENCODING_BITS = SHF_WAVEFORM_UNSIGNED_ENCODING_BITS - 1
+SHF_WAVEFORM_SCALING = (1 << SHF_WAVEFORM_SIGNED_ENCODING_BITS) - 1
 
 
 @dataclass(frozen=True)
@@ -432,7 +436,7 @@ def _deserialize_shf_result_logger_vector(
     extra_header_info: int,
     header_length: int,
     element_type: VectorElementType,
-) -> tuple[np.ndarray, ShfResultLoggerVectorExtraHeader]:
+) -> tuple[np.ndarray, ShfResultLoggerVectorExtraHeader | None]:
     """Deserialize the vector data for result logger vector.
 
     Args:
@@ -446,10 +450,19 @@ def _deserialize_shf_result_logger_vector(
 
     Raises:
         SHFHeaderVersionNotSupportedError: If the version is not supported.
+        LabOneCoreError: If the version cannot be parsed.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
-    version = _parse_extra_header_version(extra_header_info)
+    try:
+        version = _parse_extra_header_version(extra_header_info)
+    except ValueError as e:
+        if len(raw_data) == 0:
+            return np.array([], dtype=np.int32), None
+        msg = (
+            "Unable to parse the version of the shf result vector."  # pragma: no cover
+        )
+        raise LabOneCoreError(msg) from e  # pragma: no cover
     extra_header = ShfResultLoggerVectorExtraHeader.from_binary(
         raw_extra_header,
         version=version,
@@ -468,7 +481,7 @@ def _deserialize_shf_scope_vector(
     raw_data: bytes,
     extra_header_info: int,
     header_length: int,
-) -> tuple[np.ndarray, ShfScopeVectorExtraHeader]:
+) -> tuple[np.ndarray, ShfScopeVectorExtraHeader | None]:
     """Deserialize the vector data for waveform vectors.
 
     Args:
@@ -481,10 +494,18 @@ def _deserialize_shf_scope_vector(
 
     Raises:
         SHFHeaderVersionNotSupportedError: If the version is not supported.
+        LabOneCoreError: If the version cannot be parsed.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
-    version = _parse_extra_header_version(extra_header_info)
+    try:
+        version = _parse_extra_header_version(extra_header_info)
+    except ValueError as e:
+        if len(raw_data) == 0:
+            return np.array([], dtype=np.int32), None
+        msg = "Unable to parse the version of the shf scope vector."  # pragma: no cover
+        raise LabOneCoreError(msg) from e  # pragma: no cover
+
     extra_header = ShfScopeVectorExtraHeader.from_binary(
         raw_extra_header,
         version=version,
@@ -504,7 +525,7 @@ def _deserialize_shf_demodulator_vector(
     raw_data: bytes,
     extra_header_info: int,
     header_length: int,
-) -> tuple[SHFDemodSample, ShfDemodulatorVectorExtraHeader]:
+) -> tuple[SHFDemodSample, ShfDemodulatorVectorExtraHeader | None]:
     """Deserialize the vector data for waveform vectors.
 
     Args:
@@ -517,10 +538,23 @@ def _deserialize_shf_demodulator_vector(
 
     Raises:
         SHFHeaderVersionNotSupportedError: If the version is not supported.
+        LabOneCoreError: If the version cannot be parsed.
     """
     # Parse header
     raw_extra_header = raw_data[:header_length]
-    version = _parse_extra_header_version(extra_header_info)
+    try:
+        version = _parse_extra_header_version(extra_header_info)
+    except ValueError as e:
+        if len(raw_data) == 0:
+            return (
+                SHFDemodSample(
+                    x=np.array([], dtype=np.int32),
+                    y=np.array([], dtype=np.int32),
+                ),
+                None,
+            )
+        msg = "Unable to parse the version of the shf demod vector."  # pragma: no cover
+        raise LabOneCoreError(msg) from e
     extra_header = ShfDemodulatorVectorExtraHeader.from_binary(
         raw_extra_header,
         version=version,
@@ -565,6 +599,7 @@ def parse_shf_vector_data_struct(
     Raises:
         ValueError: If the vector value type is not supported.
         SHFHeaderVersionNotSupportedError: If the version is not supported.
+        LabOneCoreError: If the version cannot be parsed.
     """
     raw_data = vector_data.data
     extra_header_info: int = vector_data.extraHeaderInfo
@@ -683,3 +718,27 @@ def encode_shf_vector_data_struct(
         "extraHeaderInfo": extra_header_info,
         "data": extra_header_bytes + data_to_send_np.tobytes(),
     }
+
+
+def preprocess_complex_shf_waveform_vector(
+    data: np.ndarray,
+) -> tuple[np.ndarray, t.Any]:
+    """Preprocess complex waveform vector data.
+
+    Complex waveform vectors are transmitted as two uint32 interleaved vectors.
+    This function converts the complex waveform vector data into the
+    corresponding uint32 vector.
+
+    Args:
+        data: The complex waveform vector data.
+
+    Returns:
+        The uint32 vector data.
+    """
+    real_scaled = np.round(np.real(data) * SHF_WAVEFORM_SCALING).astype(np.int32)
+    imag_scaled = np.round(np.imag(data) * SHF_WAVEFORM_SCALING).astype(np.int32)
+    decoded_data = np.empty((2 * data.size,), dtype=np.int32)
+    decoded_data[::2] = real_scaled
+    decoded_data[1::2] = imag_scaled
+
+    return decoded_data, np.uint32
