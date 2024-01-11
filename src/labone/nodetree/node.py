@@ -360,7 +360,7 @@ class NodeTreeManager:
         if unique_value in self._cache_path_segments_to_node:
             return self._cache_path_segments_to_node[unique_value]
 
-        result = Node.build(tree_manager=self, path_segments=path_segments)
+        result = Node._build(tree_manager=self, path_segments=path_segments)
         self._cache_path_segments_to_node[unique_value] = result
         return result
 
@@ -630,7 +630,7 @@ class ResultNode(MetaNode):
             >>> node.demods  # where 'demods' is the next segment to enter
 
         """
-        return self.try_generate_subnode(normalize_path_segment(next_segment))
+        return self._try_generate_subnode(normalize_path_segment(next_segment))
 
     def __getitem__(self, path_extension: str | int) -> ResultNode | AnnotatedValue:
         """Go one or multiple levels deeper into the tree structure.
@@ -672,7 +672,7 @@ class ResultNode(MetaNode):
         current_node = self
         try:
             for path_segment in relative_path_segments:
-                current_node = current_node.try_generate_subnode(
+                current_node = current_node._try_generate_subnode(
                     normalize_path_segment(path_segment),
                 )  # type: ignore[assignment]
 
@@ -746,7 +746,7 @@ class ResultNode(MetaNode):
             if path.startswith(self.path):
                 yield value
 
-    def try_generate_subnode(
+    def _try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
     ) -> ResultNode | AnnotatedValue:
@@ -849,7 +849,7 @@ class Node(MetaNode, ABC):
         Example:
             >>> node.demods  # where 'demods' is the next segment to enter
         """
-        return self.try_generate_subnode(normalize_path_segment(next_segment))
+        return self._try_generate_subnode(normalize_path_segment(next_segment))
 
     def __getitem__(self, path_extension: str | int) -> Node:
         """Go one or multiple levels deeper into the tree structure.
@@ -887,7 +887,7 @@ class Node(MetaNode, ABC):
         current_node = self
 
         for path_segment in relative_path_segments:
-            current_node = current_node.try_generate_subnode(
+            current_node = current_node._try_generate_subnode(
                 normalize_path_segment(path_segment),
             )
 
@@ -980,7 +980,7 @@ class Node(MetaNode, ABC):
         ...
 
     @classmethod
-    def build(
+    def _build(
         cls,
         *,
         tree_manager: NodeTreeManager,
@@ -1031,7 +1031,7 @@ class Node(MetaNode, ABC):
         )
 
     @abstractmethod
-    def try_generate_subnode(
+    def _try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
     ) -> Node:
@@ -1186,7 +1186,7 @@ class LeafNode(Node):
             ),
         )
 
-    def try_generate_subnode(
+    def _try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
     ) -> Node:
@@ -1457,7 +1457,7 @@ class WildcardNode(WildcardOrPartialNode):
         )
         raise LabOneInappropriateNodeTypeError(msg)
 
-    def try_generate_subnode(
+    def _try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
     ) -> Node:
@@ -1510,7 +1510,7 @@ class WildcardNode(WildcardOrPartialNode):
 class PartialNode(WildcardOrPartialNode):
     """Node corresponding to a path, which has not reached a leaf yet."""
 
-    def try_generate_subnode(
+    def _try_generate_subnode(
         self,
         next_path_segment: NormalizedPathSegment,
     ) -> Node:
