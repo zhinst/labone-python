@@ -44,7 +44,8 @@ async def get_unittest_mocked_node(
     """Minimal unittest mock.
 
     Use when no calls to the server are tested.
-    This way, the tests do not depend on the mock server.
+    This way, the tests do not depend on the labone-python
+    mock server.
     """
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info.return_value = (

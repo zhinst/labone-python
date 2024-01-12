@@ -72,11 +72,57 @@ class NodeInfo:
     def __init__(self, info: NodeInfoType):
         self._info: NodeInfoType = info
 
+    @classmethod
+    def plain_default_info(cls, *, path: str) -> NodeInfoType:
+        """Get default info for a node.
+
+        Returns:
+            Default info for a node.
+        """
+        return {
+            "Description": "",
+            "Properties": "Read, Write",
+            "Unit": "None",
+            "Node": path,
+        }  # type: ignore[typeddict-item]
+
+    def _checked_dict_access(
+        self,
+        item: str,
+    ) -> LabOneNodePath | str | NodeType | dict[str, str]:
+        """Indirect access to underlying dictionary.
+
+        The underlying dictionary may not be complete in some cases.
+        This function raises an appropriate error if an required key is missing.
+
+        Args:
+            item: Key to access.
+
+        Returns:
+            Value of the key.
+
+        Raises:
+            KeyError: If the key is valid but not present in the dictionary.
+
+        """
+        if item not in self._info and item in [
+            "Description",
+            "Node",
+            "Properties",
+            "Type",
+            "Unit",
+            "Options",
+        ]:
+            msg = f"NodeInfo is incomplete. As '{item}'\
+              is missing, not all behavior is available."
+            raise KeyError(msg)
+        return self._info[item]  # type: ignore[literal-required]
+
     def __getattr__(
         self,
         item: str,
     ) -> LabOneNodePath | str | NodeType | dict[str, str] | None:
-        return self._info[item.capitalize()]  # type: ignore[literal-required]
+        return self._checked_dict_access(item.capitalize())
 
     def __dir__(self) -> list[str]:
         return [k.lower() for k in self._info] + [
@@ -86,11 +132,11 @@ class NodeInfo:
         ]
 
     def __repr__(self) -> str:
-        return f'NodeInfo("{self.path}")'
+        return f'NodeInfo({self._info.get("Node", "unknown path")})'
 
     def __str__(self) -> str:
-        string = self.path
-        string += "\n" + self._info["Description"]
+        string = self._info.get("Node", "unknown path")
+        string += "\n" + self._info.get("Description", "(no description available)")
         for key, value in self._info.items():
             if key == "Options":
                 string += f"\n{key}:"
@@ -103,42 +149,42 @@ class NodeInfo:
     @property
     def readable(self) -> bool:
         """Flag if the node is readable."""
-        return "Read" in self._info["Properties"]
+        return "Read" in self._checked_dict_access("Properties")  # type: ignore[return-value]
 
     @property
     def writable(self) -> bool:
         """Flag if the node is writable."""
-        return "Write" in self._info["Properties"]
+        return "Write" in self._checked_dict_access("Properties")  # type: ignore[return-value]
 
     @property
     def is_setting(self) -> bool:
         """Flag if the node is a setting."""
-        return "Setting" in self._info["Properties"]
+        return "Setting" in self._checked_dict_access("Properties")  # type: ignore[return-value]
 
     @property
     def is_vector(self) -> bool:
         """Flag if the value of the node a vector."""
-        return "Vector" in self._info["Type"]
+        return "Vector" in self._checked_dict_access("Type")  # type: ignore[return-value]
 
     @property
     def path(self) -> str:
         """LabOne path of the node."""
-        return self._info["Node"].lower()
+        return self._checked_dict_access("Node").lower()  # type: ignore[return-value, union-attr]
 
     @property
     def description(self) -> str:
         """Description of the node."""
-        return self._info["Description"]
+        return self._checked_dict_access("Description")  # type: ignore[return-value]
 
     @property
     def type(self) -> str:
         """Type of the node."""
-        return self._info["Type"]
+        return self._checked_dict_access("Type")  # type: ignore[return-value]
 
     @property
     def unit(self) -> str:
         """Unit of the node."""
-        return self._info["Unit"]
+        return self._checked_dict_access("Unit")  # type: ignore[return-value]
 
     @cached_property
     def options(self) -> dict[int, OptionInfo]:
