@@ -97,7 +97,7 @@ class SessionMockFunctionality(ABC):
         ...
 
     @abstractmethod
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
+    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Override this method for defining set behavior.
 
         Args:

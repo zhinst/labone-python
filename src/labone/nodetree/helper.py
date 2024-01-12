@@ -78,7 +78,7 @@ class Session(t.Protocol):
         """List the nodes and their information found at a given path."""
         ...
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
+    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node."""
         ...
 

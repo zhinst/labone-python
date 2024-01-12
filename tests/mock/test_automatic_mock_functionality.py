@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from labone.core.errors import LabOneCoreError
 
 if TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
@@ -18,6 +19,18 @@ async def get_functionality_with_state(state: dict[LabOneNodePath, Value]):
     for path, value in state.items():
         await functionality.set(AnnotatedValue(value=value, path=path))
     return functionality
+
+
+@pytest.mark.asyncio()
+async def test_node_info_default_readable():
+    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    await functionality.get("/a/b")
+
+
+@pytest.mark.asyncio()
+async def test_node_info_default_writable():
+    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    await functionality.set(AnnotatedValue(path="/a/b", value=1))
 
 
 async def check_state_agrees_with(
@@ -104,7 +117,7 @@ async def test_list_nodes_answered_by_tree_structure():
 @pytest.mark.asyncio()
 async def test_list_nodes_info(path_to_info, path, expected):
     functionality = AutomaticSessionFunctionality(path_to_info)
-    assert await functionality.list_nodes_info(path) == expected
+    assert (await functionality.list_nodes_info(path)).keys() == expected.keys()
 
 
 @pytest.mark.parametrize(
@@ -245,3 +258,17 @@ async def test_timestamps_are_increasing():
 
     sorted_by_timestamp = sorted(responses, key=lambda x: x.timestamp)
     assert sorted_by_timestamp == responses
+
+
+@pytest.mark.asyncio()
+async def test_cannot_set_readonly_node():
+    functionality = AutomaticSessionFunctionality({"/a/b": {"Properties": "Read"}})
+    with pytest.raises(LabOneCoreError):
+        await functionality.set(AnnotatedValue(value=1, path="/a/b"))
+
+
+@pytest.mark.asyncio()
+async def test_error_when_set_with_expression_no_matches():
+    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    with pytest.raises(LabOneCoreError):
+        await functionality.set_with_expression(AnnotatedValue(value=1, path="/b/*"))

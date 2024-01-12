@@ -36,6 +36,7 @@ import typing as t
 from dataclasses import dataclass
 
 from labone.core import ListNodesFlags, ListNodesInfoFlags
+from labone.core.errors import LabOneCoreError
 from labone.core.value import (
     AnnotatedValue,
     Value,
@@ -43,10 +44,11 @@ from labone.core.value import (
 )
 from labone.mock.errors import LabOneMockError
 from labone.mock.session_mock_template import SessionMockFunctionality
+from labone.node_info import NodeInfo
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
-    from labone.core.session import NodeInfo
+    from labone.core.session import NodeInfo as NodeInfoType
     from labone.core.subscription import StreamingHandle
 
 
@@ -68,14 +70,28 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
 
     def __init__(
         self,
-        paths_to_info: dict[LabOneNodePath, NodeInfo],
+        paths_to_info: dict[LabOneNodePath, NodeInfoType],
     ) -> None:
         # storing state and tree structure, info and subscriptions
         # set all existing paths to 0.
-        self.memory: dict[LabOneNodePath, PathData] = {
-            path: PathData(value=0, info=info, streaming_handles=[])
-            for path, info in paths_to_info.items()
+        default_info: NodeInfoType = {
+            "Description": "",
+            "Properties": "Read, Write, Setting",
+            "Type": "Integer (64 bit)",
+            "Unit": "None",
+            "Node": "",
         }
+
+        self.memory: dict[LabOneNodePath, PathData] = {}
+        for path, given_info in paths_to_info.items():
+            info = default_info.copy()
+            info.update(given_info)
+            info["Node"] = path
+            self.memory[path] = PathData(
+                value=0,
+                info=NodeInfo(info),
+                streaming_handles=[],
+            )
 
     def get_timestamp(self) -> int:
         """Create a realisitc timestamp.
@@ -94,7 +110,7 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         path: LabOneNodePath = "",
         *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,  # noqa: ARG002
-    ) -> dict[LabOneNodePath, NodeInfo]:
+    ) -> dict[LabOneNodePath, NodeInfoType]:
         """Predefined behaviour for list_nodes_info.
 
         Uses knowledge of the tree structure to answer.
@@ -112,7 +128,9 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         Returns:
             Dictionary of paths to node info.
         """
-        return {p: self.memory[p].info for p in await self.list_nodes(path=path)}
+        return {
+            p: self.memory[p].info.as_dict for p in await self.list_nodes(path=path)
+        }
 
     async def list_nodes(
         self,
@@ -192,7 +210,7 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         """
         return [await self.get(p) for p in await self.list_nodes(path=path_expression)]
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:  # noqa: A003
+    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Predefined behaviour for set.
 
         Updates the internal dictionary. A set command is considered
@@ -206,8 +224,12 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         """
         if value.path not in self.memory:
             msg = f"Path {value.path} not found in mock server. Cannot set it."
-            raise LabOneMockError(msg)
+            raise LabOneCoreError(msg)
         self.memory[value.path].value = value.value
+
+        if not self.memory[value.path].info.writable:
+            msg = f"Path {value.path} is not writeable."
+            raise LabOneCoreError(msg)
 
         timestamp = self.get_timestamp()
 
@@ -243,10 +265,14 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         Returns:
             List of acknowledged values, corresponding to nodes of the path expression.
         """
-        return [
+        result = [
             await self.set(AnnotatedValue(value=value.value, path=p))
             for p in await self.list_nodes(value.path)
         ]
+        if not result:
+            msg = f"No node found matching path '{value.path}'."
+            raise LabOneCoreError(msg)
+        return result
 
     async def subscribe_logic(
         self,

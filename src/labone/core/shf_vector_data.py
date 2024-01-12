@@ -554,7 +554,7 @@ def _deserialize_shf_demodulator_vector(
                 None,
             )
         msg = "Unable to parse the version of the shf demod vector."  # pragma: no cover
-        raise LabOneCoreError(msg) from e
+        raise LabOneCoreError(msg) from e  # pragma: no cover
     extra_header = ShfDemodulatorVectorExtraHeader.from_binary(
         raw_extra_header,
         version=version,
