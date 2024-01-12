@@ -20,6 +20,7 @@ from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
 from labone.core.helper import request_field_type_description
 from labone.core.kernel_session import KernelSession
+from labone.core.reflection.server import ReflectionServer
 from labone.core.session import (
     ListNodesFlags,
     ListNodesInfoFlags,
@@ -29,6 +30,9 @@ from labone.core.session import (
 from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue
 from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
+from labone.mock.entry_point import SESSION_REFLECTION_BIN, MockSession
+from labone.mock.mock_server import MockServer
+from labone.mock.session_mock_template import SessionMockTemplate
 
 from .resources import session_protocol_capnp, testfile_capnp, value_capnp
 
@@ -86,7 +90,7 @@ class CapnpServer:
         await capnp.TwoPartyServer(stream, bootstrap=obj).on_disconnect()
 
 
-class MockServer(typing.NamedTuple):
+class DummyServer(typing.NamedTuple):
     session: KernelSession
     server: MagicMock
 
@@ -109,7 +113,7 @@ async def mock_connection(reflection_server) -> tuple[KernelSession, MagicMock]:
         kernel_info=ZIKernelInfo(),
         server_info=ServerInfo(host="localhost", port=8004),
     )
-    return MockServer(session=session, server=mock_server)
+    return DummyServer(session=session, server=mock_server)
 
 
 def test_session_with_unwrapping_reflection(reflection_server):
@@ -947,3 +951,42 @@ async def test_set_transaction_mix_multiple_devices():
 
     assert (await session_a.get("a")).value == 1
     assert (await session_b.get("a")).value == 2
+
+
+class DummyServerVersionTest(SessionMockTemplate):
+    def __init__(self, version: str):
+        super().__init__(None)
+        self._version = version
+
+    async def getSessionVersion(self, _context):  # noqa: N802
+        return str(self._version)
+
+
+@pytest.mark.parametrize(
+    ("version", "should_fail"),
+    [
+        (Session.MIN_CAPABILITY_VERSION, False),
+        (Session.TESTED_CAPABILITY_VERSION, False),
+        ("1.0.0", True),
+        ("0.0.0", True),
+        (f"{Session.TESTED_CAPABILITY_VERSION.major +1}.0.0", True),
+    ],
+)
+@pytest.mark.asyncio()
+async def test_ensure_compatibility_mismatch(version, should_fail):
+    mock_server = MockServer(
+        capability_bytes=SESSION_REFLECTION_BIN,
+        concrete_server=DummyServerVersionTest(version),
+    )
+    client_connection = await mock_server.start()
+    reflection_client = await ReflectionServer.create_from_connection(client_connection)
+    session = MockSession(
+        mock_server,
+        reflection_client.session,  # type: ignore[attr-defined]
+        reflection_server=reflection_client,
+    )
+    if should_fail:
+        with pytest.raises(errors.UnavailableError):
+            await session.ensure_compatibility()
+    else:
+        await session.ensure_compatibility()

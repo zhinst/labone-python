@@ -24,6 +24,7 @@ from enum import IntFlag
 from typing import Literal
 
 import capnp
+from packaging import version
 from typing_extensions import NotRequired, TypeAlias, TypedDict
 
 from labone.core import errors, result
@@ -211,6 +212,11 @@ class Session:
         reflection_server: Reflection server instance.
     """
 
+    # The minimum capability version that is required by the labone api.
+    MIN_CAPABILITY_VERSION = version.Version("1.7.0")
+    # The latest known version of the capability version.
+    TESTED_CAPABILITY_VERSION = version.Version("1.7.0")
+
     def __init__(
         self,
         capnp_session: CapnpCapability,
@@ -228,6 +234,39 @@ class Session:
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
+
+    async def ensure_compatibility(self) -> None:
+        """Ensure the compatibility with the connected server.
+
+        Ensures that all function call will work as expected and all required
+        features are implemented within the server.
+
+        Info:
+            This function is already called within the create method and does
+            not need to be called again.
+
+        Raises:
+            UnavailableError: If the kernel is not compatible.
+        """
+        server_version = version.Version(
+            (
+                await _send_and_wait_request(self._session.getSessionVersion_request())
+            ).version,
+        )
+        if server_version < Session.MIN_CAPABILITY_VERSION:
+            msg = (
+                f"The data server version is not supported by the LabOne API. "
+                "Please update the LabOne software to the latest version. "
+                f"({server_version}<{Session.MIN_CAPABILITY_VERSION})"
+            )
+            raise errors.UnavailableError(msg)
+        if server_version.major > Session.TESTED_CAPABILITY_VERSION.major:
+            msg = (
+                "The data server version is incompatible with this LabOne API "
+                "version. Please install the latest python package and retry. "
+                f"({server_version}> {Session.TESTED_CAPABILITY_VERSION})"
+            )
+            raise errors.UnavailableError(msg)
 
     async def list_nodes(
         self,

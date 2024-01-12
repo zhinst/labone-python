@@ -191,3 +191,11 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
     subscription_value = await queue.get()
     assert np.allclose(subscription_value.value.x, value.x)
     assert np.allclose(subscription_value.value.y, value.y)
+
+
+@pytest.mark.asyncio()
+async def test_ensure_compatibility():
+    session = await spawn_hpk_mock(
+        AutomaticSessionFunctionality({}),
+    )
+    await session.ensure_compatibility()

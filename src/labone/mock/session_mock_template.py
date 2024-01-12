@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from labone.core import ListNodesFlags, ListNodesInfoFlags
+from labone.core.session import Session
 from labone.core.value import (
     AnnotatedValue,
     _capnp_value_to_python_value,
@@ -219,6 +220,17 @@ class SessionMockTemplate(ServerTemplate):
 
     def __init__(self, functionality: SessionMockFunctionality) -> None:
         self._functionality = functionality
+
+    async def getSessionVersion(  # noqa: N802
+        self,
+        _context: _CallContext,
+    ) -> str:
+        """Capnp server method to get the session version.
+
+        Returns:
+            Session version.
+        """
+        return str(Session.TESTED_CAPABILITY_VERSION)
 
     async def listNodes(  # noqa: N802
         self,

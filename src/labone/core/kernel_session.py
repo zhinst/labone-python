@@ -124,11 +124,13 @@ class KernelSession(Session):
             )
             raise UnavailableError(msg) from e
 
-        return KernelSession(
+        session = KernelSession(
             reflection_server=reflection_server,
             kernel_info=kernel_info_extended,
             server_info=server_info_extended,
         )
+        await session.ensure_compatibility()
+        return session
 
     @property
     def kernel_info(self) -> KernelInfo:
