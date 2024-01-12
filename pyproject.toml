@@ -126,6 +126,7 @@ convention = "google"
 max-complexity = 15
 
 [tool.ruff.isort]
+known-third-party = ["capnp"]
 
 [tool.ruff.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -164,6 +165,7 @@ exclude_lines = [
 [[tool.mypy.overrides]]
 module = "capnp.*"
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "deprecation"

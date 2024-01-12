@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from labone.core.helper import CapnpCapability
     from labone.mock.session_mock_template import SessionMockFunctionality
 
+SESSION_REFLECTION_BIN = Path(__file__).parent.parent / "resources" / "session.bin"
+
 
 class MockSession(Session):
     """Regular Session holding a mock server.
@@ -60,7 +62,7 @@ async def spawn_hpk_mock(
 
     """
     mock_server = MockServer(
-        capability_bytes=Path(__file__).parent.parent / "resources" / "session.bin",
+        capability_bytes=SESSION_REFLECTION_BIN,
         concrete_server=SessionMockTemplate(functionality),
     )
     client_connection = await mock_server.start()
