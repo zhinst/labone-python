@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pickle
 import typing as t
+import warnings
 from enum import Enum
 from io import BytesIO
 
@@ -269,13 +270,54 @@ async def test_keyword_paths():
     assert node.with_.in_.try_.path == "/with/in/try"
 
 
-# Add tests for:
-# Result nodes of partial and wildcard nodes are working
-# auch in result nodes verschiedene zugriffe . []
+@pytest.mark.asyncio()
+async def test_adding_nodes_manually_with_info():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    node.tree_manager.add_nodes_with_info({"/a/c": {}})
+    assert node.a.c.path == "/a/c"  # accessable
 
-# hash and eq for nodes
-# ist die node info eigentlich fuer irgendetwas required?
-# ist wait for state change im nodetree noch relevant?
-# braucht irgendwer die custom parser?
 
-# hashing von result nodes unterschiedlich nach timestamp, ...
+@pytest.mark.asyncio()
+async def test_adding_multiple_nodes_manually_with_info():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    node.tree_manager.add_nodes_with_info({"/a/c": {}, "/a/d": {}})
+    assert node.a.c.path == "/a/c"
+    assert node.a.d.path == "/a/d"  # accessable
+
+
+@pytest.mark.asyncio()
+async def test_adding_nodes_manually():
+    node = await get_unittest_mocked_node({"/a/b": {}})
+    node.tree_manager.add_nodes(["/a/c"])
+    assert node.a.c.path == "/a/c"  # accessable
+
+
+@pytest.mark.asyncio()
+async def test_adding_nodes_manually_hidden_prefix_change():
+    node = await get_mocked_node({"/common_prefix/b": {}}, hide_kernel_prefix=True)
+    node = node.root
+    subnode_via_hidden_prefix = node.b
+
+    # once no commen first prefix exists, the access via hidden prefix
+    # is not possible anymore
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        node.tree_manager.add_nodes(["/other_prefix/c"])
+    node = node.root
+    subnode_via_shown_prefix = node.common_prefix.b
+
+    assert subnode_via_hidden_prefix == subnode_via_shown_prefix
+
+
+@pytest.mark.asyncio()
+async def test_adding_nodes_manually_hidden_prefix_does_only_change_if_required():
+    node = await get_unittest_mocked_node(
+        {"/common_prefix/b": {}},
+        hide_kernel_prefix=True,
+    )
+    subnode_via_hidden_prefix = node.b
+
+    # common first prefix still exists, so the access via hidden prefix
+    # is still possible
+    node.tree_manager.add_nodes(["/common_prefix/c"])
+    assert subnode_via_hidden_prefix == node.b

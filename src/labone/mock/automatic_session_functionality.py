@@ -74,19 +74,12 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
     ) -> None:
         # storing state and tree structure, info and subscriptions
         # set all existing paths to 0.
-        default_info: NodeInfoType = {
-            "Description": "",
-            "Properties": "Read, Write, Setting",
-            "Type": "Integer (64 bit)",
-            "Unit": "None",
-            "Node": "",
-        }
 
         self.memory: dict[LabOneNodePath, PathData] = {}
         for path, given_info in paths_to_info.items():
-            info = default_info.copy()
+            info = NodeInfo.plain_default_info(path=path)
+            info.update({"Type": "Integer (64 bit)"})  # for mock, int nodes are default
             info.update(given_info)
-            info["Node"] = path
             self.memory[path] = PathData(
                 value=0,
                 info=NodeInfo(info),

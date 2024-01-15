@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import typing as t
+import warnings
 from abc import ABC, abstractmethod
 from functools import cached_property
 
@@ -73,9 +74,8 @@ class NodeTreeManager:
     ):
         self._session = session
         self.path_to_info = path_to_info
-        self._paths = path_to_info.keys()
-        self.structure_info = path_to_info
         self._parser = parser
+        self._hide_kernel_prefix = hide_kernel_prefix
 
         self._remembered_nodes: dict[tuple[NormalizedPathSegment, ...], Node] = {}
         self._cache_path_segments_to_node: (dict)[
@@ -87,21 +87,88 @@ class NodeTreeManager:
             NestedDict[list[list[NormalizedPathSegment]] | dict],
         ] = {}
 
-        paths_as_segments = [split_path(path) for path in self._paths]
+        self._root_prefix: tuple[str, ...] = ()
+        self._paths_as_segments: list[list[NormalizedPathSegment]] = []
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.add_nodes_with_info(path_to_info)
+
+    def add_nodes_with_info(
+        self,
+        path_to_info: dict[LabOneNodePath, NodeInfoType],
+    ) -> None:
+        """Add new nodes to the tree.
+
+        This function will not check that the added nodes are valid,
+        so it should be used with care. Normally, it is not necessary to
+        add nodes manually, because they will be aquired automatically
+        on construction.
+
+        Warning:
+            The root prefix may change, if the prefix was hidden before but is now not
+            unique any more. The access to the nodes in the tree may change.
+            This will trigger a warning.
+
+        Args:
+            path_to_info: Describing the new paths and the associated
+                information.
+        """
+        # dict prevents duplicates
+        self.path_to_info.update(path_to_info)
+
+        self._paths_as_segments = [split_path(path) for path in self.path_to_info]
+
+        # already explored structure is forgotten and will be re-explored on demand.
+        # this is necessary, because the new nodes might be in the middle of the tree
+        self._cache_find_substructure = {}
+
         # type casting to allow assignment of more general type into the dict
         self._partially_explored_structure: NestedDict[
             list[list[NormalizedPathSegment]] | dict
         ] = build_prefix_dict(
-            paths_as_segments,
+            self._paths_as_segments,
         )  # type: ignore[assignment]
 
+        # root prefix may change, if the prefix was hidden before but is now not
+        # unique any more
+        old_root_prefix = self._root_prefix
         has_common_prefix = len(self._partially_explored_structure.keys()) == 1
 
-        if not hide_kernel_prefix or not has_common_prefix:
-            self._root_prefix: tuple[str, ...] = ()
+        if not self._hide_kernel_prefix or not has_common_prefix:
+            self._root_prefix = ()
         else:
             common_prefix = next(iter(self._partially_explored_structure.keys()))
             self._root_prefix = (common_prefix,)
+
+        if self._root_prefix != old_root_prefix:
+            msg = (
+                f"Root prefix changed from '{join_path(old_root_prefix)}'"
+                f" to '{join_path(self._root_prefix)}'. "
+                f"This means in order to index the same node as before, "
+                f"use {'.'.join(['root',*old_root_prefix,'(...)'])} "
+                f"instead of {'.'.join(['root',*self._root_prefix,'(...)'])}."
+            )
+            warnings.warn(msg, Warning, stacklevel=1)
+
+    def add_nodes(self, paths: list[LabOneNodePath]) -> None:
+        """Add new nodes to the tree.
+
+        This function will not check that the added nodes are valid,
+        so it should be used with care. Normally, it is not necessary to
+        add nodes manually, because they will be aquired automatically
+        on construction.
+
+        Warning:
+            The root prefix may change, if the prefix was hidden before but is now not
+            unique any more. The access to the nodes in the tree may change.
+            This will trigger a warning.
+
+        Args:
+            paths: Paths of the new nodes.
+        """
+        self.add_nodes_with_info(
+            {p: NodeInfo.plain_default_info(path=p) for p in paths},
+        )
 
     def find_substructure(
         self,
@@ -221,11 +288,6 @@ class NodeTreeManager:
 
     def __hash__(self) -> int:
         return id(self)
-
-    @property
-    def paths(self) -> t.KeysView[LabOneNodePath]:
-        """List of paths of all leaf-nodes."""
-        return self._paths  # pragma: no cover
 
     @property
     def parser(self) -> t.Callable[[AnnotatedValue], AnnotatedValue]:
