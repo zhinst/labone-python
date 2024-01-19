@@ -45,6 +45,50 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 
 
+class AnnotatedValueOrResultNodePromise:
+    """Custom Promise to enable direct .value access.
+
+    Getting/setting a node needs to be awaited, leading to syntax like:
+    >>> (await node()).value
+    By using this custom promise, the syntax can be simplified to:
+    >>> await node().value
+
+    Args:
+        source_promise: Promise where to get the value from.
+    """
+
+    def __init__(
+        self,
+        source_promise: t.Coroutine[None, None, AnnotatedValue | ResultNode],
+    ):
+        self._source_promise = source_promise
+
+    def __await__(self) -> t.Generator[t.Any, None, AnnotatedValue | ResultNode]:
+        """Making the promise awaitable.
+
+        Ensures that this custom promise can be awaited like the wrapped promise.
+
+        Returns:
+            Awaitable promise.
+        """
+        return self._source_promise.__await__()
+
+    @property
+    async def value(self) -> Value:
+        """Defined .value access on the promise itself.
+
+        Only valid on source promises of AnnotatedValue.
+        Making this access on a promise of a ResultNode will raise an error.
+
+        Returns:
+            annotated_value.value as a promise.
+
+        Raises:
+            AttributeError: If the source promise is not an AnnotatedValue.
+        """
+        return (await self._source_promise).value  # type: ignore[return-value]
+
+
 class NodeTreeManager:
     """Managing relation of a node tree and its underlying session.
 
@@ -854,10 +898,10 @@ class Node(MetaNode, ABC):
             return self.is_child_node(item)
         return normalize_path_segment(item) in self._subtree_paths
 
-    async def __call__(
+    def __call__(
         self,
         value: Value | None = None,
-    ) -> AnnotatedValue | ResultNode:
+    ) -> AnnotatedValueOrResultNodePromise:
         """Call with or without a value for setting/getting the node.
 
         Args:
@@ -878,10 +922,8 @@ class Node(MetaNode, ABC):
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        if value is None:
-            return await self._get()
-
-        return await self._set(value)
+        promise = self._get() if value is None else self._set(value)
+        return AnnotatedValueOrResultNodePromise(promise)
 
     @abstractmethod
     async def _get(

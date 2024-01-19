@@ -321,3 +321,16 @@ async def test_adding_nodes_manually_hidden_prefix_does_only_change_if_required(
     # is still possible
     node.tree_manager.add_nodes(["/common_prefix/c"])
     assert subnode_via_hidden_prefix == node.b
+
+
+@pytest.mark.asyncio()
+async def test_custom_promise_value_attribute():
+    node = await get_mocked_node({"/a": {}})
+    assert await node.a(4).value == 4
+
+
+@pytest.mark.asyncio()
+async def test_custom_promise_value_attribute_on_result_node():
+    node = await get_mocked_node({"/a/b": {}})
+    with pytest.raises(LabOneInvalidPathError):
+        assert await node.a.value == 0
