@@ -70,10 +70,10 @@ class ShfResultLoggerVectorExtraHeader:
     scaling: float
     center_freq: float
     data_source: int
-    num_samples: int
-    num_spectr_samples: int
-    num_averages: int
-    num_acquired: int
+    samples: int
+    spectr_samples: int
+    averages: int
+    acquired: int
     holdoff_errors_reslog: int
     holdoff_errors_readout: int
     holdoff_errors_spectr: int
@@ -106,10 +106,10 @@ class ShfResultLoggerVectorExtraHeader:
                 scaling=struct.unpack("d", binary[16:24])[0],
                 center_freq=struct.unpack("d", binary[24:32])[0],
                 data_source=struct.unpack("I", binary[32:36])[0],
-                num_samples=struct.unpack("I", binary[36:40])[0],
-                num_spectr_samples=struct.unpack("I", binary[40:44])[0],
-                num_averages=struct.unpack("I", binary[44:48])[0],
-                num_acquired=struct.unpack("I", binary[48:52])[0],
+                samples=struct.unpack("I", binary[36:40])[0],
+                spectr_samples=struct.unpack("I", binary[40:44])[0],
+                averages=struct.unpack("I", binary[44:48])[0],
+                acquired=struct.unpack("I", binary[48:52])[0],
                 holdoff_errors_reslog=struct.unpack("H", binary[52:54])[0],
                 holdoff_errors_readout=struct.unpack("H", binary[54:56])[0],
                 holdoff_errors_spectr=struct.unpack("H", binary[56:58])[0],
@@ -132,10 +132,10 @@ class ShfResultLoggerVectorExtraHeader:
             self.scaling,
             self.center_freq,
             self.data_source,
-            self.num_samples,
-            self.num_spectr_samples,
-            self.num_averages,
-            self.num_acquired,
+            self.samples,
+            self.spectr_samples,
+            self.averages,
+            self.acquired,
             self.holdoff_errors_reslog,
             self.holdoff_errors_readout,
             self.holdoff_errors_spectr,
@@ -162,11 +162,11 @@ class ShfScopeVectorExtraHeader:
         input_select: Input Select used for this scope channel
         average_count: Number of recordings taken into account for building
             the average
-        num_segments: 	Number of segments contained in the scope vector
-        num_total_segments: Total number of segments. This allows sending
-            partial results by setting num_segments < num_total_segments
+        segments: 	Number of segments contained in the scope vector
+        total_segments: Total number of segments. This allows sending
+            partial results by setting segments < total_segments
         first_segment_index: Index of the first segment in the scope vector
-        num_missed_triggers: Number of missed triggers due to hold-off time
+        missed_triggers: Number of missed triggers due to hold-off time
             violations. Note a missed trigger count greater than 0 means
             that the segment data will likely be invalid as we record one
             segment per trigger!
@@ -180,10 +180,10 @@ class ShfScopeVectorExtraHeader:
     trigger_timestamp: int
     input_select: int
     average_count: int
-    num_segments: int
-    num_total_segments: int
+    segments: int
+    total_segments: int
     first_segment_index: int
-    num_missed_triggers: int
+    missed_triggers: int
 
     @staticmethod
     def from_binary(
@@ -215,10 +215,10 @@ class ShfScopeVectorExtraHeader:
                 trigger_timestamp=struct.unpack("q", binary[32:40])[0],
                 input_select=struct.unpack("I", binary[40:44])[0],
                 average_count=struct.unpack("I", binary[44:48])[0],
-                num_segments=struct.unpack("I", binary[48:52])[0],
-                num_total_segments=struct.unpack("I", binary[52:56])[0],
+                segments=struct.unpack("I", binary[48:52])[0],
+                total_segments=struct.unpack("I", binary[52:56])[0],
                 first_segment_index=struct.unpack("I", binary[56:60])[0],
-                num_missed_triggers=struct.unpack("I", binary[60:64])[0],
+                missed_triggers=struct.unpack("I", binary[60:64])[0],
             )
         if (version.major == 0) and (version.minor >= 1):
             return ShfScopeVectorExtraHeader(
@@ -230,10 +230,10 @@ class ShfScopeVectorExtraHeader:
                 trigger_timestamp=struct.unpack("q", binary[32:40])[0],
                 input_select=struct.unpack("I", binary[40:44])[0],
                 average_count=struct.unpack("I", binary[44:48])[0],
-                num_segments=-1,
-                num_total_segments=-1,
+                segments=-1,
+                total_segments=-1,
                 first_segment_index=-1,
-                num_missed_triggers=-1,
+                missed_triggers=-1,
             )
         raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
 
@@ -255,10 +255,10 @@ class ShfScopeVectorExtraHeader:
             self.trigger_timestamp,
             self.input_select,
             self.average_count,
-            self.num_segments,
-            self.num_total_segments,
+            self.segments,
+            self.total_segments,
             self.first_segment_index,
-            self.num_missed_triggers,
+            self.missed_triggers,
         ), _HeaderVersion(major=0, minor=2)
 
 
@@ -288,7 +288,7 @@ class ShfDemodulatorVectorExtraHeader:
     """
 
     timestamp: int
-    timestamp_diff: int
+    timestamp_delta: int
     burst_length: int
     burst_offset: int
     trigger_index: int
@@ -326,15 +326,12 @@ class ShfDemodulatorVectorExtraHeader:
         # /dev.../system/properties/timebase and
         # /dev.../system/properties/maxdemodrate
         # Here we have read them once and hardcoded for simplicity
-        timebase = 2.5e-10
-        max_demod_rate = 5e7
         if version.major == 1:
             timestamp_delta = struct.unpack("I", binary[8:12])[0]
-            timestamp_diff = int(timestamp_delta / (timebase * max_demod_rate))
             source_field = struct.unpack("I", binary[36:40])[0]
             return ShfDemodulatorVectorExtraHeader(
                 timestamp=struct.unpack("q", binary[0:8])[0],
-                timestamp_diff=timestamp_diff,
+                timestamp_delta=timestamp_delta,
                 burst_length=struct.unpack("I", binary[12:16])[0],
                 burst_offset=struct.unpack("I", binary[16:20])[0],
                 trigger_index=struct.unpack("I", binary[20:24])[0],
@@ -344,7 +341,7 @@ class ShfDemodulatorVectorExtraHeader:
                 oscillator_source=source_field & 0b111,
                 harmonic=(source_field >> 3) & 0b1111111111,
                 trigger_source=(source_field >> 13) & 0b111111,
-                signal_source=(source_field >> 18) & 0b111111,
+                signal_source=(source_field >> 19) & 0b111111,
                 oscillator_freq=struct.unpack("q", binary[40:48])[0],
                 scaling=struct.unpack("f", binary[48:52])[0],
             )
@@ -358,11 +355,8 @@ class ShfDemodulatorVectorExtraHeader:
             and the version of the extra header used for
             this encoding.
         """
-        timebase = 2.5e-10
-        max_demod_rate = 5e7
-
         source_field = (
-            (self.signal_source << 18)
+            (self.signal_source << 19)
             | (self.trigger_source << 13)
             | (self.harmonic << 3)
             | self.oscillator_source
@@ -370,7 +364,7 @@ class ShfDemodulatorVectorExtraHeader:
         return struct.pack(
             "qIIIIqhBIqf",
             self.timestamp,
-            int(self.timestamp_diff * (timebase * max_demod_rate)),
+            self.timestamp_delta,
             self.burst_length,
             self.burst_offset,
             self.trigger_index,

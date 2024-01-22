@@ -87,6 +87,9 @@ async def _fetch_encoded_schema(
     try:
         schema_and_bootstrap_cap = await reflection.getTheSchema()
     except capnp.lib.capnp.KjException as e:
+        if e.type == "DISCONNECTED":  # pragma: no cover
+            msg = "Unable to connect to the server. The server disconnected."
+            raise UnavailableError(msg) from e
         msg = str(
             "Unable to connect to the server. Could not fetch the schema "
             "from the server.",

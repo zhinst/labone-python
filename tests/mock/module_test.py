@@ -161,7 +161,7 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
     )
     extra_header = ShfDemodulatorVectorExtraHeader(
         timestamp=0,
-        timestamp_diff=0,
+        timestamp_delta=0,
         burst_length=4,
         burst_offset=5,
         trigger_index=6,

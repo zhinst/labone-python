@@ -219,7 +219,7 @@ def _open_socket(server_info: ServerInfo) -> socket.socket:
     """
     try:
         sock = socket.create_connection((server_info.host, server_info.port))
-    except (ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+    except (ConnectionRefusedError, TimeoutError, socket.timeout, OSError) as e:
         msg = (
             "Unable to open connection to the data server at "
             f"{server_info.host}:{server_info.port}. "

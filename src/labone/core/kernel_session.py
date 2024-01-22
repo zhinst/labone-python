@@ -118,9 +118,9 @@ class KernelSession(Session):
             )
         except LabOneCoreError as e:
             msg = str(
-                f"Unable to connect to the server at ({server_info.host}:"
-                f"{server_info.port}). Please update the LabOne software to the "
-                f"latest version. (extended information: {e})",
+                f"Unable to connect to the kernel at {kernel_info.name}"
+                f"{kernel_info.query} ({server_info.host}:"
+                f"{server_info.port}). (extended information: {e})",
             )
             raise UnavailableError(msg) from e
 

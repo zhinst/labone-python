@@ -135,20 +135,20 @@ def test_shf_scope_vector(  # noqa: PLR0913
     assert extra_header.trigger_timestamp == 0
     # Unknown values are marked with -1
     if header_version == 1:
-        assert extra_header.num_missed_triggers == -1
-        assert extra_header.num_segments == -1
-        assert extra_header.num_total_segments == -1
+        assert extra_header.missed_triggers == -1
+        assert extra_header.segments == -1
+        assert extra_header.total_segments == -1
         assert extra_header.first_segment_index == -1
     else:
-        assert extra_header.num_missed_triggers == 0
-        assert extra_header.num_segments == 0
-        assert extra_header.num_total_segments == 0
+        assert extra_header.missed_triggers == 0
+        assert extra_header.segments == 0
+        assert extra_header.total_segments == 0
         assert extra_header.first_segment_index == 0
 
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
-@pytest.mark.parametrize("timestamp_diff", range(0, 100, 25))
+@pytest.mark.parametrize("timestamp_delta", range(0, 100, 25))
 @pytest.mark.parametrize(
     "header_version",
     [
@@ -159,7 +159,7 @@ def test_shf_scope_vector(  # noqa: PLR0913
 def test_shf_demodulator_vector(  # noqa: PLR0913
     vector_length,
     scaling,
-    timestamp_diff,
+    timestamp_delta,
     header_version,
     x,
     y,
@@ -176,7 +176,7 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
     # Manually set the scaling Factor
     header = (
         b"\x00" * 8
-        + struct.pack("I", timestamp_diff)
+        + struct.pack("I", timestamp_delta)
         + b"\x00" * 36
         + struct.pack("f", scaling)
     )
@@ -197,7 +197,7 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
     )
 
     assert extra_header.timestamp == 0
-    assert extra_header.timestamp_diff == timestamp_diff * 80
+    assert extra_header.timestamp_delta == timestamp_delta
     assert extra_header.burst_length == 0
     assert extra_header.burst_offset == 0
     assert extra_header.trigger_index == 0
@@ -241,10 +241,10 @@ def test_shf_result_logger_vector(vector_length, header_version, x, reflection_s
     assert extra_header.scaling == 0.0
     assert extra_header.center_freq == 0.0
     assert extra_header.data_source == 0
-    assert extra_header.num_samples == 0
-    assert extra_header.num_spectr_samples == 0
-    assert extra_header.num_averages == 0
-    assert extra_header.num_acquired == 0
+    assert extra_header.samples == 0
+    assert extra_header.spectr_samples == 0
+    assert extra_header.averages == 0
+    assert extra_header.acquired == 0
     assert extra_header.holdoff_errors_reslog == 0
     assert extra_header.holdoff_errors_readout == 0
     assert extra_header.holdoff_errors_spectr == 0
@@ -279,9 +279,9 @@ def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
             average_count=7,
             center_freq=23,
             input_select=24,
-            num_missed_triggers=25,
-            num_segments=26,
-            num_total_segments=27,
+            missed_triggers=25,
+            segments=26,
+            total_segments=27,
             first_segment_index=28,
             trigger_timestamp=29,
         ),
@@ -292,17 +292,17 @@ def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
             scaling=50,
             center_freq=4,
             data_source=5,
-            num_samples=6,
-            num_spectr_samples=7,
-            num_averages=8,
-            num_acquired=9,
+            samples=6,
+            spectr_samples=7,
+            averages=8,
+            acquired=9,
             holdoff_errors_reslog=10,
             holdoff_errors_readout=11,
             holdoff_errors_spectr=12,
         ),
         ShfDemodulatorVectorExtraHeader(
             timestamp=0,
-            timestamp_diff=0,
+            timestamp_delta=0,
             burst_length=4,
             burst_offset=5,
             trigger_index=6,
@@ -344,9 +344,9 @@ class GetAttrAbleDict(dict):
                 average_count=7,
                 center_freq=23,
                 input_select=24,
-                num_missed_triggers=25,
-                num_segments=26,
-                num_total_segments=27,
+                missed_triggers=25,
+                segments=26,
+                total_segments=27,
                 first_segment_index=28,
                 trigger_timestamp=29,
             ),
@@ -360,10 +360,10 @@ class GetAttrAbleDict(dict):
                 scaling=50,
                 center_freq=4,
                 data_source=5,
-                num_samples=6,
-                num_spectr_samples=7,
-                num_averages=8,
-                num_acquired=9,
+                samples=6,
+                spectr_samples=7,
+                averages=8,
+                acquired=9,
                 holdoff_errors_reslog=10,
                 holdoff_errors_readout=11,
                 holdoff_errors_spectr=12,
@@ -392,7 +392,7 @@ def test_encoding_decoding_are_invers(header, data):
         (
             ShfDemodulatorVectorExtraHeader(
                 timestamp=0,
-                timestamp_diff=0,
+                timestamp_delta=0,
                 burst_length=4,
                 burst_offset=5,
                 trigger_index=6,
@@ -435,7 +435,7 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
         (
             ShfDemodulatorVectorExtraHeader(
                 timestamp=0,
-                timestamp_diff=0,
+                timestamp_delta=0,
                 burst_length=4,
                 burst_offset=5,
                 trigger_index=6,
@@ -460,9 +460,9 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
                 average_count=7,
                 center_freq=23,
                 input_select=24,
-                num_missed_triggers=25,
-                num_segments=26,
-                num_total_segments=27,
+                missed_triggers=25,
+                segments=26,
+                total_segments=27,
                 first_segment_index=28,
                 trigger_timestamp=29,
             ),
