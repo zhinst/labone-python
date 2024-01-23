@@ -1,7 +1,7 @@
 # Contributing
 
-We welcome any contribution. If you plan to add a bigger change, please get in
-touch with the maintainer first.
+We welcome any contribution. Since the project is currently not intended for direct
+use we do not offer support or external documentation.
 
 ## Development
 
@@ -24,7 +24,7 @@ hatch run test:test
 ### Code style tests
 
 ```bash
-hatch run lint:style
+hatch run lint:fmt
 hatch run lint:typing
 ```
 

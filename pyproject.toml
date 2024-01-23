@@ -34,8 +34,9 @@ dependencies = [
 ]
 
 [project.urls]
-Issues = "https://github.com/zhinst/labone-python/issues"
-Source = "https://github.com/zhinst/labone-python"
+homepage = "https://zhinst.com"
+repository = "https://github.com/zhinst/labone-python"
+changelog = "https://github.com/zhinst/labone-python/blob/main/CHANGELOG.md"
 
 
 [tool.hatch.version]
