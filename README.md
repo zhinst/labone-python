@@ -7,21 +7,17 @@
 
 # LabOne Python API
 
-A plain asynchronous python-only API for [Zurich Instruments LabOne](https://www.zhinst.com/labone).
+The `labone-python` package provides a plain asynchronous Python API for [LabOne](https://www.zhinst.com/labone), the control software of Zurich Instruments.
 
 > [!CAUTION]  
-> This API is not intended for external use. It is intended to offer 
-> [LabOneQ](https://www.zhinst.com/quantum-computing-systems/labone-q)
-> an asynchronous API to the LabOne data server.
+> This API package is solely being developed to support [LabOne Q](https://www.zhinst.com/quantum-computing-systems/labone-q), the software framework for quantum computing.
 > 
-> Please contact the [Zurich Instrument Support](support@zhinst.com) if you
-> are unsure which API to use.
-
+> For direct access to the instruments without LabOne Q, the standard Python API for all Zurich Instruments' devices is provided through the `zhinst` package and can be obtained from [PyPI](https://pypi.org/project/zhinst/) by `pip install zhinst`. 
+> 
 
 > [!NOTE]  
-> Since this package is not intended for direct usage, we do not offer any support
-> or external documentation.
-
+> Since `labone-python` is not intended for direct usage, we do not offer any support
+> or external documentation. Please contact [Zurich Instruments](mailto:info@zhinst.com) if you have any questions.
 
 ## Contributing
 
