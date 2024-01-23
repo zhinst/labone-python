@@ -50,8 +50,8 @@ class AnnotatedValue:
     Args:
         value: Node Value.
         path: Absolute node path.
-        timestamp: Timestamp (us since the last device reboot) at which the
-            device sent the value. (Only relevant for received values.)
+        timestamp: Timestamp at which the device sent the value.
+            (Only relevant for received values.)
         extra_header: For some types of vector nodes, additional information
             regarding the data. None otherwise.
     """
@@ -59,7 +59,7 @@ class AnnotatedValue:
     value: Value
     path: LabOneNodePath
     timestamp: int | None = None
-    extra_header: t.Any = None
+    extra_header: ExtraHeader | None = None
 
     @staticmethod
     def from_capnp(raw: CapnpCapability) -> AnnotatedValue:

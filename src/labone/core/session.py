@@ -641,9 +641,9 @@ class Session:
         self,
         path: LabOneNodePath,
         *,
-        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: None = None,
-        get_initial_value: bool,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        get_initial_value: bool = False,
     ) -> DataQueue:
         ...
 
@@ -652,9 +652,9 @@ class Session:
         self,
         path: LabOneNodePath,
         *,
-        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: type[QueueProtocol],
-        get_initial_value: bool,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        get_initial_value: bool = False,
     ) -> QueueProtocol:
         ...
 
@@ -662,8 +662,8 @@ class Session:
         self,
         path: LabOneNodePath,
         *,
-        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         queue_type: type[QueueProtocol] | None = None,
+        parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
     ) -> QueueProtocol | DataQueue:
         """Register a new subscription to a node.

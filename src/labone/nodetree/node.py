@@ -985,7 +985,7 @@ class Node(MetaNode, ABC):
         ...
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool) -> DataQueue:
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
         ...
 
     @t.overload
@@ -993,7 +993,7 @@ class Node(MetaNode, ABC):
         self,
         *,
         queue_type: type[QueueProtocol],
-        get_initial_value: bool,
+        get_initial_value: bool = False,
     ) -> QueueProtocol:
         ...
 
@@ -1127,7 +1127,7 @@ class LeafNode(Node):
         raise LabOneInvalidPathError(msg)
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool) -> DataQueue:
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
         ...
 
     @t.overload
@@ -1135,7 +1135,7 @@ class LeafNode(Node):
         self,
         *,
         queue_type: type[QueueProtocol],
-        get_initial_value: bool,
+        get_initial_value: bool = False,
     ) -> QueueProtocol:
         ...
 
@@ -1312,7 +1312,7 @@ class WildcardOrPartialNode(Node, ABC):
     async def subscribe(
         self,
         *,
-        get_initial_value: bool,
+        get_initial_value: bool = False,
     ) -> DataQueue:
         ...
 
@@ -1321,7 +1321,7 @@ class WildcardOrPartialNode(Node, ABC):
         self,
         *,
         queue_type: type[QueueProtocol],
-        get_initial_value: bool,
+        get_initial_value: bool = False,
     ) -> QueueProtocol:
         ...
 
