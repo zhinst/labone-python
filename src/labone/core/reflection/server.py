@@ -6,6 +6,7 @@ connected to a basic Zurich Instruments reflection server. Based on the
 adds them as attributes to the server instance. This allows to access the
 capabilities directly through the server instance.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -312,13 +313,18 @@ class ReflectionServer:
     """Basic dynamic reflection server.
 
     This class is used to connected to a basic Zurich Instruments reflection
-    server. Based on the `reflection.capnp` schema, it loads all capabilites
+    server. Based on the `reflection.capnp` schema, it loads all capabilities
     exposed by the server and adds them as attributes to the server instance.
     This allows to access the capabilities directly through the server instance.
 
     The ReflectionServer class is instantiated through the staticmethod
     `create()` or `create_from_connection`. This is due to the fact that the
     instantiation is done asynchronously.
+
+    !!! note
+
+        Due to the asynchronous interface, one needs to use the static method
+        `create` instead of the `__init__` method.
 
     Args:
         connection: Raw capnp asyncio stream for the connection to the server.

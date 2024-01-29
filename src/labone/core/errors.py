@@ -1,4 +1,5 @@
 """LabOne Error classes for the core component of the API."""
+
 from __future__ import annotations
 
 from asyncio import QueueEmpty

@@ -2,6 +2,7 @@
 
 It is used to recursively load the encoded schema of a LabOne server.
 """
+
 from __future__ import annotations
 
 import contextlib

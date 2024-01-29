@@ -51,6 +51,13 @@ async def test_remembers_state():
 
 
 @pytest.mark.asyncio()
+async def test_relavtive_path():
+    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    await functionality.set(AnnotatedValue(value=123, path="b"))
+    assert (await functionality.get("b")).value == 123
+
+
+@pytest.mark.asyncio()
 async def test_state_overwritable():
     functionality = AutomaticSessionFunctionality({"/a/b": {}})
     await functionality.set(AnnotatedValue(value=123, path="/a/b"))

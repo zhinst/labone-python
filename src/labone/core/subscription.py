@@ -16,6 +16,7 @@ It is always recommended to disconnect the data queue when it is not needed
 anymore. This will free up resources on the server side and prevent the server
 from sending unnecessary data.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -104,15 +105,13 @@ class DataQueue(asyncio.Queue):
         )
 
     @t.overload
-    def fork(self, queue_type: None) -> DataQueue:
-        ...
+    def fork(self, queue_type: None) -> DataQueue: ...
 
     @t.overload
     def fork(
         self,
         queue_type: type[QueueProtocol],
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     def fork(
         self,
@@ -185,7 +184,7 @@ class DataQueue(asyncio.Queue):
 
         Raises:
             EmptyDisconnectedDataQueueError: If the data queue if empty AND
-            disconnected.
+                disconnected.
         """
         if self.empty() and not self._connection_state:
             msg = str(
@@ -274,15 +273,13 @@ class CircularDataQueue(DataQueue):
         super().put_nowait(item)
 
     @t.overload
-    def fork(self, queue_type: None) -> CircularDataQueue:
-        ...
+    def fork(self, queue_type: None) -> CircularDataQueue: ...
 
     @t.overload
     def fork(
         self,
         queue_type: type[QueueProtocol],
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     def fork(
         self,
@@ -318,11 +315,6 @@ class DistinctConsecutiveDataQueue(DataQueue):
 
     This data queue is identical to the DataQueue, with the exception that it
     will accept new values that have a different value than the last value.
-
-    Args:
-        path: Path of the subscribed node.
-        register_function: Function to register this queue in the underlying
-            subscription handle.
     """
 
     def __init__(
@@ -355,15 +347,13 @@ class DistinctConsecutiveDataQueue(DataQueue):
             self._last_value = item
 
     @t.overload
-    def fork(self, queue_type: None) -> CircularDataQueue:
-        ...
+    def fork(self, queue_type: None) -> CircularDataQueue: ...
 
     @t.overload
     def fork(
         self,
         queue_type: type[QueueProtocol],
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     def fork(
         self,
@@ -390,9 +380,9 @@ class DistinctConsecutiveDataQueue(DataQueue):
         """
         return DataQueue.fork(
             self,
-            queue_type=queue_type
-            if queue_type is not None
-            else DistinctConsecutiveDataQueue,
+            queue_type=(
+                queue_type if queue_type is not None else DistinctConsecutiveDataQueue
+            ),
         )
 
 
@@ -421,8 +411,7 @@ class StreamingHandle(ABC):
         self,
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @abstractmethod
     def register_data_queue(

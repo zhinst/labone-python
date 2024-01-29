@@ -13,7 +13,10 @@ The number of sessions to a kernel is not limited. However, due to the
 asynchronous interface, it is often not necessary to have multiple sessions
 to the same kernel.
 """
+
 from __future__ import annotations
+
+import typing as t
 
 import capnp
 
@@ -29,6 +32,12 @@ from labone.core.helper import (
 from labone.core.reflection.server import ReflectionServer
 from labone.core.session import Session
 
+if t.TYPE_CHECKING:
+    from labone.core.errors import (  # noqa: F401
+        BadRequestError,
+        InternalError,
+    )
+
 
 class KernelSession(Session):
     """Session to a LabOne kernel.
@@ -40,7 +49,7 @@ class KernelSession(Session):
 
     Each function implements the required error handling both for the
     capnp communication and the server errors. This means unless an Exception
-    is raised the call was sucessfull.
+    is raised the call was successful.
 
     The KernelSession class is instantiated through the staticmethod
     `create()`.
@@ -48,13 +57,19 @@ class KernelSession(Session):
     To call the constructor directly an already existing capnp io stream
     must be provided.
 
-    Example:
-        >>> kernel_info = ZIKernelInfo()
-        >>> server_info = ServerInfo(host="localhost", port=8004)
-        >>> kernel_session = await KernelSession(
-                kernel_info = kernel_info,
-                server_info = server_info,
-            )
+    !!! note
+
+        Due to the asynchronous interface, one needs to use the static method
+        `create` instead of the `__init__` method.
+
+    ```python
+    kernel_info = ZIKernelInfo()
+    server_info = ServerInfo(host="localhost", port=8004)
+    kernel_session = await KernelSession(
+            kernel_info = kernel_info,
+            server_info = server_info,
+        )
+    ```
 
     Args:
         reflection_server: The reflection server that is used for the session.
@@ -87,7 +102,9 @@ class KernelSession(Session):
         is required, instead of a simple constructor (since a constructor can
         not be asynchronous).
 
-        Warning: The initial socket creation and setup (handshake, ...) is
+        !!! warning
+
+            The initial socket creation and setup (handshake, ...) is
             currently not done asynchronously! The reason is that there is not
             easy way of doing this with the current capnp implementation.
 

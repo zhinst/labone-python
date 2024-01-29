@@ -5,6 +5,7 @@ This server can provide the schema (getTheSchema) and takes
 an additional server used for the actual functionality. This functionality
 inserting allows for a abstract common reflection server.
 """
+
 from __future__ import annotations
 
 import socket

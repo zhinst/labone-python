@@ -3,6 +3,7 @@
 This module is able tro create a connection to a LabOne data server and perform
 the necessary steps (e.g. handshake) to establish a connection.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -453,9 +454,11 @@ def _http_get_info_request(
     # Update the capability version of the kernel info
     capability_version_raw = response.headers.get("Zhinst-Kernel-Version", None)
     kernel_info_extended = kernel_info.with_capability_version(
-        capability_version=version.Version(capability_version_raw)
-        if capability_version_raw is not None
-        else None,
+        capability_version=(
+            version.Version(capability_version_raw)
+            if capability_version_raw is not None
+            else None
+        ),
     )
     return (
         response.status,

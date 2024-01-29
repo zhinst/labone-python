@@ -13,6 +13,7 @@ The number of sessions to a capability is not limited. However, due to the
 asynchronous interface, it is often not necessary to have multiple sessions
 to the same capability.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,7 +39,17 @@ from labone.core.subscription import DataQueue, QueueProtocol, streaming_handle_
 from labone.core.value import AnnotatedValue
 
 if t.TYPE_CHECKING:
+    from labone.core.errors import (  # noqa: F401
+        BadRequestError,
+        InternalError,
+        LabOneCoreError,
+        NotFoundError,
+        OverwhelmedError,
+        UnavailableError,
+        UnimplementedError,
+    )
     from labone.core.reflection.server import ReflectionServer
+
 
 T = t.TypeVar("T")
 
@@ -65,20 +76,17 @@ NodeType: TypeAlias = Literal[
 class NodeInfo(TypedDict):
     """Node information structure.
 
-    Args:
-        Node: Node absolute path.
-        Description: Node description.
-        Properties: Comma-separated list of node properties.
-            A node can have one or multiple of the following properties:
+    - Node: Node absolute path.
+    - Description: Node description.
+    - Properties: Comma-separated list of node properties.
+        A node can have one or multiple of the following properties:
 
-                - "Read", "Write", "Stream", "Setting", "Pipelined"
+        "Read", "Write", "Stream", "Setting", "Pipelined"
 
-            Example: "Read, Write"
-
-        Type: Node type.
-        Unit: Node unit.
-        Options: Possible values for the node.
-            The key exists only if the node `Type` is `Integer (enumerated)`.
+    - Type: Node type.
+    - Unit: Node unit.
+    - Options: Possible values for the node.
+        The key exists only if the node `Type` is `Integer (enumerated)`.
     """
 
     Node: LabOneNodePath
@@ -94,17 +102,16 @@ class ListNodesInfoFlags(IntFlag):
 
     Multiple flags can be combined by using bitwise operations:
 
-    >>> ListNodesInfoFlags.SETTINGS_ONLY | ListNodesInfoFlags.EXCLUDE_VECTORS
+    `ListNodesInfoFlags.SETTINGS_ONLY | ListNodesInfoFlags.EXCLUDE_VECTORS`
 
-    Args:
-        ALL: Return all matching nodes.
-        SETTINGS_ONLY: Return only setting nodes.
-        STREAMING_ONLY: Return only streaming nodes.
-        BASE_CHANNEL_ONLY: Return only one instance of a channel
+    - ALL: Return all matching nodes.
+    - SETTINGS_ONLY: Return only setting nodes.
+    - STREAMING_ONLY: Return only streaming nodes.
+    - BASE_CHANNEL_ONLY: Return only one instance of a channel
             in case of multiple channels.
-        GET_ONLY: Return only nodes which can be used with the get command.
-        EXCLUDE_STREAMING: Exclude streaming nodes.
-        EXCLUDE_VECTORS: Exclude vector nodes.
+    - GET_ONLY: Return only nodes which can be used with the get command.
+    - EXCLUDE_STREAMING: Exclude streaming nodes.
+    - EXCLUDE_VECTORS: Exclude vector nodes.
     """
 
     ALL = 0
@@ -121,21 +128,20 @@ class ListNodesFlags(IntFlag):
 
     Multiple flags can be combined by using bitwise operations:
 
-    >>> ListNodesFlags.ABSOLUTE | ListNodesFlags.RECURSIVE
+    `ListNodesFlags.ABSOLUTE | ListNodesFlags.RECURSIVE`
 
-    Args:
-        ALL: Return all matching nodes.
-        RECURSIVE: Return nodes recursively.
-        ABSOLUTE: Absolute node paths.
-        LEAVES_ONLY: Return only leave nodes, which means they
+    - ALL: Return all matching nodes.
+    - RECURSIVE: Return nodes recursively.
+    - ABSOLUTE: Absolute node paths.
+    - LEAVES_ONLY: Return only leave nodes, which means they
             are at the outermost level of the three.
-        SETTINGS_ONLY: Return only setting nodes.
-        STREAMING_ONLY: Return only streaming nodes.
-        BASE_CHANNEL_ONLY: Return only one instance of a channel
+    - SETTINGS_ONLY: Return only setting nodes.
+    - STREAMING_ONLY: Return only streaming nodes.
+    - BASE_CHANNEL_ONLY: Return only one instance of a channel
             in case of multiple channels.
-        GET_ONLY: Return only nodes which can be used with the get command.
-        EXCLUDE_STREAMING: Exclude streaming nodes.
-        EXCLUDE_VECTORS: Exclude vector nodes.
+    - GET_ONLY: Return only nodes which can be used with the get command.
+    - EXCLUDE_STREAMING: Exclude streaming nodes.
+    - EXCLUDE_VECTORS: Exclude vector nodes.
     """
 
     ALL = 0
@@ -321,9 +327,10 @@ class Session:
 
             Using flags:
 
-            >>> await session.list_nodes("zi/devices", flags=ListNodesFlags.RECURSIVE \
-                | ListNodesFlags.EXCLUDE_VECTORS)
-            ...
+            >>> await session.list_nodes(
+            ...     "zi/devices",
+            ...     flags=ListNodesFlags.RECURSIVE | ListNodesFlags.EXCLUDE_VECTORS
+            ... )
         """
         request = self._session.listNodes_request()
         try:
@@ -379,7 +386,7 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
 
-        Example:
+        Examples:
             Using a wildcard in the node path that matches multiple nodes:
 
             >>> await session.list_nodes_info("/zi/devices/*")
@@ -446,6 +453,10 @@ class Session:
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
 
+        ```python
+        await session.set(AnnotatedValue(path="/zi/debug/level", value=2)
+        ```
+
         Args:
             value: Value to be set. The annotated value must contain a
                 LabOne node path and a value. (The path can be relative or
@@ -453,9 +464,6 @@ class Session:
 
         Returns:
             Acknowledged value from the device.
-
-        Example:
-            >>> await session.set(AnnotatedValue(path="/zi/debug/level", value=2)
 
         Raises:
             TypeError: If the node path is of wrong type.
@@ -494,18 +502,19 @@ class Session:
         If an error occurs while fetching the values no value is returned but
         the first first exception instead.
 
+        ```python
+        ack_values = await session.set_with_expression(
+                AnnotatedValue(path="/zi/*/level", value=2)
+            )
+        print(ack_values[0])
+        ```
+
         Args:
             value: Value to be set. The annotated value must contain a
                 LabOne path expression and a value.
 
         Returns:
             Acknowledged value from the device.
-
-        Example:
-            >>> ack_values = await session.set_with_expression(
-                    AnnotatedValue(path="/zi/*/level", value=2)
-                )
-            >>> print(ack_values[0])
 
         Raises:
             TypeError: If the node path is of wrong type.
@@ -542,14 +551,15 @@ class Session:
          automatically added to the path by the server. Note that the
          orchestrator/ZI kernel always requires absolute paths (/zi/about/version).
 
+        ```python
+        await session.get('/zi/devices/visible')
+        ```
+
         Args:
             path: LabOne node path (relative or absolute).
 
         Returns:
             Annotated value of the node.
-
-        Example:
-            >>> await session.get('/zi/devices/visible')
 
         Raises:
             TypeError: If `path` is not a string.
@@ -581,8 +591,7 @@ class Session:
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags
-        | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
@@ -598,6 +607,11 @@ class Session:
         If an error occurs while fetching the values no value is returned but
         the first first exception instead.
 
+        ```python
+        values = await session.get_with_expression("/zi/*/level")
+        print(values[0])
+        ```
+
         Args:
             path_expression: LabOne path expression.
             flags: The flags used by the server (list_nodes()) to filter the
@@ -605,10 +619,6 @@ class Session:
 
         Returns:
             Annotated values from the nodes matching the path expression.
-
-        Example:
-            >>> values = await session.get_with_expression("/zi/*/level")
-            >>> print(values[0])
 
         Raises:
             TypeError: If the node path is of wrong type.
@@ -644,8 +654,7 @@ class Session:
         queue_type: None = None,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
-    ) -> DataQueue:
-        ...
+    ) -> DataQueue: ...
 
     @t.overload
     async def subscribe(
@@ -655,8 +664,7 @@ class Session:
         queue_type: type[QueueProtocol],
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     async def subscribe(
         self,
@@ -683,6 +691,11 @@ class Session:
         to every registered subscription independently, causing additional
         network overhead.
 
+        ```python
+        data_sink = await session.subscribe("/zi/devices/visible")
+        newly_detected_device = await data_sink.get()
+        ```
+
         Args:
             path: String representing the path of the node to be streamed.
                 Currently does not support wildcards in the path.
@@ -699,10 +712,6 @@ class Session:
         Returns:
             An instance of the DataQueue class. This async queue will receive
             all update events for the subscribed node.
-
-        Example:
-            >>> data_sink = await session.subscribe("/zi/devices/visible")
-            >>> newly_detected_device = await data_sink.get()
 
         Raises:
             TypeError: If `path` is not a string
@@ -829,11 +838,15 @@ class Session:
         a significant performance drop. To avoid this, the transactional set is used.
         It allows to set multiple nodes in a single request.
 
-        Example:
-            >>> async with session.set_transaction() as requests:
-            ...     requests.append(session.set(value1))
-            ...     requests.append(session.set(value2))
-            ...     requests.append(custom_async_function_that_sets_nodes(...))
+        ```python
+        async with session.set_transaction() as requests:
+            requests.append(session.set(value1))
+            requests.append(session.set(value2))
+            requests.append(custom_async_function_that_sets_nodes(...))
+        ```
+
+        Yields:
+            List to which the set requests must be appended.
         """
         requests: list[t.Awaitable] = []
         if await self._supports_transaction():

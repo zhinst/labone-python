@@ -10,6 +10,7 @@ The extra header is a struct with a variable length. The length of the extra
 header is encoded in the 16 least significant bits of the extraHeaderInfo
 field of the vector data. The extra header is then followed by the data.
 """
+
 from __future__ import annotations
 
 import logging
@@ -57,11 +58,19 @@ class ShfResultLoggerVectorExtraHeader:
     Args:
         timestamp: Timestamp of the first sample of the current block.
             When averaging is turned on, this is the timestamp of the first shot.
-        timestamp_diff: Timestamp delta between subsequent samples
-        scaling: scaling value, used to scale the vector data to the desired
-            range (e.g. from raw ADC values into a +/-1 full-scale range)
-        center_freq: RF center frequency. This field corresponds to the
-            following node /dev.../qachannels/0/centerfreq
+        job_id: Job ID of the current measurement
+        repetition_id: Repetition ID of the current measurement
+        scaling: Scaling value to convert the measurement data from 32-bit
+            signed integer to double
+        center_freq: configured center frequency
+        data_source: Data source used for this measurement
+        samples: Number of samples per shot
+        spectr_samples: Number of samples per shot in the spectrum
+        averages: Number of averages per shot
+        acquired: Number of shots acquired
+        holdoff_errors_reslog: Number of hold-off errors in the result logger
+        holdoff_errors_readout: Number of hold-off errors in the readout
+        holdoff_errors_spectr: Number of hold-off errors in the spectrum
     """
 
     timestamp: int
@@ -269,7 +278,7 @@ class ShfDemodulatorVectorExtraHeader:
     Args:
         timestamp: Timestamp of the first sample of the current block.
             (unit: number of 4GHz clock ticks)
-        timestamp_diff: Timestamp delta between samples
+        timestamp_delta: Timestamp delta between samples
             (unit: number of clock ticks on the max. sampling rate,
             e.g. 50MHz for demod samples)
         burst_length: Length of the burst in samples
@@ -285,6 +294,8 @@ class ShfDemodulatorVectorExtraHeader:
         trigger_source: Index of the trigger source used for this acquisition.
         signal_source: Index of the signal input used for this acquisition.
         oscillator_freq: Current oscillator frequency.
+        scaling: Scaling value to convert the measurement data from 32-bit
+            signed integer to double.
     """
 
     timestamp: int

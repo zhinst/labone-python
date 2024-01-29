@@ -61,7 +61,7 @@ async def test_create():
             "host",
             "port",
             custom_parser="custom_parser",
-            hide_kernel_prefix="hide_kernel_prefix",
+            hide_zi_prefix="hide_zi_prefix",
         )
         kernelinfo_mock.assert_called_once_with()
         serverinfo_mock.assert_called_once_with(host="host", port="port")
@@ -71,7 +71,7 @@ async def test_create():
         )
         construct_mock.assert_called_once_with(
             "session",
-            hide_kernel_prefix="hide_kernel_prefix",
+            hide_kernel_prefix="hide_zi_prefix",
             custom_parser="custom_parser",
         )
         init_mock.assert_called_once_with(ANY, "host", "port", model_node="node")
@@ -106,7 +106,7 @@ async def test_create_raises():
                 "host",
                 "port",
                 custom_parser="custom_parser",
-                hide_kernel_prefix="hide_kernel_prefix",
+                hide_zi_prefix="hide_zi_prefix",
             )
         kernelinfo_mock.assert_called_once_with()
         serverinfo_mock.assert_called_once_with(host="host", port="port")
@@ -116,37 +116,10 @@ async def test_create_raises():
         )
         construct_mock.assert_called_once_with(
             "session",
-            hide_kernel_prefix="hide_kernel_prefix",
+            hide_kernel_prefix="hide_zi_prefix",
             custom_parser="custom_parser",
         )
         init_mock.assert_not_called()
-
-
-@pytest.mark.asyncio()
-async def test_connect_device():
-    with patch(
-        "labone.dataserver.Instrument.create",
-        autospec=True,
-        return_value="node",
-    ) as instrument_create_mock:
-        dataserver = MockDataServer()
-        dataserver._host = "host"
-        dataserver._port = "port"
-
-        await DataServer.connect_device(
-            dataserver,
-            "serial",
-            interface="interface",
-            custom_parser="custom_parser",
-        )
-
-        instrument_create_mock.assert_called_once_with(
-            serial="serial",
-            host="host",
-            port="port",
-            interface="interface",
-            custom_parser="custom_parser",
-        )
 
 
 small_response = AnnotatedValue(
@@ -172,6 +145,22 @@ async def test_check_firmware_compatibility(status_nr):
     dataserver._tree_manager.session.get.return_value = response
 
     await DataServer.check_firmware_compatibility(dataserver)
+    dataserver._tree_manager.session.get.assert_called_once_with("/zi/devices")
+
+
+@pytest.mark.asyncio()
+async def test_check_firmware_compatibility_single_instrument():
+    response = AnnotatedValue(
+        value='{"DEV90021":{"STATUSFLAGS": 0 },"DEV90022":{"STATUSFLAGS": 16 }}',
+        path="some_path",
+    )
+
+    dataserver = MockDataServer()
+    dataserver._tree_manager = create_autospec(NodeTreeManager)
+    dataserver._tree_manager.session = create_autospec(Session)
+    dataserver._tree_manager.session.get.return_value = response
+
+    await DataServer.check_firmware_compatibility(dataserver, devices=["DEV90021"])
     dataserver._tree_manager.session.get.assert_called_once_with("/zi/devices")
 
 

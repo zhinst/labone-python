@@ -40,16 +40,14 @@ from labone.core.errors import LabOneCoreError
 from labone.core.value import (
     AnnotatedValue,
     Value,
-    value_from_python_types_dict,
 )
 from labone.mock.errors import LabOneMockError
-from labone.mock.session_mock_template import SessionMockFunctionality
+from labone.mock.session_mock_template import SessionMockFunctionality, Subscription
 from labone.node_info import NodeInfo
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
     from labone.core.session import NodeInfo as NodeInfoType
-    from labone.core.subscription import StreamingHandle
 
 
 @dataclass
@@ -58,7 +56,7 @@ class PathData:
 
     value: Value
     info: NodeInfo
-    streaming_handles: list[StreamingHandle]
+    streaming_handles: list[Subscription]
 
 
 class AutomaticSessionFunctionality(SessionMockFunctionality):
@@ -74,7 +72,14 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
     ) -> None:
         # storing state and tree structure, info and subscriptions
         # set all existing paths to 0.
-
+        common_prefix_raw = (
+            next(iter(paths_to_info.keys())).split("/") if paths_to_info else []
+        )
+        self._common_prefix: str | None = (
+            f"/{common_prefix_raw[1]}"
+            if len(common_prefix_raw) > 1 and common_prefix_raw[1] != ""
+            else None
+        )
         self.memory: dict[LabOneNodePath, PathData] = {}
         for path, given_info in paths_to_info.items():
             info = NodeInfo.plain_default_info(path=path)
@@ -85,6 +90,8 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
                 info=NodeInfo(info),
                 streaming_handles=[],
             )
+            if self._common_prefix and not path.startswith(self._common_prefix):
+                self._common_prefix = None
 
     def get_timestamp(self) -> int:
         """Create a realisitc timestamp.
@@ -97,6 +104,21 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
             Timestamp in nanoseconds.
         """
         return time.monotonic_ns()
+
+    def _sanitize_path(self, path: LabOneNodePath) -> LabOneNodePath:
+        """Sanatize the path.
+
+        Removes trailing slashes and replaces empty path with root path.
+
+        Args:
+            path: Path to sanatize.
+
+        Returns:
+            Sanatized path.
+        """
+        if self._common_prefix and not path.startswith("/"):
+            return f"{self._common_prefix}/{path}"
+        return path
 
     async def list_nodes_info(
         self,
@@ -170,6 +192,7 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         Returns:
             Corresponding value.
         """
+        path = self._sanitize_path(path)
         try:
             value = self.memory[path].value
         except KeyError as e:
@@ -182,8 +205,7 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags  # noqa: ARG002
-        | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE  # noqa: ARG002
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
@@ -215,6 +237,7 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
         Returns:
             Acknowledged value.
         """
+        value.path = self._sanitize_path(value.path)
         if value.path not in self.memory:
             msg = f"Path {value.path} not found in mock server. Cannot set it."
             raise LabOneCoreError(msg)
@@ -224,26 +247,17 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
             msg = f"Path {value.path} is not writeable."
             raise LabOneCoreError(msg)
 
-        timestamp = self.get_timestamp()
+        response = value
+        response.timestamp = self.get_timestamp()
 
         if self.memory[value.path].streaming_handles:
-            capnp_response = {
-                "value": value_from_python_types_dict(value),
-                "metadata": {
-                    "path": value.path,
-                    "timestamp": timestamp,
-                },
-            }
             # sending updated value to subscriptions
             await asyncio.gather(
                 *[
-                    handle.sendValues([capnp_response])
-                    for handle in self.memory[value.path].streaming_handles
+                    handle.send_value(response)
+                    for handle in self.memory[response.path].streaming_handles
                 ],
             )
-
-        response = value
-        response.timestamp = timestamp
         return response
 
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
@@ -267,21 +281,16 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
             raise LabOneCoreError(msg)
         return result
 
-    async def subscribe_logic(
-        self,
-        *,
-        path: LabOneNodePath,
-        streaming_handle: StreamingHandle,
-        subscriber_id: int,  # noqa: ARG002
-    ) -> None:
+    async def subscribe_logic(self, subscription: Subscription) -> None:
         """Predefined behaviour for subscribe_logic.
 
         Stores the subscription. Whenever an update event happens
         they are distributed to all registered handles,
 
         Args:
-            path: Path to subscribe to.
-            streaming_handle: Streaming handle of the subscriber.
-            subscriber_id: Id of the subscriber.
+            subscription: Subscription object containing information on
+                where to distribute updates to.
         """
-        self.memory[path].streaming_handles.append(streaming_handle)
+        self.memory[self._sanitize_path(subscription.path)].streaming_handles.append(
+            subscription,
+        )

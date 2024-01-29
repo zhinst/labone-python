@@ -5,6 +5,7 @@ data container for all values send to and received by the kernel/server.
 It has both a function to convert a capnp message to a python object and vice
 versa.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,6 +31,7 @@ from labone.core.shf_vector_data import (
 )
 
 if t.TYPE_CHECKING:
+    from labone.core.errors import LabOneCoreError  # noqa: F401
     from labone.core.helper import CapnpCapability
     from labone.core.reflection.server import ReflectionServer
 
@@ -60,6 +62,17 @@ class AnnotatedValue:
     path: LabOneNodePath
     timestamp: int | None = None
     extra_header: ExtraHeader | None = None
+
+    def __repr__(self) -> str:
+        if self.extra_header is None:  # pragma: no cover
+            return (
+                f"AnnotatedValue(value={self.value}, path={self.path}, "
+                f"timestamp={self.timestamp})"
+            )
+        return (  # pragma: no cover
+            f"AnnotatedValue(value={self.value}, path={self.path}, "
+            f"timestamp={self.timestamp}, extra_header={self.extra_header})"
+        )
 
     @staticmethod
     def from_capnp(raw: CapnpCapability) -> AnnotatedValue:

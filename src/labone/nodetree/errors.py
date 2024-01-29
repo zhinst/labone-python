@@ -1,4 +1,5 @@
 """LabOne Error classes associated with the nodetree."""
+
 from labone.errors import LabOneError
 
 

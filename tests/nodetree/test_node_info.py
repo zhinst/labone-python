@@ -4,7 +4,6 @@ any functionality. Nethertheless, it may be useful for
 customers.
 """
 
-
 from __future__ import annotations
 
 import pytest

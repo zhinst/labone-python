@@ -31,12 +31,10 @@ TreeProp = t.Dict[LabOneNodePath, T]
 class NestedDict(t.Protocol[T]):  # type: ignore[misc]
     """Protocol representing a nested dictionary structure."""
 
-    def __getitem__(self, key: str) -> T | NestedDict[T]:
-        ...
+    def __getitem__(self, key: str) -> T | NestedDict[T]: ...
 
     # retyping dict method, because inheriting from non-protocal is prohibited
-    def __setitem__(self, key: str, item: T | NestedDict) -> None:
-        ...
+    def __setitem__(self, key: str, item: T | NestedDict) -> None: ...
 
     def keys(self) -> t.KeysView[str]:
         """..."""
@@ -96,8 +94,7 @@ class Session(t.Protocol):
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags
-        | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING

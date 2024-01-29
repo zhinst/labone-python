@@ -43,6 +43,12 @@ async def spawn_hpk_mock(
 ) -> MockSession:
     """Shortcut for creating a mock server.
 
+    ```python
+    mock_server = await spawn_hpk_mock(
+            AutomaticSessionFunctionality(paths_to_info)
+        )
+    ```
+
     Args:
         functionality: Functionality to be mocked.
 
@@ -54,12 +60,6 @@ async def spawn_hpk_mock(
         PermissionError: If the file cannot be read.
         capnp.lib.capnp.KjException: If the schema is invalid. Or the id
             of the concrete server is not in the schema.
-
-    Example:
-        >>> mock_server = await spawn_hpk_mock(
-                AutomaticSessionFunctionality(paths_to_info)
-            )
-
     """
     mock_server = MockServer(
         capability_bytes=SESSION_REFLECTION_BIN,

@@ -4,6 +4,7 @@ NOTE: `capnp` builder instances cannot be asserter for equality.
 
 TODO: Tests for invalid Python value cases.
 """
+
 import numpy as np
 import pytest
 from hypothesis import HealthCheck, given, settings

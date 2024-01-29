@@ -4,6 +4,7 @@ This module provides a function to unwrap the result of a capnp call and
 raise the corresponding exception if the call failed. It is intendet to
 be used for low level capnp interface calls.
 """
+
 import capnp
 
 from labone.core import errors
