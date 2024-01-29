@@ -1,131 +1,48 @@
-from unittest.mock import ANY, create_autospec, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from labone.core import (
-    AnnotatedValue,
     KernelSession,
 )
 from labone.dataserver import DataServer
 from labone.errors import LabOneError
-from labone.nodetree.helper import Session
-from labone.nodetree.node import NodeTreeManager
-
-
-class MockModelNode:
-    def __init__(self):
-        self.tree_manager = "tree_manager"
-        self.path_segments = "path_segments"
-        self.subtree_paths = "subtree_paths"
-
-
-class MockDataServer(DataServer):
-    def __init__(self):
-        super().__init__(host="host", port="port", model_node=MockModelNode())
-
-
-def test_unerlying_server():
-    dataserver = MockDataServer()
-    dataserver._tree_manager = create_autospec(NodeTreeManager)
-    assert dataserver.kernel_session == dataserver._tree_manager.session
+from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
 
 
 @pytest.mark.asyncio()
-async def test_create():
+async def test_create_ok():
+    mock_server = AutomaticSessionFunctionality({})
+    session = await spawn_hpk_mock(mock_server)
+    dataserver = await DataServer.create_from_session(
+        session=session,
+        host="host",
+        port=8004,
+    )
+    assert dataserver.kernel_session == session
+
+
+@pytest.mark.asyncio()
+async def test_create_ok_new_session():
+    mock_server = AutomaticSessionFunctionality({})
+    session = await spawn_hpk_mock(mock_server)
     with patch.object(
         KernelSession,
         "create",
         autospec=True,
         return_value="session",
-    ) as create_mock, patch(
-        "labone.dataserver.ZIKernelInfo",
-        autospec=True,
-        return_value="kernel_info",
-    ) as kernelinfo_mock, patch(
-        "labone.dataserver.ServerInfo",
-        autospec=True,
-        return_value="server_info",
-    ) as serverinfo_mock, patch(
-        "labone.dataserver.construct_nodetree",
-        autospec=True,
-        return_value="node",
-    ) as construct_mock, patch(
-        "labone.dataserver.DataServer.__init__",
-        return_value=None,
-        autospec=True,
-    ) as init_mock, patch(
-        "labone.dataserver.DataServer.__repr__",
-        return_value="data_server",
-        autospec=True,
-    ):
-        await DataServer.create(
-            "host",
-            "port",
-            custom_parser="custom_parser",
-            hide_zi_prefix="hide_zi_prefix",
-        )
-        kernelinfo_mock.assert_called_once_with()
-        serverinfo_mock.assert_called_once_with(host="host", port="port")
-        create_mock.assert_called_once_with(
-            kernel_info="kernel_info",
-            server_info="server_info",
-        )
-        construct_mock.assert_called_once_with(
-            "session",
-            hide_kernel_prefix="hide_zi_prefix",
-            custom_parser="custom_parser",
-        )
-        init_mock.assert_called_once_with(ANY, "host", "port", model_node="node")
+    ) as create_mock:
+        create_mock.return_value = session
+        dataserver = await DataServer.create(host="host", port=8004)
+    assert dataserver.kernel_session == session
+    assert create_mock.call_count == 1
 
 
 @pytest.mark.asyncio()
 async def test_create_raises():
-    with patch.object(
-        KernelSession,
-        "create",
-        autospec=True,
-        return_value="session",
-    ) as create_mock, patch(
-        "labone.dataserver.ZIKernelInfo",
-        autospec=True,
-        return_value="kernel_info",
-    ) as kernelinfo_mock, patch(
-        "labone.dataserver.ServerInfo",
-        autospec=True,
-        return_value="server_info",
-    ) as serverinfo_mock, patch(
-        "labone.dataserver.construct_nodetree",
-        autospec=True,
-        return_value="node",
-        side_effect=LabOneError(),
-    ) as construct_mock, patch(
-        "labone.dataserver.DataServer.__init__",
-        autospec=True,
-    ) as init_mock:
-        with pytest.raises(LabOneError):
-            await DataServer.create(
-                "host",
-                "port",
-                custom_parser="custom_parser",
-                hide_zi_prefix="hide_zi_prefix",
-            )
-        kernelinfo_mock.assert_called_once_with()
-        serverinfo_mock.assert_called_once_with(host="host", port="port")
-        create_mock.assert_called_once_with(
-            kernel_info="kernel_info",
-            server_info="server_info",
-        )
-        construct_mock.assert_called_once_with(
-            "session",
-            hide_kernel_prefix="hide_zi_prefix",
-            custom_parser="custom_parser",
-        )
-        init_mock.assert_not_called()
-
-
-small_response = AnnotatedValue(
-    value='"DEV90021":"{"STATUSFLAGS":36}',
-    path="some_path",
-)
+    session = MagicMock()
+    session.list_nodes_info = AsyncMock(side_effect=LabOneError())
+    with pytest.raises(LabOneError):
+        await DataServer.create_from_session(session=session, host="host", port=8004)
 
 
 @pytest.mark.parametrize(
@@ -134,34 +51,31 @@ small_response = AnnotatedValue(
 )
 @pytest.mark.asyncio()
 async def test_check_firmware_compatibility(status_nr):
-    response = AnnotatedValue(
-        value='{"DEV90021":{"STATUSFLAGS":' + str(status_nr) + "}}",
-        path="some_path",
+    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
+    session = await spawn_hpk_mock(mock_server)
+    dataserver = await DataServer.create_from_session(
+        session=session,
+        host="host",
+        port=8004,
     )
-
-    dataserver = MockDataServer()
-    dataserver._tree_manager = create_autospec(NodeTreeManager)
-    dataserver._tree_manager.session = create_autospec(Session)
-    dataserver._tree_manager.session.get.return_value = response
+    await dataserver.devices('{"DEV90021":{"STATUSFLAGS":' + str(status_nr) + "}}")
 
     await DataServer.check_firmware_compatibility(dataserver)
-    dataserver._tree_manager.session.get.assert_called_once_with("/zi/devices")
 
 
 @pytest.mark.asyncio()
 async def test_check_firmware_compatibility_single_instrument():
-    response = AnnotatedValue(
-        value='{"DEV90021":{"STATUSFLAGS": 0 },"DEV90022":{"STATUSFLAGS": 16 }}',
-        path="some_path",
+    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
+    session = await spawn_hpk_mock(mock_server)
+    dataserver = await DataServer.create_from_session(
+        session=session,
+        host="host",
+        port=8004,
     )
-
-    dataserver = MockDataServer()
-    dataserver._tree_manager = create_autospec(NodeTreeManager)
-    dataserver._tree_manager.session = create_autospec(Session)
-    dataserver._tree_manager.session.get.return_value = response
-
+    await dataserver.devices(
+        '{"DEV90021":{"STATUSFLAGS": 0 },"DEV90022":{"STATUSFLAGS": 16 }}',
+    )
     await DataServer.check_firmware_compatibility(dataserver, devices=["DEV90021"])
-    dataserver._tree_manager.session.get.assert_called_once_with("/zi/devices")
 
 
 @pytest.mark.parametrize(
@@ -188,17 +102,16 @@ async def test_check_firmware_compatibility_raises(id_and_codes, contained_in_er
     for id_, code in id_and_codes:
         val += '"' + id_ + '":{"STATUSFLAGS":' + str(code) + "},"
     val = val[:-1] + "}"
-    response = AnnotatedValue(
-        value=val,
-        path="some_path",
+    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
+    session = await spawn_hpk_mock(mock_server)
+    dataserver = await DataServer.create_from_session(
+        session=session,
+        host="host",
+        port=8004,
     )
-    dataserver = MockDataServer()
-    dataserver._tree_manager = create_autospec(NodeTreeManager)
-    dataserver._tree_manager.session = create_autospec(Session)
-    dataserver._tree_manager.session.get.return_value = response
+    await dataserver.devices(val)
 
     with pytest.raises(LabOneError) as e_info:
         await DataServer.check_firmware_compatibility(dataserver)
     for s in contained_in_error:
         assert s in str(e_info.value)
-    dataserver._tree_manager.session.get.assert_called_once_with("/zi/devices")
