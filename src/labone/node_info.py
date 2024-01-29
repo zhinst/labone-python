@@ -1,4 +1,5 @@
 """Brings node info into a more usable format."""
+
 from __future__ import annotations
 
 import re

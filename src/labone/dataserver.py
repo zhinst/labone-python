@@ -1,4 +1,5 @@
 """High-level functionality for connecting to devices and zi-nodes."""
+
 from __future__ import annotations
 
 import json
@@ -8,37 +9,38 @@ from labone.core import (
     AnnotatedValue,
     KernelSession,
     ServerInfo,
+    Session,
     ZIKernelInfo,
 )
 from labone.errors import LabOneError
-from labone.instrument import Instrument
 from labone.nodetree import construct_nodetree
-from labone.nodetree.node import PartialNode
+from labone.nodetree.node import Node, PartialNode
+
+if t.TYPE_CHECKING:
+    from labone.core.errors import (  # noqa: F401
+        BadRequestError,
+        InternalError,
+        LabOneCoreError,
+        UnavailableError,
+    )
 
 
 class DataServer(PartialNode):
     """Connection to a LabOne Data Server.
 
-    This class serves as the main entry point for any connection to a
-    Zurich Instrument device.
-    At Zurich Instruments a server-based connectivity methodology is used.
-    Server-based means that all communication between the user and the
-    instrument takes place via a computer program called a server, the data
-    server. (For more information on the architecture please refer to the user
-    manual http://docs.zhinst.com/labone_programming_manual/introduction.html)
+    This class gives access to the LabOne Data Server configuration. It is not
+    tied to a specific device but exposes the nodes used to control the
+    DataServer. This is done through the so called zi-nodes.
 
-    Apart from the access to the data server configuration (data server node tree)
-    the main purpose of this class is to create connections to one or more devices.
-    The connection to a device is established by calling the `connect_device` method.
+    !!! note
 
-    Note:
         Due to the asynchronous interface, one needs to use the static method
         `create` instead of the `__init__` method.
 
-    Example:
-        >>> from labone import DataServer
-        >>> data_server = await DataServer.create("127.0.0.1")
-        >>> device = await data_server.connect_device("dev1000")
+    ```python
+        from labone import DataServer
+        data_server = await DataServer.create("127.0.0.1")
+    ```
 
     Args:
         host: host address of the DataServer.
@@ -52,7 +54,7 @@ class DataServer(PartialNode):
         host: str,
         port: int = 8004,
         *,
-        model_node: PartialNode,
+        model_node: Node,
     ):
         self._host = host
         self._port = port
@@ -63,24 +65,65 @@ class DataServer(PartialNode):
             subtree_paths=model_node.subtree_paths,
         )
 
-    @classmethod
+    @staticmethod
+    async def create_from_session(
+        *,
+        session: Session,
+        host: str = "localhost",
+        port: int = 8004,
+        custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        hide_zi_prefix: bool = True,
+    ) -> DataServer:
+        """Create a new Session to a LabOne Data Server.
+
+        Args:
+            session: Session to use for the connection.
+            host: host address of the DataServer (default = "localhost").
+            port: Port of the DataServer (default = 8004).
+            hide_zi_prefix: Hides to common prefix `zi` from the node names.
+                E.g. `data_server.debug.info` can be used instead of
+                `data_server.zi.debug.info`.
+            custom_parser: A function that takes an annotated value and returns an
+                annotated value. This function is applied to all values coming from
+                the server. It is applied after the default enum parser, if
+                applicable.
+
+        Returns:
+            The connected DataServer.
+
+        Raises:
+            LabOneError: If an error appeared in the connection to the device.
+        """
+        try:
+            model_node = await construct_nodetree(
+                session,
+                hide_kernel_prefix=hide_zi_prefix,
+                custom_parser=custom_parser,
+            )
+        except LabOneError as e:
+            msg = f"While connecting to DataServer at {host}:{port} an error occurred."
+            raise LabOneError(msg) from e
+
+        return DataServer(host, port, model_node=model_node)  # type: ignore[arg-type]
+        # previous type ignore is due to the implicit assumption that a device root
+        # will always be a partial node
+
+    @staticmethod
     async def create(
-        cls,
         host: str,
         port: int = 8004,
         *,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-        hide_kernel_prefix: bool = True,
+        hide_zi_prefix: bool = True,
     ) -> DataServer:
         """Create a new Session to a LabOne Data Server.
 
         Args:
             host: host address of the DataServer.
-            port: Port of the DataServer.
-            hide_kernel_prefix: Enter a trivial first path-segment automatically.
-                E.g. having the result of this function in a variable `tree`
-                `tree.debug.info` can be used instead of `tree.device1234.debug.info`.
-                Setting this option makes working with the tree easier.
+            port: Port of the DataServer (default = 8004).
+            hide_zi_prefix: Hides to common prefix `zi` from the node names.
+                E.g. `data_server.debug.info` can be used instead of
+                `data_server.zi.debug.info`.
             custom_parser: A function that takes an annotated value and returns an
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
@@ -96,82 +139,48 @@ class DataServer(PartialNode):
             InternalError: If the kernel could not be launched or another internal
                 error occurred.
             LabOneCoreError: If another error happens during the session creation.
+            LabOneError: If an error appeared in the connection to the device.
         """
         session = await KernelSession.create(
             kernel_info=ZIKernelInfo(),
             server_info=ServerInfo(host=host, port=port),
         )
 
-        try:
-            model_node = await construct_nodetree(
-                session,
-                hide_kernel_prefix=hide_kernel_prefix,
-                custom_parser=custom_parser,
-            )
-        except LabOneError as e:
-            msg = f"While connecting to DataServer at {host}:{port} an error occurred."
-            raise LabOneError(msg) from e
-
-        return DataServer(host, port, model_node=model_node)  # type: ignore[arg-type]
-        # previous type ignore is due to the implicit assumption that a device root
-        # will always be a partial node
-
-    async def connect_device(
-        self,
-        serial: str,
-        *,
-        interface: str = "",
-        custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-    ) -> Instrument:
-        """Connect to a device.
-
-        Args:
-            serial: Serial number of the device, e.g. 'dev1000'.
-                The serial number can be found on the back panel of the instrument.
-            interface: The interface that should be used to connect to the device.
-                It is only needed if the device is accessible through multiple
-                interfaces, and a specific interface should be enforced. If no value is
-                provided, the data server will automatically choose an available
-                interface. (default = "")
-            custom_parser: A function that takes an annotated value and returns an
-                annotated value. This function is applied to all values coming from
-                the server. It is applied after the default enum parser, if
-                applicable.
-
-        Returns:
-            The connected device.
-
-        Raises:
-            UnavailableError: If the device was not found or unable to connect.
-            BadRequestError: If there is a generic problem interpreting the incoming
-                request
-            InternalError: If the device kernel could not be launched or another
-                internal error occurred.
-            LabOneCoreError: If another error happens during the session creation.
-        """
-        return await Instrument.create(
-            serial=serial,
-            host=self.host,
-            port=self.port,
-            interface=interface,
+        return await DataServer.create_from_session(
+            session=session,
+            host=host,
+            port=port,
             custom_parser=custom_parser,
+            hide_zi_prefix=hide_zi_prefix,
         )
 
-    async def check_firmware_compatibility(self) -> None:
+    async def check_firmware_compatibility(
+        self,
+        devices: list[str] | None = None,
+    ) -> None:
         """Check if the firmware matches the LabOne version.
+
+        Args:
+            devices: List of devices to check. If `None`, all devices connected
+                to the data server are checked.
 
         Raises:
             ConnectionError: If the device is currently updating
             LabOneError: If the firmware revision does not match to the
                 version of the connected LabOne DataServer.
         """
-        annotated_devices = await self.tree_manager.session.get("/zi/devices")
-        devices: dict[str, dict] = json.loads(annotated_devices.value)  # type: ignore[arg-type]
+        raw_discovery_info = await self.tree_manager.session.get("/zi/devices")
+        discovery_info: dict[str, dict] = json.loads(
+            raw_discovery_info.value,  # type: ignore[arg-type]
+        )
 
         devices_currently_updating = []
         devices_update_firmware = []
         devices_update_labone = []
-        for device_id, device_info in devices.items():
+        devices_to_test = devices if devices is not None else discovery_info.keys()
+        for device_id, device_info in discovery_info.items():
+            if device_id not in devices_to_test:
+                continue
             status_flag = device_info["STATUSFLAGS"]
 
             if status_flag & 1 << 8:
@@ -214,12 +223,12 @@ class DataServer(PartialNode):
     @property
     def host(self) -> str:
         """Host of the Data Server."""
-        return self._host
+        return self._host  # pragma: no cover
 
     @property
     def port(self) -> int:
         """Port of the Data Server."""
-        return self._port
+        return self._port  # pragma: no cover
 
     @property
     def kernel_session(self) -> KernelSession:

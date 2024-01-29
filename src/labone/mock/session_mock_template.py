@@ -8,7 +8,6 @@ The logic of the capnp methods is deligated to the HpkMockFunctionality class,
 which offers a blueprint meant to be overriden by the user.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -41,6 +40,49 @@ if TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
     from labone.core.session import NodeInfo
     from labone.core.subscription import StreamingHandle
+
+
+class Subscription:
+    """Subscription abstraction class.
+
+    This class hides the capnp specific subscription object and the logic to send
+    and AnnnotatedValue to the subscriber.
+
+    Args:
+        path: Path to the node to subscribe to.
+        streaming_handle: Capnp specific object to send updates to.
+        subscriber_id: Capnp specific id of the subscriber.
+    """
+
+    def __init__(
+        self,
+        path: LabOneNodePath,
+        streaming_handle: StreamingHandle,
+        subscriber_id: int,
+    ):
+        self._path = path
+        self._streaming_handle = streaming_handle
+        self.subscriber_id = subscriber_id
+
+    async def send_value(self, value: AnnotatedValue) -> None:
+        """Send value to the subscriber.
+
+        Args:
+            value: Value to send.
+        """
+        capnp_response = {
+            "value": value_from_python_types_dict(value),
+            "metadata": {
+                "path": value.path,
+                "timestamp": value.timestamp,
+            },
+        }
+        await self._streaming_handle.sendValues([capnp_response])
+
+    @property
+    def path(self) -> LabOneNodePath:
+        """Node path of the subscription."""
+        return self._path
 
 
 class SessionMockFunctionality(ABC):
@@ -79,8 +121,7 @@ class SessionMockFunctionality(ABC):
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags
-        | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
@@ -163,19 +204,12 @@ class SessionMockFunctionality(ABC):
         ...
 
     @abstractmethod
-    async def subscribe_logic(
-        self,
-        *,
-        path: LabOneNodePath,
-        streaming_handle: StreamingHandle,
-        subscriber_id: int,
-    ) -> None:
+    async def subscribe_logic(self, subscription: Subscription) -> None:
         """Override this method for defining subscription behavior.
 
         Args:
-            path: Path to the node to subscribe to.
-            streaming_handle: Handle to the stream.
-            subscriber_id: Unique id of the subscriber.
+            subscription: Subscription object containing information on
+                where to distribute updates to.
         """
         ...
 
@@ -408,11 +442,12 @@ class SessionMockTemplate(ServerTemplate):
             Capnp acknowledgement.
         """
         try:
-            await self._functionality.subscribe_logic(
+            subscription = Subscription(
                 path=subscription.path,
                 streaming_handle=subscription.streamingHandle,
                 subscriber_id=subscription.subscriberId,
             )
+            await self._functionality.subscribe_logic(subscription)
         except Exception as e:  # noqa: BLE001
             return build_capnp_error(e)
         return {"ok": {}}

@@ -1,4 +1,5 @@
 """Tests for the `labone.core.subscription` module."""
+
 import asyncio
 
 import capnp

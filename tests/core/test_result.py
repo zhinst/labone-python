@@ -1,4 +1,5 @@
 """Tests unwrapping of a capnp result."""
+
 from dataclasses import dataclass
 
 import capnp

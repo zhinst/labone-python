@@ -1,4 +1,5 @@
 """Mock specific errors."""
+
 from labone.errors import LabOneError
 
 

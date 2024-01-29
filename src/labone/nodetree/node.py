@@ -4,6 +4,7 @@ This module contains the core functionality of the node-tree. It provides
 the classes for the different types of nodes, the node info and the
 NodeTreeManager, which is the interface to the server.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -101,7 +102,7 @@ class NodeTreeManager:
 
         This function will not check that the added nodes are valid,
         so it should be used with care. Normally, it is not necessary to
-        add nodes manually, because they will be aquired automatically
+        add nodes manually, because they will be acquired automatically
         on construction.
 
         Warning:
@@ -155,7 +156,7 @@ class NodeTreeManager:
 
         This function will not check that the added nodes are valid,
         so it should be used with care. Normally, it is not necessary to
-        add nodes manually, because they will be aquired automatically
+        add nodes manually, because they will be acquired automatically
         on construction.
 
         Warning:
@@ -334,8 +335,9 @@ class MetaNode(ABC):
         *,
         tree_manager: NodeTreeManager,
         path_segments: tuple[NormalizedPathSegment, ...],
-        subtree_paths: NestedDict[list[list[NormalizedPathSegment]] | dict]
-        | UndefinedStructure,
+        subtree_paths: (
+            NestedDict[list[list[NormalizedPathSegment]] | dict] | UndefinedStructure
+        ),
     ):
         self._tree_manager = tree_manager
         self._path_segments = path_segments
@@ -345,16 +347,16 @@ class MetaNode(ABC):
     def __getattr__(self, next_segment: str) -> MetaNode | AnnotatedValue:
         """Access sub-node or value.
 
+        ```python
+        node.demods  # where 'demods' is the next segment to enter
+        ```
+
         Args:
             next_segment: Segment, with which the current path should be extended
 
         Returns:
             New node-object, representing the extended path, or plain value,
             if came to a leaf-node of a result.
-
-        Example:
-            >>> node.demods  # where 'demods' is the next segment to enter
-
         """
         ...
 
@@ -369,28 +371,49 @@ class MetaNode(ABC):
         However, this operator can deal with a number of different scenarios:
 
         - simple path extensions:
-            >>> node['deeper']
+
+            ```python
+            node['deeper']
+            ```
+
         - path indexing:
-            >>> node['deeper/path']
+
+            ```python
+            node['deeper/path']
+            ```
+
         - numeric indexing:
-            >>> node[0]
+
+            ```python
+            node[0]
+            ```
+
         - wildcards (placeholder for multiple path-extensions):
-            >>> node['*']
+
+            ```python
+            node['*']
+            ```
+
         - combinations of all that:
-            >>> node['deeper/*/path/0']
+
+            ```python
+            node['deeper/*/path/0']
+            ```
+
+
+        All these implementations are equivalent:
+
+        ```python
+        node['mds/groups/0']
+        node['mds']['groups'][0]
+        node.mds.groups[0]
+        ```
 
         Args:
             path_extension: path, number or wildcard.
 
         Returns: New node-object, representing the extended path, or plain value,
             if came to a leaf-node.
-
-        Example:
-            All these implementations are equivalent:
-            >>> node['mds/groups/0']
-            >>> node['mds']['groups'][0]
-            >>> node.mds.groups[0]
-
         """
         ...
 
@@ -511,10 +534,6 @@ class ResultNode(MetaNode):
             returned once the tree is traversed.
         timestamp:
             The time the results where created.
-
-    Example:
-        >>> result = device.demods[0]
-        >>> print(result.rate)
     """
 
     def __init__(  # noqa: PLR0913
@@ -542,10 +561,6 @@ class ResultNode(MetaNode):
         Returns:
             New node-object, representing the extended path, or plain value,
             if came to a leaf-node.
-
-        Example:
-            >>> node.demods  # where 'demods' is the next segment to enter
-
         """
         return self.try_generate_subnode(normalize_path_segment(next_segment))
 
@@ -574,12 +589,6 @@ class ResultNode(MetaNode):
 
         Returns: New node-object, representing the extended path, or plain value,
             if came to a leaf-node.
-
-        Example:
-            All these implementations are equivalent:
-            >>> node['mds/groups/0']
-            >>> node['mds']['groups'][0]
-            >>> node.mds.groups[0]
 
         Raises:
             LabOneInvalidPathError: If path is invalid.
@@ -742,7 +751,7 @@ class Node(MetaNode, ABC):
 
     Warning:
         Setting a value to a non-leaf node will try to set the value of all
-        nodes that matches that node. It should therefor be used with great care
+        nodes that matches that node. It should therefore be used with great care
         to avoid unintentional changes.
 
     In addition to the call operator every node has a `wait_for_state_change`
@@ -756,15 +765,16 @@ class Node(MetaNode, ABC):
     def __getattr__(self, next_segment: str) -> Node:
         """Access sub-node.
 
+        ```python
+        node.demods  # where 'demods' is the next segment to enter
+        ```
+
         Args:
             next_segment: Segment, with which the current path should be extended
 
         Returns:
             New node-object, representing the extended path, or plain value,
             if came to a leaf-node.
-
-        Example:
-            >>> node.demods  # where 'demods' is the next segment to enter
         """
         return self.try_generate_subnode(normalize_path_segment(next_segment))
 
@@ -778,27 +788,48 @@ class Node(MetaNode, ABC):
         However, this operator can deal with a number of different scenarios:
 
         - simple path extensions:
-            >>> node['deeper']
+
+            ```python
+            node['deeper']
+            ```
+
         - path indexing:
-            >>> node['deeper/path']
+
+            ```python
+            node['deeper/path']
+            ```
+
         - numeric indexing:
-            >>> node[0]
+
+            ```python
+            node[0]
+            ```
+
         - wildcards (placeholder for multiple path-extensions):
-            >>> node['*']
+
+            ```python
+            node['*']
+            ```
+
         - combinations of all that:
-            >>> node['deeper/*/path/0']
+
+            ```python
+            node['deeper/*/path/0']
+            ```
+
+
+        All these implementations are equivalent:
+
+        ```python
+        node['mds/groups/0']
+        node['mds']['groups'][0]
+        node.mds.groups[0]
+        ```
 
         Args:
             path_extension: path, number or wildcard.
 
         Returns: New node-object, representing the extended path
-
-        Example:
-            All these implementations are equivalent:
-            >>> node['mds/groups/0']
-            >>> node['mds']['groups'][0]
-            >>> node.mds.groups[0]
-
         """
         relative_path_segments = split_path(str(path_extension))
         current_node = self
@@ -866,8 +897,9 @@ class Node(MetaNode, ABC):
 
         Returns:
             The current value of the node is returned either way. If a set-request
-            is triggered, the new value will be given back. In case of non-leaf nodes,
-            a node-structure representing the results of all sub-paths is returned.
+                is triggered, the new value will be given back. In case of non-leaf
+                nodes, a node-structure representing the results of all sub-paths is
+                returned.
 
         Raises:
             OverwhelmedError: If the kernel is overwhelmed.
@@ -886,15 +918,13 @@ class Node(MetaNode, ABC):
     @abstractmethod
     async def _get(
         self,
-    ) -> AnnotatedValue | ResultNode:
-        ...
+    ) -> AnnotatedValue | ResultNode: ...
 
     @abstractmethod
     async def _set(
         self,
         value: Value,
-    ) -> AnnotatedValue | ResultNode:
-        ...
+    ) -> AnnotatedValue | ResultNode: ...
 
     @classmethod
     def build(
@@ -985,8 +1015,7 @@ class Node(MetaNode, ABC):
         ...
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
-        ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
 
     @t.overload
     async def subscribe(
@@ -994,8 +1023,7 @@ class Node(MetaNode, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     @abstractmethod
     async def subscribe(
@@ -1127,8 +1155,7 @@ class LeafNode(Node):
         raise LabOneInvalidPathError(msg)
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
-        ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
 
     @t.overload
     async def subscribe(
@@ -1136,8 +1163,7 @@ class LeafNode(Node):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     async def subscribe(
         self,
@@ -1313,8 +1339,7 @@ class WildcardOrPartialNode(Node, ABC):
         self,
         *,
         get_initial_value: bool = False,
-    ) -> DataQueue:
-        ...
+    ) -> DataQueue: ...
 
     @t.overload
     async def subscribe(
@@ -1322,8 +1347,7 @@ class WildcardOrPartialNode(Node, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol:
-        ...
+    ) -> QueueProtocol: ...
 
     async def subscribe(
         self,

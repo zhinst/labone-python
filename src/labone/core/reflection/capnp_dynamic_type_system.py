@@ -2,6 +2,7 @@
 
 This is a modified version of the code from capnp.pycapnp.pxi
 """
+
 from __future__ import annotations
 
 import logging

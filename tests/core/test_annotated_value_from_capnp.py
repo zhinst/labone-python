@@ -1,4 +1,5 @@
 """Tests the conversion from capnp to AnnotatedValue"""
+
 from unittest.mock import patch
 
 import labone.core.value as value_module

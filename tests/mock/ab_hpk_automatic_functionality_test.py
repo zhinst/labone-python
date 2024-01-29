@@ -17,7 +17,6 @@ By selecting the server to run on localhost:8004, it can be chosen with
 which version of the hpk the mock server is compared.
 """
 
-
 import io
 from contextlib import redirect_stdout
 

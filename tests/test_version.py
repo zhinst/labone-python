@@ -1,4 +1,5 @@
 """Test module for the package version."""
+
 import labone
 
 
