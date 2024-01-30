@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import pickle
-import typing as t
 import warnings
 from enum import Enum
 from io import BytesIO
 
 import pytest
-
-if t.TYPE_CHECKING:
-    from labone.core.value import AnnotatedValue
+from labone.core.value import AnnotatedValue
 from labone.nodetree.enum import _get_enum
 from labone.nodetree.errors import LabOneInvalidPathError
 
@@ -321,3 +318,33 @@ async def test_adding_nodes_manually_hidden_prefix_does_only_change_if_required(
     # is still possible
     node.tree_manager.add_nodes(["/common_prefix/c"])
     assert subnode_via_hidden_prefix == node.b
+
+
+@pytest.mark.asyncio()
+async def test_paths_from_get_are_lower():
+    node = await get_unittest_mocked_node({"/a": {}})
+    node.tree_manager.session.get.return_value = AnnotatedValue(path="/A", value=1)
+    value = await node.a()
+    assert value.path == "/a"
+
+
+@pytest.mark.asyncio()
+async def test_paths_from_get_with_expression_are_lower():
+    node = await get_unittest_mocked_node({"/a": {}})
+    node.tree_manager.session.get_with_expression.return_value = [
+        AnnotatedValue(path="/A", value=1),
+    ]
+    results = await node["*"]()
+    assert results.a.path == "/a"
+
+
+@pytest.mark.asyncio()
+async def test_paths_for_building_nodetree_are_lower():
+    node = await get_unittest_mocked_node({"/A": {}})
+    node.a  # noqa: B018   no error
+
+
+@pytest.mark.asyncio()
+async def test_subnoding_with_upper_paths_is_converted_to_lower():
+    node = await get_unittest_mocked_node({"/a": {}})
+    assert node.A.path == "/a"

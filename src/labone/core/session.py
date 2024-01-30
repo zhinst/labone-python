@@ -591,7 +591,8 @@ class Session:
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags
+        | int = ListNodesFlags.ABSOLUTE
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
@@ -654,7 +655,8 @@ class Session:
         queue_type: None = None,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
-    ) -> DataQueue: ...
+    ) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -664,7 +666,8 @@ class Session:
         queue_type: type[QueueProtocol],
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     async def subscribe(
         self,

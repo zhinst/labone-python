@@ -75,7 +75,12 @@ class NodeTreeManager:
     ):
         self._session = session
         self.path_to_info = path_to_info
-        self._parser = parser
+
+        def make_path_lower(ann: AnnotatedValue)->AnnotatedValue:
+            ann.path = ann.path.lower()
+            return ann
+
+        self._parser = lambda ann: parser(make_path_lower(ann))
         self._hide_kernel_prefix = hide_kernel_prefix
 
         self._remembered_nodes: dict[tuple[NormalizedPathSegment, ...], Node] = {}
@@ -114,6 +119,9 @@ class NodeTreeManager:
             path_to_info: Describing the new paths and the associated
                 information.
         """
+        # make all paths lower
+        path_to_info = {path.lower(): info for path, info in path_to_info.items()}
+
         # dict prevents duplicates
         self.path_to_info.update(path_to_info)
 
@@ -918,13 +926,15 @@ class Node(MetaNode, ABC):
     @abstractmethod
     async def _get(
         self,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> AnnotatedValue | ResultNode:
+        ...
 
     @abstractmethod
     async def _set(
         self,
         value: Value,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> AnnotatedValue | ResultNode:
+        ...
 
     @classmethod
     def build(
@@ -1015,7 +1025,8 @@ class Node(MetaNode, ABC):
         ...
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1023,7 +1034,8 @@ class Node(MetaNode, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     @abstractmethod
     async def subscribe(
@@ -1155,7 +1167,8 @@ class LeafNode(Node):
         raise LabOneInvalidPathError(msg)
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1163,7 +1176,8 @@ class LeafNode(Node):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     async def subscribe(
         self,
@@ -1339,7 +1353,8 @@ class WildcardOrPartialNode(Node, ABC):
         self,
         *,
         get_initial_value: bool = False,
-    ) -> DataQueue: ...
+    ) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1347,7 +1362,8 @@ class WildcardOrPartialNode(Node, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     async def subscribe(
         self,

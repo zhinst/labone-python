@@ -81,7 +81,8 @@ class NodeEnum(IntEnum):
     """
 
     # Required for typing
-    def __init__(self, *args, **kwargs) -> None: ...
+    def __init__(self, *args, **kwargs) -> None:
+        ...
 
     # Required for typing
     def __call__(self, *args, **kwargs) -> None:  # noqa: D102
