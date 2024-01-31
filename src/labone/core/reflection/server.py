@@ -38,7 +38,7 @@ from labone.core.result import unwrap
 # warning, we temporary set the PWD environment variable to the current working
 # directory.
 with enforce_pwd():
-    from labone.core.reflection import (  # type: ignore[attr-defined, import-untyped]
+    from labone.resources import (  # type: ignore[attr-defined, import-untyped]
         reflection_capnp,
     )
 
@@ -187,7 +187,7 @@ class RequestWrapper:
             _maybe_unwrap(await object.__getattribute__(self, "_request").send()),
         )
 
-    def __getattr__(self, name: str):  # noqa: ANN204
+    def __getattr__(self, name: str):
         return getattr(
             object.__getattribute__(self, "_request"),
             _to_camel_case(name),
@@ -286,7 +286,7 @@ class CapabilityWrapper:
 
         return wrapper
 
-    def __getattr__(self, name: str):  # noqa: ANN204
+    def __getattr__(self, name: str):
         if name.endswith("_request"):
             name_converted = _to_camel_case(name[:-8])
             if name_converted in self._capability.schema.method_names_inherited:
