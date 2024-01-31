@@ -114,6 +114,8 @@ ignore = [
   "ANN003",
   # Too many return statements
   "PLR0911",
+  # Missing return type annotation for special method
+  "ANN204",
 ]
 
 [tool.ruff.flake8-annotations]
