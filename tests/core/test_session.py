@@ -30,8 +30,9 @@ from labone.core.session import (
 from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue
 from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
-from labone.mock.entry_point import SESSION_REFLECTION_BIN, MockSession
-from labone.mock.mock_server import MockServer
+from labone.mock.entry_point import MockSession
+from labone.mock.hpk_schema import get_schema
+from labone.mock.mock_server import start_local_mock
 from labone.mock.session_mock_template import SessionMockTemplate
 
 from .resources import session_protocol_capnp, testfile_capnp, value_capnp
@@ -974,16 +975,15 @@ class DummyServerVersionTest(SessionMockTemplate):
 )
 @pytest.mark.asyncio()
 async def test_ensure_compatibility_mismatch(version, should_fail):
-    mock_server = MockServer(
-        capability_bytes=SESSION_REFLECTION_BIN,
-        concrete_server=DummyServerVersionTest(version),
+    mock_server, client_connection = await start_local_mock(
+        schema=get_schema(),
+        mock=DummyServerVersionTest(version),
     )
-    client_connection = await mock_server.start()
-    reflection_client = await ReflectionServer.create_from_connection(client_connection)
+    reflection = await ReflectionServer.create_from_connection(client_connection)
     session = MockSession(
         mock_server,
-        reflection_client.session,  # type: ignore[attr-defined]
-        reflection_server=reflection_client,
+        reflection.session,  # type: ignore[attr-defined]
+        reflection=reflection,
     )
     if should_fail:
         with pytest.raises(errors.UnavailableError):
