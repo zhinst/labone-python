@@ -66,11 +66,11 @@ class ParsedWireSchema:
         for serialized_node in encoded_schema:
             node = self._loader.load_dynamic(serialized_node)
             node_proto = node.get_proto()
+            if ":" not in node_proto.displayName:
+                continue
             splitted_name = node_proto.displayName.split(":")
-            full_name = splitted_name[1]
-            name = full_name if "." not in full_name else full_name.split(".")[-1]
             loaded_node = LoadedNode(
-                name=name,
+                name=splitted_name[1].split(".")[-1],
                 file_of_origin=splitted_name[0],
                 schema=node,
             )

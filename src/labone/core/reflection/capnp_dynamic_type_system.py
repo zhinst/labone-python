@@ -102,6 +102,9 @@ def _build_types_from_node(
     if node.name == "":
         logger.debug("Skipping node %s because it has no name", node_id)
         return
+    if node.file_of_origin == "capnp/c++.capnp":
+        logger.debug("Skipping node %s because it is in capnp/c++.capnp", node_id)
+        return
     logger.debug("Loading %s into module %s", node.name, module)
     submodule = _build_one_type(node.name, node.schema)
     setattr(module, node.name, submodule)

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 
 HPK_SCHEMA_ID = 11970870220622790664
+SESSION_SCHEMA_ID = 13390403837104530780
 SERVER_ERROR = "SERVER_ERROR"
 
 
@@ -249,8 +250,8 @@ class SessionMockTemplate(ServerTemplate):
         functionality: The implementation of the mock server behavior.
     """
 
-    # unique capnp id of the Hpk schema
-    id_ = HPK_SCHEMA_ID
+    server_id = HPK_SCHEMA_ID
+    type_id = SESSION_SCHEMA_ID
 
     def __init__(self, functionality: SessionMockFunctionality) -> None:
         self._functionality = functionality
