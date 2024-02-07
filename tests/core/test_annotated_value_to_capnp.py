@@ -180,7 +180,7 @@ def test_value_from_python_types_vector_data_complex_double(reflection_server, i
     assert vec_data.data == inp.tobytes()
 
 
-@given(arrays(dtype=(np.string_), shape=(1, 2)))
+@given(arrays(dtype=(np.bytes_), shape=(1, 2)))
 @settings(suppress_health_check=(HealthCheck.function_scoped_fixture,))
 def test_value_from_python_types_vector_data_invalid(reflection_server, inp):
     with pytest.raises(ValueError):

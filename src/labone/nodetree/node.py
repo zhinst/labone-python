@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import typing as t
 import warnings
+import weakref
 from abc import ABC, abstractmethod
 from functools import cached_property
 
@@ -78,13 +79,12 @@ class NodeTreeManager:
         self._parser = parser
         self._hide_kernel_prefix = hide_kernel_prefix
 
-        self._remembered_nodes: dict[tuple[NormalizedPathSegment, ...], Node] = {}
-        self._cache_path_segments_to_node: (dict)[
-            tuple[int, tuple[NormalizedPathSegment, ...]],
+        self._cache_path_segments_to_node: weakref.WeakValueDictionary[
+            tuple[NormalizedPathSegment, ...],
             Node,
-        ] = {}
+        ] = weakref.WeakValueDictionary()
         self._cache_find_substructure: (dict)[
-            tuple[int, tuple[NormalizedPathSegment, ...]],
+            tuple[NormalizedPathSegment, ...],
             NestedDict[list[list[NormalizedPathSegment]] | dict],
         ] = {}
 
@@ -191,9 +191,8 @@ class NodeTreeManager:
         Raises:
             LabOneInvalidPathError: If the path segments are invalid.
         """
-        unique_value = (hash(self), path_segments)
-        if unique_value in self._cache_find_substructure:
-            return self._cache_find_substructure[unique_value]
+        if path_segments in self._cache_find_substructure:
+            return self._cache_find_substructure[path_segments]
 
         # base case
         if not path_segments:
@@ -235,7 +234,7 @@ class NodeTreeManager:
         result: NestedDict[list[list[NormalizedPathSegment]] | dict] = sub_solution[
             segment
         ]  # type: ignore[assignment]
-        self._cache_find_substructure[unique_value] = result
+        self._cache_find_substructure[path_segments] = result
         return result
 
     def raw_path_to_node(
@@ -279,12 +278,11 @@ class NodeTreeManager:
             LabOneInvalidPathError: In no subtree_paths are given and the path
                 is invalid.
         """
-        unique_value = (hash(self), path_segments)
-        if unique_value in self._cache_path_segments_to_node:
-            return self._cache_path_segments_to_node[unique_value]
+        if path_segments in self._cache_path_segments_to_node:
+            return self._cache_path_segments_to_node[path_segments]
 
         result = Node.build(tree_manager=self, path_segments=path_segments)
-        self._cache_path_segments_to_node[unique_value] = result
+        self._cache_path_segments_to_node[path_segments] = result
         return result
 
     def __hash__(self) -> int:
