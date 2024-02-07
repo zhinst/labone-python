@@ -38,15 +38,12 @@ class NestedDict(t.Protocol[T]):  # type: ignore[misc]
 
     def keys(self) -> t.KeysView[str]:
         """..."""
-        ...
 
     def items(self) -> t.ItemsView[str, T | NestedDict[T]]:
         """..."""
-        ...
 
     def __iter__(self) -> t.Iterator[str]:
         """..."""
-        ...
 
 
 FlatPathDict: TypeAlias = t.Dict[
