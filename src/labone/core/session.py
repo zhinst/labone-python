@@ -539,6 +539,11 @@ class Session:
             for raw_result in response.result
         ]
 
+    async def get_nodes(self):
+        request = self._session.getNodes_request()
+        return (await _send_and_wait_request(request)).nodes
+
+
     async def get(
         self,
         path: LabOneNodePath,
