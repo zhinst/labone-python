@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from enum import Enum
 import typing as t
 from typing import Any, TypeAlias
 import warnings
@@ -46,6 +47,45 @@ NUMBER_PLACEHOLDER = "N"
 def stringify_id(raw_id) -> str:
     return ''.join([hex(e)[-2:] for e in raw_id])
 
+class NodeProperty(Enum):
+    READ =1
+    WRITE =2
+    SETTING =3
+
+
+@dataclass
+class Option:
+    value: int
+    aliases: list[str]
+    description: str | None
+
+    def from_capnp(capnp_struct):
+        return Option(
+            value=capnp_struct.value,
+            aliases=capnp_struct.aliases,
+            description=get_field_if_present(capnp_struct, "description")
+        )
+
+@dataclass
+class NodeInfo2:
+    description: str
+    properties: list[NodeProperty]
+    type: type[object]
+    unit:str
+    options: list[Option]
+
+    def from_capnp(capnp_struct):
+        options = get_field_if_present(capnp_struct, "options")
+        if options is not None:
+            options = [Option.from_capnp(e) for e in options]
+
+        return NodeInfo2(
+            description=capnp_struct.description,
+            properties=capnp_struct.properties,
+            type=capnp_struct.type,
+            unit=capnp_struct.unit,
+            options=options,
+        )   
 
 @dataclass
 class Range:
@@ -86,12 +126,16 @@ class BareNode:
 
     def from_capnp(capnp_reader, tree_manager: NodeTreeManager2):
         sub_nodes = get_field_if_present(capnp_reader, "subNodes", {})
+        info = get_field_if_present(capnp_reader, "info")
+        if info is not None:
+            info = NodeInfo2.from_capnp(info)
+
         return BareNode(
             tree_manager,
             id_=stringify_id(capnp_reader.id),
             name=capnp_reader.name,
             segment_to_subnode={e.name : stringify_id(e.id) for e in sub_nodes},
-            info=get_field_if_present(capnp_reader, "info"),
+            info=info,
         )
 
 
@@ -106,12 +150,16 @@ class RangeNode:
 
     def from_capnp(capnp_reader, tree_manager: NodeTreeManager2):
         sub_nodes = get_field_if_present(capnp_reader, "subNodes", {})
+        info = get_field_if_present(capnp_reader, "info")
+        if info is not None:
+            info = NodeInfo2.from_capnp(info)
+
         return RangeNode(
             tree_manager,
             id_=stringify_id(capnp_reader.id),
             range_=get_range(capnp_reader),
             segment_to_subnode={e.name : stringify_id(e.id) for e in sub_nodes},
-            info=get_field_if_present(capnp_reader, "info"),
+            info=info,
         )
 
 
@@ -142,7 +190,7 @@ class ConcreteNode:
         return ConcreteNode(sub_node, parametrizations=new_parametrization)
     
     def __repr__(self) -> str:
-        return f"Node2({self.path}, {self.range}, {self.segment_to_subnode}, {self.info})"
+        return f"Node2({self.path})"
 
     async def __call__(self, *args):
         if len(args) == 0:
@@ -170,8 +218,8 @@ class NodeTreeManager2:
         self.session = session
         self.nodes = [NewNode.from_capnp(e, self) for e in nodes]
         self.id_to_segment = {e.id_: e for e in self.nodes}
-        self.root = self.nodes[0]
-        self.root.path_segments = (self.root.name,)
+        self.root = ConcreteNode(self.nodes[0])
+        self.root.node.path_segments = (self.root.node.name,)
 
     async def create(session: Session):
         nodes = await session.get_nodes()
