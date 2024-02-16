@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import asyncio
@@ -34,6 +32,7 @@ from labone.nodetree.helper import (
     pythonify_path_segment,
     split_path,
 )
+from time import time_ns, sleep
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
@@ -44,13 +43,27 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 NUMBER_PLACEHOLDER = "N"
 
+
+class TimingTest:
+    def __init__(self, title) -> None:
+        self.title = title
+        self.start_time = 0
+
+    def __enter__(self):
+        self.start_time = time_ns()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        print(f"{self.title}: {(time_ns()-self.start_time)/1000000} ms")
+
+
 def stringify_id(raw_id) -> str:
-    return ''.join([hex(e)[-2:] for e in raw_id])
+    return "".join([hex(e)[-2:] for e in raw_id])
+
 
 class NodeProperty(Enum):
-    READ =1
-    WRITE =2
-    SETTING =3
+    READ = 1
+    WRITE = 2
+    SETTING = 3
 
 
 @dataclass
@@ -63,15 +76,16 @@ class Option:
         return Option(
             value=capnp_struct.value,
             aliases=capnp_struct.aliases,
-            description=get_field_if_present(capnp_struct, "description")
+            description=get_field_if_present(capnp_struct, "description"),
         )
+
 
 @dataclass
 class NodeInfo2:
     description: str
     properties: list[NodeProperty]
     type: type[object]
-    unit:str
+    unit: str
     options: list[Option]
 
     def from_capnp(capnp_struct):
@@ -85,12 +99,14 @@ class NodeInfo2:
             type=capnp_struct.type,
             unit=capnp_struct.unit,
             options=options,
-        )   
+        )
+
 
 @dataclass
 class Range:
     start: int
     end: int
+
 
 def get_range(node_reader):
     try:
@@ -101,103 +117,72 @@ def get_range(node_reader):
 
 NodeId: TypeAlias = str
 
-def get_field_if_present(capnp_reader, field_name, else_value=None)-> None | t.Any:
+
+def get_field_if_present(capnp_reader, field_name, else_value=None) -> None | t.Any:
     try:
         return getattr(capnp_reader, field_name)
     except:
         return else_value
 
-class NewNode:
-    def from_capnp(capnp_reader, tree_manager: NodeTreeManager2):
-        try:
-            sub_reader = capnp_reader.bareNode
-        except:
-            return RangeNode.from_capnp(capnp_reader.rangeNode, tree_manager)
-        return BareNode.from_capnp(sub_reader, tree_manager)
 
-class BareNode:
-    def __init__(self, tree_manager: NodeTreeManager2, id_: NodeId, name: str, segment_to_subnode: dict[str, NodeId], info):
-        self.tree_manager = tree_manager
-        self.id_ = id_
-        self.name = name
-        self.segment_to_subnode = segment_to_subnode
-        self.info = info
-        self.path_segments = None
+async def create_node_tree(session: Session):
+    nodes = await session.get_nodes()
+    id_to_segment = {e.id: e for e in nodes}
+    return Segment(session, id_to_segment, nodes[0], [], [])
 
-    def from_capnp(capnp_reader, tree_manager: NodeTreeManager2):
-        sub_nodes = get_field_if_present(capnp_reader, "subNodes", {})
-        info = get_field_if_present(capnp_reader, "info")
-        if info is not None:
-            info = NodeInfo2.from_capnp(info)
 
-        return BareNode(
-            tree_manager,
-            id_=stringify_id(capnp_reader.id),
-            name=capnp_reader.name,
-            segment_to_subnode={e.name : stringify_id(e.id) for e in sub_nodes},
-            info=info,
+class Segment:
+    def __init__(
+        self,
+        session: Session,
+        id_to_segment: dict[int, t.Any],
+        capnp_struct,
+        parametrization: list[int],
+        previous_path_segments: list[NormalizedPathSegment],
+    ) -> None:
+        self.session = session
+        self.id_to_segment = id_to_segment
+        self.capnp_struct = capnp_struct
+        self.parametrization = parametrization
+        self.path_segments = previous_path_segments + [capnp_struct.name]
+
+    def __getattr__(self, item: str) -> Any:
+        sub_id = self.segment_to_subnode[item]
+        sub_node = self.id_to_segment[sub_id]
+        return Segment(
+            session=self.session,
+            id_to_segment=self.id_to_segment,
+            capnp_struct=sub_node,
+            parametrization=self.parametrization.copy(),
+            previous_path_segments=self.path_segments,
         )
-
-
-class RangeNode:
-    def __init__(self, tree_manager: NodeTreeManager2, id_: NodeId, range_: Range, segment_to_subnode: dict[str, NodeId], info):
-        self.tree_manager = tree_manager
-        self.id_ = id_
-        self.range = range_
-        self.segment_to_subnode = segment_to_subnode
-        self.info = info
-        self.path_segments = None
-
-    def from_capnp(capnp_reader, tree_manager: NodeTreeManager2):
-        sub_nodes = get_field_if_present(capnp_reader, "subNodes", {})
-        info = get_field_if_present(capnp_reader, "info")
-        if info is not None:
-            info = NodeInfo2.from_capnp(info)
-
-        return RangeNode(
-            tree_manager,
-            id_=stringify_id(capnp_reader.id),
-            range_=get_range(capnp_reader),
-            segment_to_subnode={e.name : stringify_id(e.id) for e in sub_nodes},
-            info=info,
-        )
-
-
-class ConcreteNode:
-    """Instance of node where indexes of the parametrizations are fixed."""
-    def __init__(self, node: BareNode, *, parametrizations=None):
-        self.node = node
-        self.parametrizations: list[int] = parametrizations or []
-
-    def __getattr__(self, __name: str) -> Any:
-        sub_id = self.node.segment_to_subnode[__name]
-        sub_node = self.node.tree_manager.id_to_segment[sub_id]
-        sub_node.path_segments = (*self.node.path_segments, __name)  # inform subnode about its path
-        return ConcreteNode(sub_node, parametrizations=self.parametrizations.copy())
     
     def __getitem__(self, nr: int):
         path_segment = normalize_path_segment(nr)
 
-        sub_id = self.node.segment_to_subnode[NUMBER_PLACEHOLDER]
-        sub_node = self.node.tree_manager.id_to_segment[sub_id]
-        assert isinstance(sub_node, RangeNode), self.node 
-        assert sub_node.range.start <= nr and nr <= sub_node.range.end, "Out of range"
+        sub_id = self.segment_to_subnode[NUMBER_PLACEHOLDER]
+        sub_node = self.id_to_segment[sub_id]
 
-        sub_node.path_segments = (*self.node.path_segments, path_segment)  # inform subnode about its path
+        assert 0 <= nr and nr <= sub_node.rangeEnd, "Out of range"
 
-        new_parametrization = self.parametrizations.copy()
+        new_parametrization = self.parametrization.copy()
         new_parametrization.append(nr)
-        return ConcreteNode(sub_node, parametrizations=new_parametrization)
+        return Segment(
+            session=self.session,
+            id_to_segment=self.id_to_segment,
+            capnp_struct=sub_node,
+            parametrization=new_parametrization,
+            previous_path_segments=self.path_segments,
+        )
+
+    @cached_property
+    def segment_to_subnode(self):
+        return {e.name: e.id for e in self.capnp_struct.subNodes}
     
-    def __repr__(self) -> str:
-        return f"Node2({self.path})"
-
-    async def __call__(self, *args):
-        if len(args) == 0:
-            print(f"get {self.path}")
-        if len(args) == 1:
-            print(f"set {self.path} to {args[0]}")
-
+    @property
+    def info(self):
+        return self.capnp_struct.info#NodeInfo2.from_capnp(self.capnp_struct.info)
+    
     @property
     def path(self):
         return join_path(self.concrete_path_segments)
@@ -205,23 +190,18 @@ class ConcreteNode:
     @property
     def concrete_path_segments(self):
         parameter_index = 0
-        for segment in self.node.path_segments:
+        for segment in self.path_segments:
             if segment == NUMBER_PLACEHOLDER:
-                yield str(self.parametrizations[parameter_index])
+                yield str(self.parametrization[parameter_index])
                 parameter_index += 1
             else:
                 yield segment
 
+    def __repr__(self) -> str:
+        return self.path
 
-class NodeTreeManager2:
-    def __init__(self, session: Session, nodes : list[BareNode]):
-        self.session = session
-        self.nodes = [NewNode.from_capnp(e, self) for e in nodes]
-        self.id_to_segment = {e.id_: e for e in self.nodes}
-        self.root = ConcreteNode(self.nodes[0])
-        self.root.node.path_segments = (self.root.node.name,)
-
-    async def create(session: Session):
-        nodes = await session.get_nodes()
-        return NodeTreeManager2(session, nodes)
-
+    async def __call__(self, *args):
+        if len(args) == 0:
+            return await self.session.get(self.path)
+        if len(args) == 1:
+            return await self.session.set(AnnotatedValue(path=self.path, value=args[0]))
