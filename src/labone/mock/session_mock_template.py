@@ -121,7 +121,8 @@ class SessionMockFunctionality(ABC):
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
+        flags: ListNodesFlags
+        | int = ListNodesFlags.ABSOLUTE
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
