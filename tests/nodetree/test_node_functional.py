@@ -17,6 +17,14 @@ from tests.mock_server_for_testing import get_mocked_node, get_unittest_mocked_n
 
 
 @pytest.mark.asyncio()
+async def test_node_single_dot_subpathing():
+    node = await get_unittest_mocked_node({"/a": {}})
+
+    #assert node.a.path == "/a"
+    assert node.a.path == "/a"
+
+
+@pytest.mark.asyncio()
 async def test_node_dot_subpathing():
     node = await get_unittest_mocked_node({"/a/b/c/d": {}})
 

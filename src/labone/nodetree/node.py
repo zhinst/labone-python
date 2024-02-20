@@ -916,13 +916,15 @@ class Node(MetaNode, ABC):
     @abstractmethod
     async def _get(
         self,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> AnnotatedValue | ResultNode:
+        ...
 
     @abstractmethod
     async def _set(
         self,
         value: Value,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> AnnotatedValue | ResultNode:
+        ...
 
     @classmethod
     def build(
@@ -1013,7 +1015,8 @@ class Node(MetaNode, ABC):
         ...
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1021,7 +1024,8 @@ class Node(MetaNode, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     @abstractmethod
     async def subscribe(
@@ -1153,7 +1157,8 @@ class LeafNode(Node):
         raise LabOneInvalidPathError(msg)
 
     @t.overload
-    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue: ...
+    async def subscribe(self, *, get_initial_value: bool = False) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1161,7 +1166,8 @@ class LeafNode(Node):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     async def subscribe(
         self,
@@ -1337,7 +1343,8 @@ class WildcardOrPartialNode(Node, ABC):
         self,
         *,
         get_initial_value: bool = False,
-    ) -> DataQueue: ...
+    ) -> DataQueue:
+        ...
 
     @t.overload
     async def subscribe(
@@ -1345,7 +1352,8 @@ class WildcardOrPartialNode(Node, ABC):
         *,
         queue_type: type[QueueProtocol],
         get_initial_value: bool = False,
-    ) -> QueueProtocol: ...
+    ) -> QueueProtocol:
+        ...
 
     async def subscribe(
         self,

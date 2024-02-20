@@ -205,7 +205,8 @@ class AutomaticSessionFunctionality(SessionMockFunctionality):
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
-        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE  # noqa: ARG002
+        flags: ListNodesFlags
+        | int = ListNodesFlags.ABSOLUTE  # noqa: ARG002
         | ListNodesFlags.RECURSIVE
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
