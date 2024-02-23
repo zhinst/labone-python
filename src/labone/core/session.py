@@ -350,6 +350,7 @@ class Session:
             msg = "`flags` must be an integer."
             raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
+        del request
         return list(response.paths)
 
     async def list_nodes_info(
@@ -448,6 +449,7 @@ class Session:
             msg = "`flags` must be an integer."
             raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
+        del request
         return json.loads(response.nodeProps)
 
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
@@ -485,6 +487,7 @@ class Session:
         )
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
+        del request
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
@@ -534,6 +537,7 @@ class Session:
         request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
+        del request
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
@@ -582,6 +586,7 @@ class Session:
         request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
+        del request
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
@@ -641,6 +646,7 @@ class Session:
         request.flags = int(flags)
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
+        del request
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
@@ -754,6 +760,7 @@ class Session:
             queue.put_nowait(initial_value)
             return queue
         response = await _send_and_wait_request(request)
+        del request
         unwrap(response.result)  # Result(Void, Error)
         new_queue_type = queue_type or DataQueue
         return new_queue_type(
