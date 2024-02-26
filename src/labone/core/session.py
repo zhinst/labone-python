@@ -22,11 +22,12 @@ import typing as t
 import uuid
 from contextlib import asynccontextmanager
 from enum import IntFlag
+from functools import wraps
 from typing import Literal
 
 import capnp
 from packaging import version
-from typing_extensions import NotRequired, TypeAlias, TypedDict
+from typing_extensions import NotRequired, ParamSpec, TypeAlias, TypedDict
 
 from labone.core import errors, result
 from labone.core.helper import (
@@ -52,6 +53,7 @@ if t.TYPE_CHECKING:
 
 
 T = t.TypeVar("T")
+P = ParamSpec("P")
 
 # Control node for transactions. This node is only available for UHF and MF devices.
 TRANSACTION_NODE_PATH = "/ctrl/transaction/state"
@@ -197,6 +199,30 @@ async def _send_and_wait_request(
         raise errors.LabOneCoreError(msg) from None
 
 
+def clean_exception_stack(
+    func: t.Callable[P, t.Coroutine[None, t.Any, T]],
+) -> t.Callable[P, t.Coroutine[None, t.Any, T]]:
+    """Prevents tracing exceptions deeper than this frame.
+
+    This decorator is used to prevent leaking of exceptions form capnp and their
+    trace outside of this frame. The reason is pycapnp sometimes leaks c++ objects
+    that no longer exists into the trace causing python to crash on investigation.
+
+    Args:
+        func: The async function which must ensure a clean stack trace.
+    """
+
+    @wraps(func)
+    async def core_error_wrapper(*args, **kwargs) -> T:
+        try:
+            return await func(*args, **kwargs)
+        except Exception as ex:  # noqa: BLE001
+            msg = str(ex)
+            raise ex.__class__(msg) from None
+
+    return core_error_wrapper
+
+
 class Session:
     """Generic Capnp session client.
 
@@ -241,6 +267,7 @@ class Session:
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
 
+    @clean_exception_stack
     async def ensure_compatibility(self) -> None:
         """Ensure the compatibility with the connected server.
 
@@ -274,6 +301,7 @@ class Session:
             )
             raise errors.UnavailableError(msg)
 
+    @clean_exception_stack
     async def list_nodes(
         self,
         path: LabOneNodePath = "",
@@ -352,6 +380,7 @@ class Session:
         response = await _send_and_wait_request(request)
         return list(response.paths)
 
+    @clean_exception_stack
     async def list_nodes_info(
         self,
         path: LabOneNodePath = "",
@@ -450,6 +479,7 @@ class Session:
         response = await _send_and_wait_request(request)
         return json.loads(response.nodeProps)
 
+    @clean_exception_stack
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
 
@@ -491,6 +521,7 @@ class Session:
             msg = f"No acknowledgement returned while setting {value.path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         """Set the value of all nodes matching the path expression.
 
@@ -539,6 +570,7 @@ class Session:
             for raw_result in response.result
         ]
 
+    @clean_exception_stack
     async def get(
         self,
         path: LabOneNodePath,
@@ -588,6 +620,7 @@ class Session:
             msg = f"No value returned for {path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
@@ -666,6 +699,7 @@ class Session:
         get_initial_value: bool = False,
     ) -> QueueProtocol: ...
 
+    @clean_exception_stack
     async def subscribe(
         self,
         path: LabOneNodePath,
