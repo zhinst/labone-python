@@ -17,6 +17,7 @@ to the same capability.
 from __future__ import annotations
 
 import asyncio
+from functools import wraps
 import json
 import typing as t
 import uuid
@@ -197,6 +198,20 @@ async def _send_and_wait_request(
         raise errors.LabOneCoreError(msg) from None
 
 
+def clean_exception_stack(func):
+    """Prevents tracing exceptions deeper than this frame. 
+    Prevents accidental access to invalid (moved) c++ capnp objects."""
+
+    @wraps(func)
+    async def core_error_wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as ex:
+            msg = str(ex)
+            raise ex.__class__(msg) from None
+    return core_error_wrapper
+
+
 class Session:
     """Generic Capnp session client.
 
@@ -241,6 +256,7 @@ class Session:
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
 
+    @clean_exception_stack
     async def ensure_compatibility(self) -> None:
         """Ensure the compatibility with the connected server.
 
@@ -274,6 +290,7 @@ class Session:
             )
             raise errors.UnavailableError(msg)
 
+    @clean_exception_stack
     async def list_nodes(
         self,
         path: LabOneNodePath = "",
@@ -350,9 +367,9 @@ class Session:
             msg = "`flags` must be an integer."
             raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
-        del request
         return list(response.paths)
 
+    @clean_exception_stack
     async def list_nodes_info(
         self,
         path: LabOneNodePath = "",
@@ -449,9 +466,9 @@ class Session:
             msg = "`flags` must be an integer."
             raise TypeError(msg) from None
         response = await _send_and_wait_request(request)
-        del request
         return json.loads(response.nodeProps)
 
+    @clean_exception_stack
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
 
@@ -487,13 +504,13 @@ class Session:
         )
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        del request
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
             msg = f"No acknowledgement returned while setting {value.path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         """Set the value of all nodes matching the path expression.
 
@@ -537,12 +554,12 @@ class Session:
         request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        del request
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
         ]
 
+    @clean_exception_stack
     async def get(
         self,
         path: LabOneNodePath,
@@ -586,13 +603,13 @@ class Session:
         request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        del request
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
             msg = f"No value returned for {path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
@@ -646,7 +663,6 @@ class Session:
         request.flags = int(flags)
         request.client = self._client_id.bytes
         response = await _send_and_wait_request(request)
-        del request
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
@@ -672,6 +688,7 @@ class Session:
         get_initial_value: bool = False,
     ) -> QueueProtocol: ...
 
+    @clean_exception_stack
     async def subscribe(
         self,
         path: LabOneNodePath,
@@ -760,7 +777,6 @@ class Session:
             queue.put_nowait(initial_value)
             return queue
         response = await _send_and_wait_request(request)
-        del request
         unwrap(response.result)  # Result(Void, Error)
         new_queue_type = queue_type or DataQueue
         return new_queue_type(
