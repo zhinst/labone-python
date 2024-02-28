@@ -27,6 +27,8 @@ from labone.core.connection_layer import (
 )
 from labone.core.errors import LabOneCoreError, UnavailableError
 from labone.core.helper import (
+    CapnpLock,
+    create_lock,
     ensure_capnp_event_loop,
 )
 from labone.core.reflection.server import ReflectionServer
@@ -75,17 +77,21 @@ class KernelSession(Session):
         reflection_server: The reflection server that is used for the session.
         kernel_info: Information about the target kernel.
         server_info: Information about the target data server.
+        capnp_lock: The lock that is used for the capnp communication.
     """
 
     def __init__(
         self,
+        *,
         reflection_server: ReflectionServer,
         kernel_info: KernelInfo,
         server_info: ServerInfo,
+        capnp_lock: CapnpLock,
     ) -> None:
         super().__init__(
             reflection_server.session,  # type: ignore[attr-defined]
             reflection_server=reflection_server,
+            capnp_lock=capnp_lock,
         )
         self._kernel_info = kernel_info
         self._server_info = server_info
@@ -140,11 +146,12 @@ class KernelSession(Session):
                 f"{server_info.port}). (extended information: {e})",
             )
             raise UnavailableError(msg) from e
-
+        capnp_lock = await create_lock()
         session = KernelSession(
             reflection_server=reflection_server,
             kernel_info=kernel_info_extended,
             server_info=server_info_extended,
+            capnp_lock=capnp_lock,
         )
         await session.ensure_compatibility()
         return session

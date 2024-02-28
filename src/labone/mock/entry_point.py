@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from labone.core.helper import CapnpLock, create_lock
 from labone.core.reflection.server import ReflectionServer
 from labone.core.session import Session
 from labone.mock.hpk_schema import get_schema
@@ -30,6 +31,7 @@ class MockSession(Session):
         mock_server: Mock server.
         capnp_session: Capnp session.
         reflection: Reflection server.
+        capnp_lock: Capnp lock.
     """
 
     def __init__(
@@ -38,8 +40,13 @@ class MockSession(Session):
         capnp_session: CapnpCapability,
         *,
         reflection: ReflectionServer,
+        capnp_lock: CapnpLock,
     ):
-        super().__init__(capnp_session, reflection_server=reflection)
+        super().__init__(
+            capnp_session,
+            reflection_server=reflection,
+            capnp_lock=capnp_lock,
+        )
         self._mock_server = mock_server
 
 
@@ -71,8 +78,10 @@ async def spawn_hpk_mock(
         mock=SessionMockTemplate(functionality),
     )
     reflection = await ReflectionServer.create_from_connection(client)
+    capnp_lock = await create_lock()
     return MockSession(
         server,
         reflection.session,  # type: ignore[attr-defined]
         reflection=reflection,
+        capnp_lock=capnp_lock,
     )

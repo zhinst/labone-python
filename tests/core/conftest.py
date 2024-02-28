@@ -1,8 +1,8 @@
 from typing import Any
 
-import capnp
 import pytest
 import pytest_asyncio
+from labone.core.helper import LoopManager
 
 from .resources import (
     error_capnp,
@@ -21,8 +21,11 @@ async def kj_loop():
     Its important that every test creates and closes the kj_event loop.
     This helps to avoid leaking errors and promises from one test to another.
     """
-    async with capnp.kj_loop():
+    loop_manager = await LoopManager.create()
+    try:
         yield
+    finally:
+        await loop_manager.destroy()
 
 
 class MockReflectionServer:

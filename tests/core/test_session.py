@@ -18,7 +18,7 @@ import pytest
 import pytest_asyncio
 from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
-from labone.core.helper import request_field_type_description
+from labone.core.helper import create_lock, request_field_type_description
 from labone.core.kernel_session import KernelSession
 from labone.core.reflection.server import ReflectionServer
 from labone.core.session import (
@@ -108,11 +108,13 @@ async def mock_connection(reflection_server) -> tuple[KernelSession, MagicMock]:
     reflection = reflection_server
     client = capnp.TwoPartyClient(server.connection)
     reflection.session = client.bootstrap().cast_as(reflection.Session)
+    capnp_lock = await create_lock()
 
     session = KernelSession(
         reflection_server=reflection,
         kernel_info=ZIKernelInfo(),
         server_info=ServerInfo(host="localhost", port=8004),
+        capnp_lock=capnp_lock,
     )
     return DummyServer(session=session, server=mock_server)
 
@@ -123,6 +125,7 @@ def test_session_with_unwrapping_reflection(reflection_server):
     session = Session(
         reflection_server.session,
         reflection_server=reflection_server,
+        capnp_lock=MagicMock(),
     )
 
     assert session._session == reflection_server.session.capnp_capability
@@ -279,52 +282,65 @@ class TestSendAndWaitRequest:
     @pytest.mark.asyncio()
     async def test_success(self):
         promise = mock_remote_response("foobar")
-        response = await _send_and_wait_request(MockRequest(promise))
+        capnp_lock = await create_lock()
+        response = await _send_and_wait_request(
+            MockRequest(promise),
+            capnp_lock=capnp_lock,
+        )
         assert response == "foobar"
 
     @pytest.mark.asyncio()
     async def test_send_kj_error(self):
+
+        capnp_lock = await create_lock()
         with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(
                 MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
+                capnp_lock=capnp_lock,
             )
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_send_misc_error(self, error):
+        capnp_lock = await create_lock()
         with pytest.raises(errors.LabOneCoreError, match="error"):
             await _send_and_wait_request(
                 MockRequest(send_raise_for=error("error")),
+                capnp_lock=capnp_lock,
             )
 
     @pytest.mark.asyncio()
     async def test_suppress_unwanted_traceback(self):
         # Flaky test..
+        capnp_lock = await create_lock()
         try:
             await _send_and_wait_request(
                 MockRequest(send_raise_for=capnp.lib.capnp.KjException("error")),
+                capnp_lock=capnp_lock,
             )
         except errors.LabOneCoreError:
             assert "KjException" not in traceback.format_exc()
 
         promise = mock_remote_error(RuntimeError("error"))
         try:
-            await _send_and_wait_request(MockRequest(promise))
+            await _send_and_wait_request(MockRequest(promise), capnp_lock=capnp_lock)
         except errors.LabOneCoreError:
             assert "RuntimeError" not in traceback.format_exc()
 
     @pytest.mark.asyncio()
     async def test_a_wait_kj_error(self):
         promise = mock_remote_error(capnp.lib.capnp.KjException("error"))
+        capnp_lock = await create_lock()
         with pytest.raises(errors.LabOneCoreError, match="error"):
-            await _send_and_wait_request(MockRequest(promise))
+            await _send_and_wait_request(MockRequest(promise), capnp_lock=capnp_lock)
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("error", [RuntimeError, AttributeError, ValueError])
     async def test_a_wait_misc_error(self, error):
         promise = mock_remote_error(error("error"))
+        capnp_lock = await create_lock()
         with pytest.raises(errors.LabOneCoreError, match="error"):
-            await _send_and_wait_request(MockRequest(promise))
+            await _send_and_wait_request(MockRequest(promise), capnp_lock=capnp_lock)
 
 
 @pytest.mark.asyncio()
@@ -842,10 +858,13 @@ class TestKJErrors:
         reflection = reflection_server
         client = capnp.TwoPartyClient(broken_server.connection)
         reflection.session = client.bootstrap().cast_as(reflection.Session)
+
+        capnp_lock = await create_lock()
         client = KernelSession(
             reflection_server=reflection,
             kernel_info=ZIKernelInfo(),
             server_info=ServerInfo(host="localhost", port=8004),
+            capnp_lock=capnp_lock,
         )
         with pytest.raises(errors.UnavailableError):
             await client.list_nodes("test")
@@ -980,10 +999,13 @@ async def test_ensure_compatibility_mismatch(version, should_fail):
         mock=DummyServerVersionTest(version),
     )
     reflection = await ReflectionServer.create_from_connection(client_connection)
+
+    capnp_lock = await create_lock()
     session = MockSession(
         mock_server,
         reflection.session,  # type: ignore[attr-defined]
         reflection=reflection,
+        capnp_lock=capnp_lock,
     )
     if should_fail:
         with pytest.raises(errors.UnavailableError):
