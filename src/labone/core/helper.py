@@ -4,15 +4,21 @@ This module bypasses the circular dependency between the modules
 within the core.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
+import typing as t
+import weakref
+from contextlib import asynccontextmanager
 from enum import IntEnum
-from functools import partial
 
 import asyncio_atexit  # type: ignore [import]
 import capnp
 import numpy as np
 from typing_extensions import TypeAlias
+
+from labone.core.errors import LabOneCoreError, UnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -22,27 +28,202 @@ CapnpStructReader: TypeAlias = capnp.lib.capnp._DynamicStructReader  # noqa: SLF
 CapnpStructBuilder: TypeAlias = capnp.lib.capnp._DynamicStructBuilder  # noqa: SLF001
 
 
-async def ensure_capnp_event_loop() -> None:
-    """Ensure that the capnp event loop is running.
+class CapnpLock:
+    """Lock that can be used to enforce the existence of the kj event loop.
 
-    Pycapnp requires the capnp event loop to be running for every async
-    function call to the capnp library. This function ensures that the capnp
-    event loop is running. The event loop is intended to be managed through a
-    context manager. This function fakes the context by using asyncio_atexit
-    to close the context when the asyncio event loop is closed. This ensures
-    that the capnp event loop will be closed before the asyncio event loop.
+    This lock MUST be created from a LoopManager and not as a standalone.
+    If not it does not offer any guarantees.
+
+    The usage is fairly simple. Whenever the `lock` context manager is entered
+    it is guaranteed that the LoopManager will not destroy the kj event loop.
+    The context manager can not be entered once the kj event loop is destroyed.
+    Note that once the kj event loop that was running when this lock was created
+    is destroyed there is no way to reactivate a lock.
+
+    Args:
+        lock: Asyncio lock that is used to manage the lifetime.
     """
-    # The kj event loop is attached to the current asyncio event loop.
-    # Pycapnp does this by adding an attribute _kj_loop to the asyncio
-    # event loop. This is done in the capnp.kj_loop() context manager.
-    # The context manager should only be entered once. To avoid entering
-    # the context manager multiple times we check if the attribute is
-    # already set.
-    if not hasattr(asyncio.get_running_loop(), "_kj_loop"):
+
+    def __init__(self, lock: asyncio.Lock):
+        self._lock: asyncio.Lock | None = lock
+
+    async def destroy(self) -> None:
+        """Destroy a lock and prevent it form ever being locked again.
+
+        Note that this function waits until the lock is released if its
+        locked.
+        """
+        if self._lock is None:
+            return
+        await self._lock.acquire()
+        self._lock = None
+
+    @asynccontextmanager
+    async def lock(self) -> t.AsyncGenerator[None, None]:
+        """Locks the lock.
+
+        This ensures that the kj event loop that was running when this
+        lock was created stays alive.
+        """
+        if self._lock is None:
+            msg = (
+                "The event loop in which this object was created is closed. "
+                "No further operations are possible."
+            )
+            raise UnavailableError(msg)
+        async with self._lock:
+            yield
+
+
+class LoopManager:
+    """Capnp Loop Manager.
+
+    This class manages the lifetime of the kj event loop.
+    Pycapnp attaches its own event loop called kj event loop
+    to the asyncio event loop. The tricky part is how long this
+    event loop should stay alive. Since the lifetime is not always
+    clear this loop manager is manages the lifetime. Once the destroy
+    method is called the kj event loop is exited.
+
+    Note that all pycapnp objects, especially the rpc related objects are
+    no longer valid once the kj even loop is destroyed. To prevent destruction
+    of the kj event loop while using these object the `create_lock` method can
+    be used to create locks which prevent the destruction.
+
+    Since the reation of the kj event loop is and async operation this class
+    needs to be created using the `create` method.
+
+    Args:
+        loop: The kj event loop that should be managed.
+    """
+
+    def __init__(self, loop: capnp.kj_loop):
+        self._locks: weakref.WeakSet[CapnpLock] = weakref.WeakSet()
+        self._loop = loop
+        self._active = True
+
+    @staticmethod
+    async def exists() -> bool:
+        """Check if a kj event loop is already running.
+
+        Returns:
+            True if a kj event loop is already running, False otherwise.
+        """
+        return hasattr(asyncio.get_running_loop(), "_zi_loop_manager")
+
+    @staticmethod
+    def get_running() -> LoopManager:
+        """Get the running loop manager.
+
+        There must only be one loop manager running at a time. This method
+        returns the running loop manager.
+
+        Returns:
+            The running loop manager.
+
+        Raises:
+            CoreError: If no loop manager is running.
+        """
+        try:
+            return getattr(  # noqa: B009
+                asyncio.get_running_loop(),
+                "_zi_loop_manager",
+            )
+        except AttributeError:  # pragma: no cover
+            msg = "No loop manager is running."
+            raise LabOneCoreError(msg) from None
+
+    @staticmethod
+    async def create() -> LoopManager:
+        """Create a new loop manager.
+
+        Returns:
+            The newly created loop manager.
+
+        Raises:
+            CoreError: If more than one kj event loop is running.
+        """
+        if (
+            hasattr(asyncio.get_running_loop(), "_kj_loop")
+            or await LoopManager.exists()
+        ):
+            msg = "More than one loop manager is not supported."
+            raise LabOneCoreError(msg)
+
         loop = capnp.kj_loop()
         logger.debug("kj event loop attached to asyncio event loop %s", id(loop))
         await loop.__aenter__()
-        asyncio_atexit.register(partial(loop.__aexit__, None, None, None))
+        manager = LoopManager(loop)
+        setattr(asyncio.get_running_loop(), "_zi_loop_manager", manager)  # noqa: B010
+        return manager
+
+    async def destroy(self) -> None:
+        """Destroy the managed kj event loop.
+
+        Note that this method will block until all locks associated with this
+        manager are released.
+
+        After destruction all created rpc object created with this loop are no
+        longer valid. This method should only be called once all rpc operations
+        are done.
+        """
+        if not self._active:
+            return
+        self._active = False
+        for lock in self._locks:
+            await lock.destroy()
+        await self._loop.__aexit__(None, None, None)
+        delattr(asyncio.get_running_loop(), "_zi_loop_manager")
+
+    def create_lock(self) -> CapnpLock:
+        """Create a lock that prevents the destruction of the kj event loop.
+
+        The locks are bound to the loop manager and if locked prevent the
+        destruction of the kj event loop.
+
+        Returns:
+            The created lock.
+        """
+        if not self._active:
+            msg = (
+                "The event loop in which this object was created is closed. "
+                "No further operations are possible."
+            )
+            raise UnavailableError(msg)
+        lock = CapnpLock(asyncio.Lock())
+        self._locks.add(lock)
+        return lock
+
+
+async def ensure_capnp_event_loop() -> None:
+    """Ensure that the capnp event loop is running.
+
+    Capnp requires the capnp event loop to be running for every async
+    function call to the capnp library. The lifetime of the capnp event loop
+    needs to be managed. This function ensures that the capnp event loop is
+    running.
+
+    If it the capnp event loop is not running it is created and the destruction
+    is scheduled at the end of the asyncio event loop. If different behavior is
+    required the loop manager should be used directly. This function will
+    automatically detect existing loop managers and does not create multiple
+    loop managers.
+    """
+    if not await LoopManager.exists():
+        asyncio_atexit.register((await LoopManager.create()).destroy)
+
+
+async def create_lock() -> CapnpLock:
+    """Create a lock for the already running event loop manager.
+
+    The locks are bound to the loop manager and if locked prevent the
+    destruction of the kj event loop.
+
+    Returns:
+        The created lock.
+    """
+    await ensure_capnp_event_loop()
+    return LoopManager.get_running().create_lock()
 
 
 def request_field_type_description(
@@ -97,7 +278,7 @@ class VectorElementType(IntEnum):
     def from_numpy_type(
         cls,
         numpy_type: np.dtype,
-    ) -> "VectorElementType":
+    ) -> VectorElementType:
         """Construct a VectorElementType from a numpy type.
 
         Args:

@@ -22,15 +22,17 @@ import typing as t
 import uuid
 from contextlib import asynccontextmanager
 from enum import IntFlag
+from functools import wraps
 from typing import Literal
 
 import capnp
 from packaging import version
-from typing_extensions import NotRequired, TypeAlias, TypedDict
+from typing_extensions import NotRequired, ParamSpec, TypeAlias, TypedDict
 
 from labone.core import errors, result
 from labone.core.helper import (
     CapnpCapability,
+    CapnpLock,
     LabOneNodePath,
     request_field_type_description,
 )
@@ -52,6 +54,7 @@ if t.TYPE_CHECKING:
 
 
 T = t.TypeVar("T")
+P = ParamSpec("P")
 
 # Control node for transactions. This node is only available for UHF and MF devices.
 TRANSACTION_NODE_PATH = "/ctrl/transaction/state"
@@ -156,45 +159,48 @@ class ListNodesFlags(IntFlag):
     EXCLUDE_VECTORS = 1 << 24
 
 
-async def _send_and_wait_request(
-    request: capnp.lib.capnp._Request,
-) -> capnp.lib.capnp._Response:
-    """Send a request and wait for the response.
+def clean_exception_stack(
+    func: t.Callable[P, t.Coroutine[None, t.Any, T]],
+) -> t.Callable[P, t.Coroutine[None, t.Any, T]]:
+    """Prevents tracing exceptions deeper than this frame.
 
-    The main purpose of this function is to take care of the error handling
-    for the capnp communication. If an error occurs a LabOneCoreError is
-    raised.
+    This decorator is used to prevent leaking of exceptions form capnp and their
+    trace outside of this frame. The reason is pycapnp sometimes leaks c++ objects
+    that no longer exists into the trace causing python to crash on investigation.
 
     Args:
-        request: Capnp request.
-
-    Returns:
-        Successful response.
-
-    Raises:
-        LabOneCoreError: If sending the message or receiving the response failed.
-        UnavailableError: If the server has not implemented the requested
-            method.
+        func: The async function which must ensure a clean stack trace.
     """
-    try:
-        return await request.send()
-    # TODO(markush): Raise more specific error types.  # noqa: TD003, FIX002
-    except capnp.lib.capnp.KjException as error:
-        if (
-            "Method not implemented" in error.description
-            or "object has no attribute" in error.description
-        ):
-            msg = str(
-                "The requested method is not implemented by the server. "
-                "This most likely that the LabOne version is outdated. "
-                "Please update the LabOne software to the latest version.",
-            )
-            raise errors.UnavailableError(msg) from None
-        msg = error.description
-        raise errors.LabOneCoreError(msg) from None
-    except Exception as error:  # noqa: BLE001
-        msg = str(error)
-        raise errors.LabOneCoreError(msg) from None
+
+    @wraps(func)
+    async def core_error_wrapper(*args, **kwargs) -> T:
+        try:
+            return await func(*args, **kwargs)
+        except capnp.KjException as error:
+            if (
+                "Invalid input arguments" in error.description
+                or "Value type" in error.description
+            ):
+                msg = f"Invalid input arguments: {error.description}"
+                raise TypeError(msg) from None
+            if (
+                "Method not implemented" in error.description
+                or "object has no attribute" in error.description
+            ):
+                msg = str(
+                    "The requested method is not implemented by the server. "
+                    "This most likely that the LabOne version is outdated. "
+                    "Please update the LabOne software to the latest version.",
+                )
+                raise errors.UnavailableError(msg) from None
+            msg = error.description
+            raise errors.LabOneCoreError(msg) from None
+
+        except Exception as ex:  # noqa: BLE001
+            msg = str(ex)
+            raise ex.__class__(msg) from None
+
+    return core_error_wrapper
 
 
 class Session:
@@ -216,6 +222,7 @@ class Session:
     Args:
         capnp_session: Capnp session capability.
         reflection_server: Reflection server instance.
+        capnp_lock: Capnp lock.
     """
 
     # The minimum capability version that is required by the labone api.
@@ -228,9 +235,11 @@ class Session:
         capnp_session: CapnpCapability,
         *,
         reflection_server: ReflectionServer,
+        capnp_lock: CapnpLock,
     ):
         self._reflection_server = reflection_server
         self._session = capnp_session
+        self._capnp_lock = capnp_lock
         # The reflection server might has enabled the automatic unwrapping
         # of the result. To allow both cases we check if the capnp_session
         # is wrapped and use the underlying capnp session instead.
@@ -241,6 +250,7 @@ class Session:
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
 
+    @clean_exception_stack
     async def ensure_compatibility(self) -> None:
         """Ensure the compatibility with the connected server.
 
@@ -254,11 +264,13 @@ class Session:
         Raises:
             UnavailableError: If the kernel is not compatible.
         """
-        server_version = version.Version(
-            (
-                await _send_and_wait_request(self._session.getSessionVersion_request())
-            ).version,
-        )
+        async with self._capnp_lock.lock():
+            try:
+                raw_version = await self._session.getSessionVersion()
+            except capnp.KjException as e:  # pragma: no cover
+                msg = "Unable to get the session version: " + e.description
+                raise errors.UnavailableError(msg) from None
+        server_version = version.Version(raw_version.version)
         if server_version < Session.MIN_CAPABILITY_VERSION:
             msg = (
                 f"The data server version is not supported by the LabOne API. "
@@ -274,6 +286,7 @@ class Session:
             )
             raise errors.UnavailableError(msg)
 
+    @clean_exception_stack
     async def list_nodes(
         self,
         path: LabOneNodePath = "",
@@ -332,26 +345,14 @@ class Session:
             ...     flags=ListNodesFlags.RECURSIVE | ListNodesFlags.EXCLUDE_VECTORS
             ... )
         """
-        request = self._session.listNodes_request()
-        try:
-            request.pathExpression = path
-        except Exception:  # noqa: BLE001
-            msg = "`path` must be a string."
-            raise TypeError(msg)  # noqa: TRY200, B904
-        try:
-            request.flags = int(flags)
-        except capnp.KjException:
-            field_type = request_field_type_description(request, "flags")
-            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
-            raise ValueError(
-                msg,
-            ) from None
-        except (TypeError, ValueError):
-            msg = "`flags` must be an integer."
-            raise TypeError(msg) from None
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.listNodes(
+                path,
+                int(flags),
+            )
         return list(response.paths)
 
+    @clean_exception_stack
     async def list_nodes_info(
         self,
         path: LabOneNodePath = "",
@@ -430,26 +431,14 @@ class Session:
                 }
             }
         """
-        request = self._session.listNodesJson_request()
-        try:
-            request.pathExpression = path
-        except Exception:  # noqa: BLE001
-            msg = "`path` must be a string."
-            raise TypeError(msg) from None
-        try:
-            request.flags = int(flags)
-        except capnp.KjException:
-            field_type = request_field_type_description(request, "flags")
-            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
-            raise ValueError(
-                msg,
-            ) from None
-        except (TypeError, ValueError):
-            msg = "`flags` must be an integer."
-            raise TypeError(msg) from None
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.listNodesJson(
+                path,
+                int(flags),
+            )
         return json.loads(response.nodeProps)
 
+    @clean_exception_stack
     async def set(self, value: AnnotatedValue) -> AnnotatedValue:
         """Set the value of a node.
 
@@ -477,20 +466,20 @@ class Session:
                 mapped to one of the other errors.
         """
         capnp_value = value.to_capnp(reflection=self._reflection_server)
-        request = self._session.setValue_request()
-        request.pathExpression = capnp_value.metadata.path
-        request.value = capnp_value.value
-        request.lookupMode = (
-            self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
-        )
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.setValue(
+                capnp_value.metadata.path,
+                capnp_value.value,
+                self._reflection_server.LookupMode.directLookup,  # type: ignore[attr-defined]
+                client=self._client_id.bytes,
+            )
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
             msg = f"No acknowledgement returned while setting {value.path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
         """Set the value of all nodes matching the path expression.
 
@@ -528,17 +517,19 @@ class Session:
                 mapped to one of the other errors.
         """
         capnp_value = value.to_capnp(reflection=self._reflection_server)
-        request = self._session.setValue_request()
-        request.pathExpression = capnp_value.metadata.path
-        request.value = capnp_value.value
-        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.setValue(
+                capnp_value.metadata.path,
+                capnp_value.value,
+                self._reflection_server.LookupMode.withExpansion,  # type: ignore[attr-defined]
+                client=self._client_id.bytes,
+            )
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
         ]
 
+    @clean_exception_stack
     async def get(
         self,
         path: LabOneNodePath,
@@ -572,22 +563,19 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        request = self._session.getValue_request()
-        try:
-            request.pathExpression = path
-        except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(request, "pathExpression")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
-        request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.getValue(
+                path,
+                self._reflection_server.LookupMode.directLookup,  # type: ignore[attr-defined]
+                client=self._client_id.bytes,
+            )
         try:
             return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
         except IndexError as e:
             msg = f"No value returned for {path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @clean_exception_stack
     async def get_with_expression(
         self,
         path_expression: LabOneNodePath,
@@ -630,17 +618,13 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        request = self._session.getValue_request()
-        try:
-            request.pathExpression = path_expression
-        except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(request, "pathExpression")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
-        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
-        request.flags = int(flags)
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
+        async with self._capnp_lock.lock():
+            response = await self._session.getValue(
+                pathExpression=path_expression,
+                lookupMode=self._reflection_server.LookupMode.withExpansion,  # type: ignore[attr-defined]
+                flags=int(flags),
+                client=self._client_id.bytes,
+            )
         return [
             AnnotatedValue.from_capnp(result.unwrap(raw_result))
             for raw_result in response.result
@@ -666,6 +650,7 @@ class Session:
         get_initial_value: bool = False,
     ) -> QueueProtocol: ...
 
+    @clean_exception_stack
     async def subscribe(
         self,
         path: LabOneNodePath,
@@ -724,42 +709,40 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        streaming_handle = streaming_handle_factory(self._reflection_server)(
-            parser_callback=parser_callback,
-        )
-        subscription = self._reflection_server.Subscription(  # type: ignore[attr-defined]
-            streamingHandle=streaming_handle,
-            subscriberId=self._client_id.bytes,
-        )
-        try:
-            subscription.path = path
-        except (AttributeError, TypeError, capnp.KjException):
-            field_type = request_field_type_description(subscription, "path")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from None
-        request = self._session.subscribe_request()
-        request.subscription = subscription
-
-        if get_initial_value:
-            response, initial_value = await asyncio.gather(
-                _send_and_wait_request(request),
-                self.get(path),
+        async with self._capnp_lock.lock():
+            streaming_handle = streaming_handle_factory(self._reflection_server)(
+                parser_callback=parser_callback,
             )
+            subscription = self._reflection_server.Subscription(  # type: ignore[attr-defined]
+                streamingHandle=streaming_handle,
+                subscriberId=self._client_id.bytes,
+            )
+            try:
+                subscription.path = path
+            except (AttributeError, TypeError, capnp.KjException):
+                field_type = request_field_type_description(subscription, "path")
+                msg = f"`path` attribute must be of type {field_type}."
+                raise TypeError(msg) from None
+            if get_initial_value:
+                response, initial_value = await asyncio.gather(
+                    self._session.subscribe(subscription),
+                    self.get(path),
+                )
+                unwrap(response.result)  # Result(Void, Error)
+                new_queue_type = queue_type or DataQueue
+                queue = new_queue_type(
+                    path=path,
+                    register_function=streaming_handle.register_data_queue,
+                )
+                queue.put_nowait(initial_value)
+                return queue
+            response = await self._session.subscribe(subscription)
             unwrap(response.result)  # Result(Void, Error)
             new_queue_type = queue_type or DataQueue
-            queue = new_queue_type(
+            return new_queue_type(
                 path=path,
                 register_function=streaming_handle.register_data_queue,
             )
-            queue.put_nowait(initial_value)
-            return queue
-        response = await _send_and_wait_request(request)
-        unwrap(response.result)  # Result(Void, Error)
-        new_queue_type = queue_type or DataQueue
-        return new_queue_type(
-            path=path,
-            register_function=streaming_handle.register_data_queue,
-        )
 
     async def wait_for_state_change(
         self,

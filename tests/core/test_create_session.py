@@ -7,7 +7,6 @@ from labone.core import connection_layer, kernel_session
 from labone.core.errors import LabOneCoreError, UnavailableError
 
 
-@patch("labone.core.session._send_and_wait_request", autospec=True)
 @patch("labone.core.kernel_session.create_session_client_stream", autospec=True)
 @patch("labone.core.kernel_session.capnp", autospec=True)
 @patch("labone.core.kernel_session.ReflectionServer", autospec=True)
@@ -16,7 +15,6 @@ async def test_session_create_ok_zi(
     reflection_server,
     capnp_mock,
     create_session_client_stream,
-    send_request,
 ):
     dummy_sock = MagicMock()
     dummy_kernel_info_extended = MagicMock()
@@ -26,7 +24,8 @@ async def test_session_create_ok_zi(
         dummy_kernel_info_extended,
         dummy_server_info_extended,
     )
-    send_request.return_value.version = str(
+    mock_session = reflection_server.create_from_connection.return_value.session
+    mock_session.capnp_capability.getSessionVersion.return_value.version = str(
         kernel_session.KernelSession.TESTED_CAPABILITY_VERSION,
     )
     capnp_mock.AsyncIoStream.create_connection = AsyncMock()
