@@ -7,19 +7,8 @@ be used for low level capnp interface calls.
 
 import capnp
 
-from labone.core import errors
+from labone.core.errors import LabOneCoreError, error_from_capnp
 from labone.core.helper import CapnpStructReader
-
-_ZI_ERROR_MAP = {
-    1: errors.CancelledError,
-    3: errors.NotFoundError,
-    4: errors.OverwhelmedError,
-    5: errors.BadRequestError,
-    6: errors.UnimplementedError,
-    7: errors.InternalError,
-    8: errors.UnavailableError,
-    9: errors.LabOneTimeoutError,
-}
 
 
 def unwrap(result: CapnpStructReader) -> CapnpStructReader:
@@ -46,11 +35,7 @@ def unwrap(result: CapnpStructReader) -> CapnpStructReader:
     except (capnp.KjException, AttributeError):
         pass
     try:
-        raise _ZI_ERROR_MAP.get(result.err.kind, errors.LabOneCoreError)(
-            result.err.message,
-            code=result.err.code,
-            category=result.err.category,
-        )
-    except capnp.KjException as e:
+        raise error_from_capnp(result.err) from None
+    except capnp.KjException:
         msg = f"Unable to parse Server response. Received: \n{result}"
-        raise errors.LabOneCoreError(msg) from e
+        raise LabOneCoreError(msg) from None

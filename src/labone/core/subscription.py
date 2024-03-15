@@ -564,7 +564,14 @@ def streaming_handle_factory(
             """
             try:
                 parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
+            except errors.LabOneCoreError as err:  # pragma: no cover
+                logger.exception(err.args[0])
             except ValueError as err:  # pragma: no cover
+                self._data_queues = [
+                    data_queue().disconnect()  # type: ignore[union-attr] # supposed to throw
+                    for data_queue in self._data_queues
+                    if data_queue() is not None
+                ]
                 logger.error(  # noqa: TRY400
                     "Disconnecting subscription. Could not parse value.  Error: %s",
                     err.args[0],

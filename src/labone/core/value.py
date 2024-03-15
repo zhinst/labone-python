@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import capnp
 import numpy as np
 
-from labone.core.errors import SHFHeaderVersionNotSupportedError
+from labone.core.errors import SHFHeaderVersionNotSupportedError, error_from_capnp
 from labone.core.helper import (
     LabOneNodePath,
     VectorElementType,
@@ -276,6 +276,7 @@ def _capnp_value_to_python_value(
 
     Raises:
         ValueError: If the capnp value has an unknown type or can not be parsed.
+        LabOneCoreError: If the capnp value is a streaming error.
     """
     capnp_type = capnp_value.which()
     if capnp_type == "int64":
@@ -294,6 +295,8 @@ def _capnp_value_to_python_value(
         return TriggerSample.from_capnp(capnp_value.triggerSample), None
     if capnp_type == "none":
         return None, None
+    if capnp_type == "streamingError":
+        raise error_from_capnp(capnp_value.streamingError)
     msg = f"Unknown capnp type: {capnp_type}"
     raise ValueError(msg)
 
