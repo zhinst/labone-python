@@ -6,6 +6,12 @@ using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("zhinst_capnp");
 
 using import "path.capnp".Path;
+using import "error.capnp".Error;
+
+# StreamingErrors are used to signal errors within a continuous stream of data.
+# Outside of the streaming context, the must not occur but rather be signaled
+# using the result error mechanism.
+using StreamingError = Error;
 
 struct Void { }
 
@@ -60,6 +66,7 @@ struct Value @0xb1838b4771be75ac {
     cntSample     @5 :CntSample;
     triggerSample @6 :TriggerSample;
     none          @7 :Void;
+    streamingError @8 :StreamingError;
   }
 }
 

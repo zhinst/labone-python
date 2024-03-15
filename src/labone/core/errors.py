@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import typing as t
 from asyncio import QueueEmpty
 
 from labone.errors import LabOneError
+
+if t.TYPE_CHECKING:
+    import capnp
 
 
 class LabOneCoreError(LabOneError):
@@ -70,3 +74,31 @@ class StreamingError(LabOneCoreError):
 
 class EmptyDisconnectedDataQueueError(StreamingError, QueueEmpty):
     """Raised when the data queue is empty and disconnected."""
+
+
+_ZI_ERROR_MAP = {
+    1: CancelledError,
+    3: NotFoundError,
+    4: OverwhelmedError,
+    5: BadRequestError,
+    6: UnimplementedError,
+    7: InternalError,
+    8: UnavailableError,
+    9: LabOneTimeoutError,
+}
+
+
+def error_from_capnp(err: capnp.lib.capnp._DynamicStructReader) -> LabOneCoreError:
+    """Create labone error from a error.capnp::Error struct.
+
+    Args:
+        err: The capnp error to be converted.
+
+    Returns:
+        The corresponding error.
+    """
+    return _ZI_ERROR_MAP.get(err.kind, LabOneCoreError)(
+        err.message,
+        code=err.code,
+        category=err.category,
+    )

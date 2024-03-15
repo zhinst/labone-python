@@ -5,6 +5,7 @@ from unittest.mock import patch
 import labone.core.value as value_module
 import numpy as np
 import pytest
+from labone.core.errors import LabOneCoreError
 
 from .resources import value_capnp
 
@@ -103,6 +104,25 @@ def test_cnt_sample():
     assert parsed_value.value.timestamp == input_dict["value"]["cntSample"]["timestamp"]
     assert parsed_value.value.counter == input_dict["value"]["cntSample"]["counter"]
     assert parsed_value.value.trigger == input_dict["value"]["cntSample"]["trigger"]
+
+
+def test_streaming_error():
+    input_dict = {
+        "metadata": {"timestamp": 42, "path": "/non/of/your/business"},
+        "value": {
+            "streamingError": {
+                "code": 1,
+                "message": "Test message",
+                "category": "zi:test",
+                "kind": "timeout",
+                "source": "",
+            },
+        },
+    }
+    msg = value_capnp.AnnotatedValue.new_message()
+    msg.from_dict(input_dict)
+    with pytest.raises(LabOneCoreError):
+        value_module.AnnotatedValue.from_capnp(msg)
 
 
 @pytest.mark.parametrize(
