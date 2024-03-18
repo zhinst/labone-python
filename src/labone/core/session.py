@@ -221,7 +221,7 @@ class Session:
     # The minimum capability version that is required by the labone api.
     MIN_CAPABILITY_VERSION = version.Version("1.7.0")
     # The latest known version of the capability version.
-    TESTED_CAPABILITY_VERSION = version.Version("1.9.0")
+    TESTED_CAPABILITY_VERSION = version.Version("1.10.0")
 
     def __init__(
         self,
