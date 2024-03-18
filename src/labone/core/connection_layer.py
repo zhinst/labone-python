@@ -351,7 +351,7 @@ def _raise_orchestrator_error(code: str, message: str) -> None:
         raise errors.UnavailableError(message)
     if code == "illegalDeviceIdentifier":
         raise errors.BadRequestError(message)
-    if code == "deviceNotFound":
+    if code in ["deviceNotFound", "deviceNotVisible"]:
         raise errors.UnavailableError(message)
     if code == "kernelLaunchFailure":
         raise errors.InternalError(message)
