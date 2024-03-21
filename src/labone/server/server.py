@@ -1,4 +1,4 @@
-"""Abstract reflection as base for mock servers.
+"""Abstract reflection as base for servers.
 
 A capnp reflection server is dynamically created from a binary schema file.
 This server can provide the schema (getTheSchema) and takes
@@ -21,10 +21,10 @@ if TYPE_CHECKING:
     from capnp.lib.capnp import _CallContext, _DynamicStructBuilder
 
 
-class ServerTemplate(ABC):
+class CapnpServer(ABC):
     """Common interface for concrete server implementations.
 
-    Both Hpk and Simplon servers will implement this interface.
+    Servers will implement this interface.
     It stands for the actual functionality of the server, which
     will be defined in the subclasses.
 
@@ -39,7 +39,7 @@ class ServerTemplate(ABC):
 def capnp_server_factory(
     stream: capnp.AsyncIoStream,
     schema: CapnpStructReader,
-    mock: ServerTemplate,
+    server: CapnpServer,
 ) -> capnp.TwoPartyServer:
     """Dynamically create a capnp server.
 
@@ -50,7 +50,7 @@ def capnp_server_factory(
     Args:
         stream: Stream for the server.
         schema: Parsed capnp schema (`reflection_capnp.CapSchema`).
-        mock: The concrete server implementation.
+        server: The concrete server implementation.
 
     Returns:
         Dynamically created capnp server.
@@ -58,18 +58,18 @@ def capnp_server_factory(
     schema_parsed_dict = schema.to_dict()
     parsed_schema = ParsedWireSchema(schema.theSchema)
     capnp_interface = capnp.lib.capnp._InterfaceModule(  # noqa: SLF001
-        parsed_schema.full_schema[mock.server_id].schema.as_interface(),
-        parsed_schema.full_schema[mock.server_id].name,
+        parsed_schema.full_schema[server.server_id].schema.as_interface(),
+        parsed_schema.full_schema[server.server_id].name,
     )
 
-    class MockServerImpl(capnp_interface.Server):  # type: ignore[name-defined]
+    class ServerImpl(capnp_interface.Server):  # type: ignore[name-defined]
         """Dynamically created capnp server.
 
         Redirects all calls (except getTheSchema) to the concrete server implementation.
         """
 
         def __init__(self) -> None:
-            self._mock = mock
+            self._server = server
             # parsed schema needs to stay alive as long as the server is.
             self._parsed_schema = parsed_schema
 
@@ -78,8 +78,8 @@ def capnp_server_factory(
             name: str,
         ) -> _DynamicStructBuilder | list[_DynamicStructBuilder] | str | list[str]:
             """Redirecting all calls to the concrete server implementation."""
-            if hasattr(self._mock, name):
-                return getattr(self._mock, name)
+            if hasattr(self._server, name):
+                return getattr(self._server, name)
             return getattr(super(), name)
 
         async def getTheSchema(  # noqa: N802
@@ -103,23 +103,23 @@ def capnp_server_factory(
             # Otherwise the underlying capnp object need to be copied manually to avoid
             # segfaults
             _context.results.theSchema.from_dict(schema_parsed_dict)
-            _context.results.theSchema.typeId = mock.type_id
+            _context.results.theSchema.typeId = server.type_id
 
-    return capnp.TwoPartyServer(stream, bootstrap=MockServerImpl())
+    return capnp.TwoPartyServer(stream, bootstrap=ServerImpl())
 
 
-async def start_local_mock(
+async def start_local_server(
     schema: CapnpStructReader,
-    mock: ServerTemplate,
+    server: CapnpServer,
 ) -> tuple[capnp.TwoPartyServer, capnp.AsyncIoStream]:
-    """Starting a local mock server.
+    """Starting a local server.
 
     This is equivalent to the `capnp_server_factory` but with the addition that
     a local socket pair is created for the server.
 
     Args:
         schema: Parsed capnp schema (`reflection_capnp.CapSchema`).
-        mock: The concrete server implementation.
+        server: The concrete server implementation.
 
     Returns:
         The server and the client connection.
@@ -131,4 +131,4 @@ async def start_local_mock(
     reader = await capnp.AsyncIoStream.create_connection(sock=read)
     writer = await capnp.AsyncIoStream.create_connection(sock=write)
     # create server for the local socket pair
-    return capnp_server_factory(writer, schema, mock), reader
+    return capnp_server_factory(writer, schema, server), reader

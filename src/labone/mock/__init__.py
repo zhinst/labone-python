@@ -18,10 +18,8 @@ Example:
 
 from labone.mock.automatic_session_functionality import AutomaticSessionFunctionality
 from labone.mock.entry_point import spawn_hpk_mock
-from labone.mock.session_mock_template import SessionMockFunctionality
 
 __all__ = [
     "spawn_hpk_mock",
     "AutomaticSessionFunctionality",
-    "SessionMockFunctionality",
 ]

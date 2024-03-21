@@ -42,8 +42,8 @@ from labone.core.value import (
     Value,
 )
 from labone.mock.errors import LabOneMockError
-from labone.mock.session_mock_template import SessionMockFunctionality, Subscription
 from labone.node_info import NodeInfo
+from labone.server.session import SessionFunctionality, Subscription
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
@@ -59,7 +59,7 @@ class PathData:
     streaming_handles: list[Subscription]
 
 
-class AutomaticSessionFunctionality(SessionMockFunctionality):
+class AutomaticSessionFunctionality(SessionFunctionality):
     """Predefined behaviour for HPK mock.
 
     Args:

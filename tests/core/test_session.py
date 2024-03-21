@@ -32,8 +32,8 @@ from labone.core.value import AnnotatedValue
 from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
 from labone.mock.entry_point import MockSession
 from labone.mock.hpk_schema import get_schema
-from labone.mock.mock_server import start_local_mock
-from labone.mock.session_mock_template import SessionMockTemplate
+from labone.server.server import start_local_server
+from labone.server.session import SessionInterface
 
 from .resources import session_protocol_capnp, testfile_capnp, value_capnp
 
@@ -954,7 +954,7 @@ async def test_set_transaction_mix_multiple_devices():
     assert (await session_b.get("a")).value == 2
 
 
-class DummyServerVersionTest(SessionMockTemplate):
+class DummyServerVersionTest(SessionInterface):
     def __init__(self, version: str):
         super().__init__(None)
         self._version = version
@@ -975,9 +975,9 @@ class DummyServerVersionTest(SessionMockTemplate):
 )
 @pytest.mark.asyncio()
 async def test_ensure_compatibility_mismatch(version, should_fail):
-    mock_server, client_connection = await start_local_mock(
+    mock_server, client_connection = await start_local_server(
         schema=get_schema(),
-        mock=DummyServerVersionTest(version),
+        server=DummyServerVersionTest(version),
     )
     reflection = await ReflectionServer.create_from_connection(client_connection)
     session = MockSession(
