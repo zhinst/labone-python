@@ -15,12 +15,12 @@ import pytest
 from labone.core.session import ListNodesFlags
 from labone.core.value import AnnotatedValue
 from labone.mock.entry_point import spawn_hpk_mock
-from labone.mock.session_mock_template import SessionMockFunctionality
+from labone.server.session import SessionFunctionality
 
 
 @pytest.mark.asyncio()
 async def test_set_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.set.return_value = AnnotatedValue(
         path="/mock/path",
         value=1,
@@ -40,7 +40,7 @@ async def test_set_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_get_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.get.return_value = AnnotatedValue(
         path="/mock/path",
         value=1,
@@ -60,7 +60,7 @@ async def test_get_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_get_with_expression_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.get_with_expression.return_value = [
         AnnotatedValue(path="/mock/path", value=1, timestamp=2),
         AnnotatedValue(path="/mock/path/2", value=3, timestamp=4),
@@ -82,7 +82,7 @@ async def test_get_with_expression_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_set_with_expression_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.set_with_expression.return_value = [
         AnnotatedValue(path="/mock/path", value=1, timestamp=2),
         AnnotatedValue(path="/mock/path/2", value=1, timestamp=4),
@@ -106,7 +106,7 @@ async def test_set_with_expression_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_subscribe_propagates_to_functionality():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
 
     session = await spawn_hpk_mock(functionality)
 
@@ -118,7 +118,7 @@ async def test_subscribe_propagates_to_functionality():
 
 @pytest.mark.asyncio()
 async def test_list_nodes_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.list_nodes.return_value = ["/a/b", "/a/c"]
 
     session = await spawn_hpk_mock(functionality)
@@ -137,7 +137,7 @@ async def test_list_nodes_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_list_nodes_info_propagates_to_functionality_and_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.list_nodes_info.return_value = {
         "/a/b": {"value": 1},
         "/a/c": {"value": 2},
@@ -162,7 +162,7 @@ async def test_list_nodes_info_propagates_to_functionality_and_back():
 
 @pytest.mark.asyncio()
 async def test_errors_in_set_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.set.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -173,7 +173,7 @@ async def test_errors_in_set_functionality_are_transmitted_back():
 
 @pytest.mark.asyncio()
 async def test_errors_in_get_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.get.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -184,7 +184,7 @@ async def test_errors_in_get_functionality_are_transmitted_back():
 
 @pytest.mark.asyncio()
 async def test_errors_in_get_with_expression_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.get_with_expression.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -195,7 +195,7 @@ async def test_errors_in_get_with_expression_functionality_are_transmitted_back(
 
 @pytest.mark.asyncio()
 async def test_errors_in_set_with_expression_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.set_with_expression.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -206,7 +206,7 @@ async def test_errors_in_set_with_expression_functionality_are_transmitted_back(
 
 @pytest.mark.asyncio()
 async def test_errors_in_subscribe_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.subscribe_logic.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -217,7 +217,7 @@ async def test_errors_in_subscribe_functionality_are_transmitted_back():
 
 @pytest.mark.asyncio()
 async def test_errors_in_list_nodes_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.list_nodes.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)
@@ -228,7 +228,7 @@ async def test_errors_in_list_nodes_functionality_are_transmitted_back():
 
 @pytest.mark.asyncio()
 async def test_errors_in_list_nodes_info_functionality_are_transmitted_back():
-    functionality = Mock(spec=SessionMockFunctionality)
+    functionality = Mock(spec=SessionFunctionality)
     functionality.list_nodes_info.side_effect = Exception("Some error")
 
     session = await spawn_hpk_mock(functionality)

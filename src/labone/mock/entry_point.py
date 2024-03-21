@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 from labone.core.reflection.server import ReflectionServer
 from labone.core.session import Session
 from labone.mock.hpk_schema import get_schema
-from labone.mock.mock_server import start_local_mock
-from labone.mock.session_mock_template import SessionMockTemplate
+from labone.server.server import start_local_server
+from labone.server.session import SessionInterface
 
 if TYPE_CHECKING:
     import capnp
 
     from labone.core.helper import CapnpCapability
-    from labone.mock.session_mock_template import SessionMockFunctionality
+    from labone.server.session import SessionFunctionality
 
 
 class MockSession(Session):
@@ -44,7 +44,7 @@ class MockSession(Session):
 
 
 async def spawn_hpk_mock(
-    functionality: SessionMockFunctionality,
+    functionality: SessionFunctionality,
 ) -> MockSession:
     """Shortcut for creating a mock server.
 
@@ -66,9 +66,9 @@ async def spawn_hpk_mock(
         capnp.lib.capnp.KjException: If the schema is invalid. Or the id
             of the concrete server is not in the schema.
     """
-    server, client = await start_local_mock(
+    server, client = await start_local_server(
         schema=get_schema(),
-        mock=SessionMockTemplate(functionality),
+        server=SessionInterface(functionality),
     )
     reflection = await ReflectionServer.create_from_connection(client)
     return MockSession(

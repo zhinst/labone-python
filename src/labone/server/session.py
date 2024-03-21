@@ -1,10 +1,10 @@
-"""Hpk Mock Server method definitions.
+"""Capnp Server method definitions.
 
-This module contains the method definitions for the Hpk Mock Server,
+This module contains the method definitions for the Capnp Server,
 including setting and getting values, listing nodes, and subscribing to
 nodes. This specific capnp server methods define the specific
 Hpk behavior.
-The logic of the capnp methods is deligated to the HpkMockFunctionality class,
+The logic of the capnp methods is deligated to the SessionFunctionality class,
 which offers a blueprint meant to be overriden by the user.
 """
 
@@ -21,7 +21,7 @@ from labone.core.value import (
     _capnp_value_to_python_value,
     value_from_python_types_dict,
 )
-from labone.mock.mock_server import ServerTemplate
+from labone.server.server import CapnpServer
 
 if TYPE_CHECKING:
     from capnp.lib.capnp import (
@@ -86,22 +86,22 @@ class Subscription:
         return self._path
 
 
-class SessionMockFunctionality(ABC):
-    """Hpk blueprint for defining mock server behavior.
+class SessionFunctionality(ABC):
+    """Blueprint for defining the session behavior.
 
-    The HpKMockFunctionality class offers a interface between
+    The SessionFunctionality class offers a interface between
     capnp server logic and the user. The user can override the methods
-    to define an individual mock server. The signature of the methods
+    to define an individual server. The signature of the methods
     is mostly identical to the session-interface on the caller side.
     Thereby it feels as if the session-interface is overritten directly,
     hiding the capnp server logic from the user.
 
     Two possible ways to use this class arise:
      * Call methods indirectly (via capnp server), by having a session
-       to a mock server.
+       to a server.
      * Call methods directly. This can be used to manipulate the state
        internally. Limitations of what can be set to a server are
-       bypassed. E.g. can be useful when setting shf vector nodes.
+       bypassed. E.g. can be useful when setting SHF vector nodes.
 
     Both approaches can be combined.
     """
@@ -234,26 +234,26 @@ def build_capnp_error(error: Exception) -> _DynamicStructBuilder:
     }
 
 
-class SessionMockTemplate(ServerTemplate):
-    """Hpk Mock Server.
+class SessionInterface(CapnpServer):
+    """Capnp session interface.
 
     The logic for answering capnp requests is outsourced and taken as an argument.
-    This allows for custom mock server definition while keeping this classes
+    This allows for custom server definition while keeping this classes
     code static.
 
     Note:
         Methods within serve for capnp to answer requests. They should not be
         called directly. They should not be overritten in order to define
-        custom behavior. Instead, override the methods of HpkMockFunctionality.
+        custom behavior. Instead, override the methods of SessionFunctionality.
 
     Args:
-        functionality: The implementation of the mock server behavior.
+        functionality: The implementation of the server behavior.
     """
 
     server_id = HPK_SCHEMA_ID
     type_id = SESSION_SCHEMA_ID
 
-    def __init__(self, functionality: SessionMockFunctionality) -> None:
+    def __init__(self, functionality: SessionFunctionality) -> None:
         self._functionality = functionality
 
     async def getSessionVersion(  # noqa: N802
@@ -431,7 +431,7 @@ class SessionMockTemplate(ServerTemplate):
         """Capnp server method to subscribe to nodes.
 
         Do not override this method. Instead, override 'subscribe_logic'
-        of HpkMockFunctionality (or subclass).
+        of SessionFunctionality (or subclass).
 
         Args:
             subscription: Capnp object containing information on
