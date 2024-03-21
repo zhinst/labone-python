@@ -8,8 +8,11 @@ inserting allows for a abstract common reflection server.
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import socket
 from abc import ABC
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import capnp
@@ -132,3 +135,47 @@ async def start_local_server(
     writer = await capnp.AsyncIoStream.create_connection(sock=write)
     # create server for the local socket pair
     return capnp_server_factory(writer, schema, server), reader
+
+
+def start_server(
+    schema: CapnpStructReader,
+    server: CapnpServer,
+) -> None:
+    """Start the server.
+
+    Start the capnp server with the given schema and server instance.
+    The server address and port can be specified via command line arguments.
+    The server keeps running until it is interrupted.
+
+    Args:
+        schema: Parsed capnp schema (`reflection_capnp.CapSchema`).
+        server: The concrete server implementation.
+    """
+
+    def _host_port() -> tuple[str, int]:
+        parser = argparse.ArgumentParser(
+            usage="""Runs the server bound to the given address/port ADDRESS. """,
+        )
+
+        parser.add_argument("address", help="ADDRESS:PORT")
+
+        return parser.parse_args().address.split(":")
+
+    async def _new_connection(
+        stream: capnp.AsyncIoStream,
+    ) -> None:
+        await capnp_server_factory(
+            stream=stream,
+            schema=schema,
+            server=server,
+        ).on_disconnect()
+
+    async def _run_server() -> None:
+        await ensure_capnp_event_loop()
+        host, port = _host_port()
+        server = await capnp.AsyncIoStream.create_server(_new_connection, host, port)
+        async with server:
+            await server.serve_forever()
+
+    with suppress(KeyboardInterrupt):
+        asyncio.run(_run_server())
