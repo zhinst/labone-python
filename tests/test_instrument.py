@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from labone.errors import LabOneError
 from labone.instrument import Instrument
 from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
-
 from tests.mock_server_for_testing import get_mocked_node
 
 

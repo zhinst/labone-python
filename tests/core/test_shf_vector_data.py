@@ -2,6 +2,7 @@ import struct
 
 import numpy as np
 import pytest
+
 from labone.core.shf_vector_data import (
     SHFDemodSample,
     ShfDemodulatorVectorExtraHeader,

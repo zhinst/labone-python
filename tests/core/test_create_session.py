@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from labone.core import connection_layer, kernel_session
 from labone.core.errors import LabOneCoreError, UnavailableError
 

@@ -7,6 +7,7 @@ from capnp.lib.capnp import (
     _InterfaceModule,
     _StructModule,
 )
+
 from labone.core.reflection import capnp_dynamic_type_system
 from labone.core.reflection.parsed_wire_schema import LoadedNode
 

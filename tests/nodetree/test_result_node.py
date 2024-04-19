@@ -1,7 +1,7 @@
 import pytest
+
 from labone.core.value import AnnotatedValue
 from labone.nodetree.errors import LabOneInvalidPathError
-
 from tests.mock_server_for_testing import get_mocked_node
 
 

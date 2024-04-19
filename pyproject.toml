@@ -98,6 +98,7 @@ all = ["style", "typing"]
 target-version = ["py38"]
 
 [tool.ruff]
+src = ["src", "tests"]
 target-version = "py38"
 select = ["ALL"]
 ignore = [

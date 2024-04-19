@@ -11,6 +11,7 @@ we still need to use a larger scope in order to test meaningful behavior.
 
 import numpy as np
 import pytest
+
 from labone.core import AnnotatedValue
 from labone.core.shf_vector_data import (
     SHFDemodSample,

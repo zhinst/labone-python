@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+
 from labone.core.errors import LabOneCoreError
 
 if TYPE_CHECKING:

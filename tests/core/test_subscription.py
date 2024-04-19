@@ -4,6 +4,7 @@ import asyncio
 
 import capnp
 import pytest
+
 from labone.core import errors
 from labone.core.subscription import (
     CircularDataQueue,

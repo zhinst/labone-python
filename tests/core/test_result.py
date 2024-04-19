@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import capnp
 import pytest
+
 from labone.core import errors
 from labone.core.result import unwrap
 
