@@ -8,6 +8,7 @@ from __future__ import annotations
 from unittest.mock import ANY, Mock
 
 import pytest
+
 from labone.core.session import Session
 from labone.core.value import AnnotatedValue
 from labone.nodetree.entry_point import construct_nodetree

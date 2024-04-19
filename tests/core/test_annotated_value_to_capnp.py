@@ -10,6 +10,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
+
 from labone.core.helper import VectorElementType
 from labone.core.shf_vector_data import (
     VectorValueType,

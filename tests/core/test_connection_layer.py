@@ -5,8 +5,9 @@ import socket
 from unittest.mock import patch
 
 import pytest
-from labone.core import connection_layer, errors
 from packaging import version
+
+from labone.core import connection_layer, errors
 
 from .resources import hello_msg_capnp, orchestrator_capnp
 

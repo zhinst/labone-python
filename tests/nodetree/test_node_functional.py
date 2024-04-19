@@ -12,7 +12,6 @@ if t.TYPE_CHECKING:
     from labone.core.value import AnnotatedValue
 from labone.nodetree.enum import _get_enum
 from labone.nodetree.errors import LabOneInvalidPathError
-
 from tests.mock_server_for_testing import get_mocked_node, get_unittest_mocked_node
 
 
@@ -148,7 +147,7 @@ async def test_contains_subnode():
 @pytest.mark.asyncio()
 async def test_node_does_not_contain_itself():
     node = await get_unittest_mocked_node({"/a/b": {}})
-    assert node not in node  # noqa: PLR0124
+    assert node not in node
 
 
 @pytest.mark.asyncio()

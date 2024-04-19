@@ -2,9 +2,10 @@
 
 from unittest.mock import patch
 
-import labone.core.value as value_module
 import numpy as np
 import pytest
+
+import labone.core.value as value_module
 from labone.core.errors import LabOneCoreError
 
 from .resources import value_capnp

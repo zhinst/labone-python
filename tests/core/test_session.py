@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import capnp
 import pytest
 import pytest_asyncio
+
 from labone.core import errors
 from labone.core.connection_layer import ServerInfo, ZIKernelInfo
 from labone.core.helper import request_field_type_description

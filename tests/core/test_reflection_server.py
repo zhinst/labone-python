@@ -1,8 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import capnp
-import labone.core.reflection.server as reflection_server
 import pytest
+
+import labone.core.reflection.server as reflection_server
 from labone.core.errors import LabOneCoreError
 
 
