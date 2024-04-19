@@ -147,7 +147,7 @@ async def test_contains_subnode():
 @pytest.mark.asyncio()
 async def test_node_does_not_contain_itself():
     node = await get_unittest_mocked_node({"/a/b": {}})
-    assert node not in node
+    assert node not in node  # noqa: PLR0124
 
 
 @pytest.mark.asyncio()
