@@ -4,21 +4,19 @@ import pytest
 
 from labone.errors import LabOneError
 from labone.instrument import Instrument
-from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
+from labone.mock import AutomaticLabOneServer
 from tests.mock_server_for_testing import get_mocked_node
 
 
 @pytest.mark.asyncio()
 @patch("labone.instrument.KernelSession", autospec=True)
 async def test_connect_device(kernel_session):
-    session = await spawn_hpk_mock(AutomaticSessionFunctionality({}))
+    session = await AutomaticLabOneServer({}).start_pipe()
     kernel_session.create.return_value = session
     instrument = await Instrument.create("dev1234", host="testee")
     assert instrument.kernel_session == session
     assert instrument.serial == "dev1234"
     kernel_session.create.assert_awaited_once()
-    assert kernel_session.create.call_args.kwargs["kernel_info"].device_id == "dev1234"
-    assert kernel_session.create.call_args.kwargs["kernel_info"].interface == ""
     assert kernel_session.create.call_args.kwargs["server_info"].host == "testee"
     assert kernel_session.create.call_args.kwargs["server_info"].port == 8004
 
@@ -26,7 +24,7 @@ async def test_connect_device(kernel_session):
 @pytest.mark.asyncio()
 @patch("labone.instrument.KernelSession", autospec=True)
 async def test_connect_device_custom_default_args(kernel_session):
-    session = await spawn_hpk_mock(AutomaticSessionFunctionality({}))
+    session = await AutomaticLabOneServer({}).start_pipe()
     kernel_session.create.return_value = session
     instrument = await Instrument.create(
         "dev1234",
@@ -37,8 +35,6 @@ async def test_connect_device_custom_default_args(kernel_session):
     assert instrument.kernel_session == session
     assert instrument.serial == "dev1234"
     kernel_session.create.assert_awaited_once()
-    assert kernel_session.create.call_args.kwargs["kernel_info"].device_id == "dev1234"
-    assert kernel_session.create.call_args.kwargs["kernel_info"].interface == "wifi"
     assert kernel_session.create.call_args.kwargs["server_info"].host == "testee"
     assert kernel_session.create.call_args.kwargs["server_info"].port == 8888
 

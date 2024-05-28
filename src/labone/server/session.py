@@ -15,32 +15,28 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from labone.core import ListNodesFlags, ListNodesInfoFlags
+from labone.core.helper import get_default_context
+from labone.core.hpk_schema import get_schema_loader
 from labone.core.session import Session
 from labone.core.value import (
     AnnotatedValue,
     _capnp_value_to_python_value,
     value_from_python_types_dict,
 )
-from labone.server.server import CapnpServer
+from labone.server.server import CapnpResult, CapnpServer, capnp_method
 
 if TYPE_CHECKING:
-    from capnp.lib.capnp import (
-        _CallContext,
-        _DynamicEnum,
-        _DynamicStructBuilder,
-        _DynamicStructReader,
-    )
+    import zhinst.comms
+    from zhinst.comms import DynamicStructBase
 
 
-HPK_SCHEMA_ID = 11970870220622790664
-SESSION_SCHEMA_ID = 13390403837104530780
+SESSION_SCHEMA_ID = 0xB9D445582DA4A55C
 SERVER_ERROR = "SERVER_ERROR"
 
 
 if TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
     from labone.core.session import NodeInfo
-    from labone.core.subscription import StreamingHandle
 
 
 class Subscription:
@@ -58,7 +54,7 @@ class Subscription:
     def __init__(
         self,
         path: LabOneNodePath,
-        streaming_handle: StreamingHandle,
+        streaming_handle: zhinst.comms.DynamicClient,
         subscriber_id: int,
     ):
         self._path = path
@@ -71,14 +67,17 @@ class Subscription:
         Args:
             value: Value to send.
         """
-        capnp_response = {
-            "value": value_from_python_types_dict(value),
-            "metadata": {
-                "path": value.path,
-                "timestamp": value.timestamp,
-            },
-        }
-        await self._streaming_handle.sendValues([capnp_response])
+        await self._streaming_handle.sendValues(
+            values=[
+                {
+                    "value": value_from_python_types_dict(value),
+                    "metadata": {
+                        "path": value.path,
+                        "timestamp": value.timestamp,
+                    },
+                },
+            ],
+        )
 
     @property
     def path(self) -> LabOneNodePath:
@@ -86,7 +85,57 @@ class Subscription:
         return self._path
 
 
-class SessionFunctionality(ABC):
+class MockSession(Session):
+    """Regular Session holding a mock server.
+
+    This class is designed for holding the mock server.
+    This is needed, because otherwise,
+    there would be no reference to the capnp objects, which would go out of scope.
+    This way, the correct lifetime of the capnp objects is ensured, by attaching it to
+    its client.
+
+    Args:
+        mock_server: Mock server.
+        capnp_session: Capnp session.
+        reflection: Reflection server.
+    """
+
+    def __init__(
+        self,
+        server: LabOneServerBase,
+        client: zhinst.comms.DynamicClient,
+        *,
+        context: zhinst.comms.CapnpContext,
+    ):
+        super().__init__(client, context=context)
+        self._mock_server = server
+
+    @property
+    def mock_server(self) -> LabOneServerBase:
+        """Mock server."""
+        return self._mock_server
+
+
+def build_capnp_error(error: Exception) -> CapnpResult:
+    """Helper function to build a capnp error message.
+
+    Args:
+        error: Caught python exception to be converted.
+
+    Returns:
+        Capnp Type dictionary for Result(Error).
+    """
+    return {
+        "err": {
+            "code": 2,
+            "message": f"{error}",
+            "category": SERVER_ERROR,
+            "source": __name__,
+        },
+    }
+
+
+class LabOneServerBase(ABC, CapnpServer):
     """Blueprint for defining the session behavior.
 
     The SessionFunctionality class offers a interface between
@@ -105,6 +154,9 @@ class SessionFunctionality(ABC):
 
     Both approaches can be combined.
     """
+
+    def __init__(self):
+        CapnpServer.__init__(self, schema=get_schema_loader())
 
     @abstractmethod
     async def get(self, path: LabOneNodePath) -> AnnotatedValue:
@@ -171,7 +223,7 @@ class SessionFunctionality(ABC):
         self,
         path: LabOneNodePath = "",
         *,
-        flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
+        flags: ListNodesFlags,
     ) -> list[LabOneNodePath]:
         """Override this method for defining list_nodes behavior.
 
@@ -188,9 +240,9 @@ class SessionFunctionality(ABC):
     @abstractmethod
     async def list_nodes_info(
         self,
-        path: LabOneNodePath = "",
+        path: LabOneNodePath,
         *,
-        flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
+        flags: ListNodesInfoFlags,
     ) -> dict[LabOneNodePath, NodeInfo]:
         """Override this method for defining list_nodes_info behavior.
 
@@ -205,7 +257,7 @@ class SessionFunctionality(ABC):
         ...
 
     @abstractmethod
-    async def subscribe_logic(self, subscription: Subscription) -> None:
+    async def subscribe(self, subscription: Subscription) -> None:
         """Override this method for defining subscription behavior.
 
         Args:
@@ -214,145 +266,83 @@ class SessionFunctionality(ABC):
         """
         ...
 
-
-def build_capnp_error(error: Exception) -> _DynamicStructBuilder:
-    """Helper function to build a capnp error message.
-
-    Args:
-        error: Caught python exception to be converted.
-
-    Returns:
-        Capnp Type dictionary for Result(Error).
-    """
-    return {
-        "err": {
-            "code": 2,
-            "message": f"{error}",
-            "category": SERVER_ERROR,
-            "source": __name__,
-        },
-    }
-
-
-class SessionInterface(CapnpServer):
-    """Capnp session interface.
-
-    The logic for answering capnp requests is outsourced and taken as an argument.
-    This allows for custom server definition while keeping this classes
-    code static.
-
-    Note:
-        Methods within serve for capnp to answer requests. They should not be
-        called directly. They should not be overritten in order to define
-        custom behavior. Instead, override the methods of SessionFunctionality.
-
-    Args:
-        functionality: The implementation of the server behavior.
-    """
-
-    server_id = HPK_SCHEMA_ID
-    type_id = SESSION_SCHEMA_ID
-
-    def __init__(self, functionality: SessionFunctionality) -> None:
-        self._functionality = functionality
-
-    async def getSessionVersion(  # noqa: N802
+    @capnp_method(SESSION_SCHEMA_ID, 7)
+    async def _get_session_version_interface(
         self,
-        _context: _CallContext,
-    ) -> str:
-        """Capnp server method to get the session version.
+        _: DynamicStructBase,
+    ) -> CapnpResult:
+        """Capnp server method to get session version.
 
         Returns:
-            Session version.
+            Capnp result.
         """
-        return str(Session.TESTED_CAPABILITY_VERSION)
+        return {"version": str(Session.TESTED_CAPABILITY_VERSION)}
 
-    async def listNodes(  # noqa: N802
+    @capnp_method(SESSION_SCHEMA_ID, 0)
+    async def _list_nodes_interface(
         self,
-        pathExpression: str,  # noqa: N803
-        flags: ListNodesFlags,
-        client: bytes,  # noqa: ARG002
-        _context: _CallContext,
-        **kwargs,  # noqa: ARG002
-    ) -> list[str]:
+        call_input: DynamicStructBase,
+    ) -> CapnpResult:
         """Capnp server method to list nodes.
 
         Args:
-            pathExpression: Path to narrow down which nodes should be listed.
-                Omitting the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes method.
-            client: Capnp specific argument.
-            _context: Capnp specific argument.
-            **kwargs: Capnp specific arguments.
+            call_input: Arguments the server has been called with
 
         Returns:
-            List of paths.
+            Capnp result.
         """
-        return await self._functionality.list_nodes(pathExpression, flags=flags)
+        return {
+            "paths": await self.list_nodes(
+                call_input.pathExpression,
+                flags=ListNodesFlags(call_input.flags),
+            ),
+        }
 
-    async def listNodesJson(  # noqa: N802
+    @capnp_method(SESSION_SCHEMA_ID, 5)
+    async def _list_nodes_json_interface(
         self,
-        pathExpression: str,  # noqa: N803
-        flags: ListNodesFlags,
-        client: bytes,  # noqa: ARG002
-        _context: _CallContext,
-        **kwargs,  # noqa: ARG002
-    ) -> str:
-        """Capnp server method to list nodes plus additional informtion as json.
+        call_input: DynamicStructBase,
+    ) -> CapnpResult:
+        """Capnp server method to list nodes json.
 
         Args:
-            pathExpression: Path to narrow down which nodes should be listed.
-                Omitting the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes_info method.
-            client: Capnp specific argument.
-            _context: Capnp specific argument.
-            **kwargs: Capnp specific arguments.
+            call_input: Arguments the server has been called with
 
         Returns:
-            Json encoded dictionary of paths and node info.
+            Capnp result.
         """
-        return json.dumps(
-            await self._functionality.list_nodes_info(
-                path=pathExpression,
-                flags=flags,
+        return {
+            "nodeProps": json.dumps(
+                await self.list_nodes_info(
+                    call_input.pathExpression,
+                    flags=ListNodesInfoFlags(call_input.flags),
+                ),
             ),
-        )
+        }
 
-    async def getValue(  # noqa: N802
-        self,
-        pathExpression: str,  # noqa: N803
-        lookupMode: _DynamicEnum,  # noqa: N803
-        flags: int,
-        client: bytes,  # noqa: ARG002
-        _context: _CallContext,
-        **kwargs,  # noqa: ARG002
-    ) -> list[_DynamicStructBuilder]:
+    @capnp_method(SESSION_SCHEMA_ID, 10)
+    async def _get_value_interface(self, call_input: DynamicStructBase) -> CapnpResult:
         """Capnp server method to get values.
 
         Args:
-            pathExpression: Path for which the value should be retrieved.
-            lookupMode: Defining whether a single path should be retrieved
-                or potentially multiple ones specified by a wildcard path.
-            flags: Flags to control the behaviour of wildcard path requests.
-            client: Capnp specific argument.
-            _context: Capnp specific argument.
-            **kwargs: Capnp specific arguments.
+            call_input: Arguments the server has been called with
 
         Returns:
-            List of read values.
+            Capnp result.
         """
+        lookup_mode = call_input.lookupMode
         try:
-            if lookupMode == 0:  # direct lookup
-                responses = [await self._functionality.get(pathExpression)]
+            if lookup_mode == 0:  # direct lookup
+                responses = [await self.get(call_input.pathExpression)]
             else:
-                responses = await self._functionality.get_with_expression(
-                    pathExpression,
-                    flags=flags,
+                responses = await self.get_with_expression(
+                    call_input.pathExpression,
+                    flags=call_input.flags,
                 )
         except Exception as e:  # noqa: BLE001
-            return [build_capnp_error(e)]
+            return {"result": [build_capnp_error(e)]}
 
-        return [
+        result = [
             {
                 "ok": {
                     "value": value_from_python_types_dict(response),
@@ -364,52 +354,38 @@ class SessionInterface(CapnpServer):
             }
             for response in responses
         ]
+        return {"result": result}
 
-    async def setValue(  # noqa: PLR0913, N802
-        self,
-        pathExpression: str,  # noqa: N803
-        value: _DynamicStructReader,
-        lookupMode: _DynamicEnum,  # noqa: N803
-        completeWhen: _DynamicEnum,  # noqa: N803, ARG002
-        client: bytes,  # noqa: ARG002
-        _context: _CallContext,
-        **kwargs,  # noqa: ARG002
-    ) -> list[_DynamicStructBuilder]:
+    @capnp_method(SESSION_SCHEMA_ID, 9)
+    async def _set_value_interface(self, call_input: DynamicStructBase) -> CapnpResult:
         """Capnp server method to set values.
 
         Args:
-            pathExpression: Path for which the value should be set.
-            value: Value to be set.
-            lookupMode: Defining whether a single path should be set
-                or potentially multiple ones specified by a wildcard path.
-            completeWhen: Capnp specific argument.
-            client: Capnp specific argument.
-            _context: Capnp specific argument.
-            **kwargs: Capnp specific arguments.
+            call_input: Arguments the server has been called with
 
         Returns:
-            List of acknowledged values.
+            Capnp result.
         """
-        value, extra_header = _capnp_value_to_python_value(value)
+        value, extra_header = _capnp_value_to_python_value(call_input.value)
         annotated_value = AnnotatedValue(
             value=value,
-            path=pathExpression,
+            path=call_input.pathExpression,
             extra_header=extra_header,
         )
 
         try:
-            if lookupMode == 0:  # direct lookup
+            if call_input.lookupMode == 0:  # direct lookup
                 responses = [
-                    await self._functionality.set(annotated_value),
+                    await self.set(annotated_value),
                 ]
             else:
-                responses = await self._functionality.set_with_expression(
+                responses = await self.set_with_expression(
                     annotated_value,
                 )
         except Exception as e:  # noqa: BLE001
-            return [build_capnp_error(e)]
+            return {"result": [build_capnp_error(e)]}
 
-        return [
+        result = [
             {
                 "ok": {
                     "value": value_from_python_types_dict(response),
@@ -421,34 +397,41 @@ class SessionInterface(CapnpServer):
             }
             for response in responses
         ]
+        return {"result": result}
 
-    async def subscribe(
-        self,
-        subscription: _DynamicStructReader,
-        _context: _CallContext,
-        **kwargs,  # noqa: ARG002
-    ) -> _DynamicStructBuilder:
+    @capnp_method(SESSION_SCHEMA_ID, 3)
+    async def _subscribe_interface(self, call_input: DynamicStructBase) -> CapnpResult:
         """Capnp server method to subscribe to nodes.
 
-        Do not override this method. Instead, override 'subscribe_logic'
-        of SessionFunctionality (or subclass).
-
         Args:
-            subscription: Capnp object containing information on
-                where to distribute updates to.
-            _context: Capnp specific argument.
-            **kwargs: Capnp specific arguments.
+            call_input: Arguments the server has been called with
 
         Returns:
-            Capnp acknowledgement.
+            Capnp result.
         """
         try:
             subscription = Subscription(
-                path=subscription.path,
-                streaming_handle=subscription.streamingHandle,
-                subscriber_id=subscription.subscriberId,
+                path=call_input.subscription.path,
+                streaming_handle=call_input.subscription.streamingHandle,
+                subscriber_id=call_input.subscription.subscriberId,
             )
-            await self._functionality.subscribe_logic(subscription)
+            await self.subscribe(subscription)
         except Exception as e:  # noqa: BLE001
-            return build_capnp_error(e)
-        return {"ok": {}}
+            return {"result": [build_capnp_error(e)]}
+        return {"result": {"ok": {}}}
+
+    async def start_pipe(  # type: ignore[override]
+        self,
+        context: zhinst.comms.CapnpContext | None = None,
+    ) -> MockSession:
+        """Create a local pipe to the server.
+
+        A pipe is a local single connection to the server.
+
+        Args:
+            context: context to use.
+        """
+        if context is None:
+            context = get_default_context()
+        client = await super().start_pipe(context)
+        return MockSession(self, client, context=context)

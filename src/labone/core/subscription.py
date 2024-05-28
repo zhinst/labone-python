@@ -1,6 +1,6 @@
 """This module contains the logic for the subscription mechanism.
 
-Subscriptions are implemented through the capnp stream mechanism. This handles
+Subscriptions are implemented through the capnp stream mechanism. It handles
 all the communication stuff, e.g. back pressure and flow control. The only thing
 the client needs to provide is a `SessionClient.StreamingHandle.Server`
 implementation. The `sendValues()` method of this class will be called by the
@@ -23,16 +23,14 @@ import asyncio
 import logging
 import typing as t
 import weakref
-from abc import ABC, abstractmethod
 
-import capnp
+import zhinst.comms
 
 from labone.core import errors
 from labone.core.value import AnnotatedValue
 
 if t.TYPE_CHECKING:
-    from labone.core.helper import CapnpCapability, LabOneNodePath
-    from labone.core.reflection.server import ReflectionServer
+    from labone.core.helper import LabOneNodePath
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +86,14 @@ class DataQueue(asyncio.Queue):
         self,
         *,
         path: LabOneNodePath,
-        register_function: t.Callable[[weakref.ReferenceType[DataQueue]], None],
+        handle: StreamingHandle,
     ) -> None:
         super().__init__()
         self._path = path
         self._connection_state = _ConnectionState()
-        self._register_function = register_function
+        self._handle = handle
 
-        register_function(weakref.ref(self))
+        handle.register_data_queue(weakref.ref(self))
 
     def __repr__(self) -> str:
         return str(
@@ -145,7 +143,7 @@ class DataQueue(asyncio.Queue):
         new_queue_type = queue_type or DataQueue
         return new_queue_type(
             path=self._path,
-            register_function=self._register_function,
+            handle=self._handle,
         )
 
     def disconnect(self) -> None:
@@ -317,16 +315,11 @@ class DistinctConsecutiveDataQueue(DataQueue):
     will accept new values that have a different value than the last value.
     """
 
-    def __init__(
-        self,
-        *,
-        path: LabOneNodePath,
-        register_function: t.Callable[[weakref.ReferenceType[DataQueue]], None],
-    ) -> None:
+    def __init__(self, *, path: LabOneNodePath, handle: StreamingHandle) -> None:
         DataQueue.__init__(
             self,
             path=path,
-            register_function=register_function,
+            handle=handle,
         )
         self._last_value = AnnotatedValue(value=None, path="unkown")
 
@@ -386,34 +379,28 @@ class DistinctConsecutiveDataQueue(DataQueue):
         )
 
 
-class StreamingHandle(ABC):
-    """Streaming Handle server.
-
-    This class is passed to the kernel when a subscription is requested.
-    Every update event to the subscribed node will result in the kernel
-    calling the sendValues method.
-
-    Warning:
-        This function is owned by capnp and should not be called or referenced
-        by the user.
-
-    The StreamingHandle holds only a weak reference to the data queue to which
-    the values will be added. This is done to avoid the subscription to stay
-    alive even if no one hold a reference to the data queue.
+class StreamingHandle:
+    """Streaming Handle server implementation.
 
     Args:
         data_queue: Weak reference to the data queue to which the values
             will be added.
     """
 
-    @abstractmethod
     def __init__(
         self,
         *,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-    ) -> None: ...
+    ) -> None:
+        self._data_queues = []  # type: ignore[var-annotated]
 
-    @abstractmethod
+        if parser_callback is None:
+
+            def parser_callback(x: AnnotatedValue) -> AnnotatedValue:
+                return x
+
+        self._parser_callback = parser_callback
+
     def register_data_queue(
         self,
         data_queue: weakref.ReferenceType[QueueProtocol],
@@ -424,13 +411,110 @@ class StreamingHandle(ABC):
             data_queue: Weak reference to the data queue to which the values
                 will be added.
         """
-        ...
+        self._data_queues.append(data_queue)
 
-    @abstractmethod
-    async def sendValues(  # noqa: N802 (function name is enforced through the schema)
+    def _add_to_data_queue(
         self,
-        values: CapnpCapability,
-        **_,
+        data_queue: QueueProtocol | None,
+        value: AnnotatedValue,
+    ) -> bool:
+        """Add a value to the data queue.
+
+        The value is added to the queue non blocking, meaning that if the queue
+        is full, an error is raised.
+
+        Args:
+            data_queue: The data queue to which the value will be added.
+            value: The value to add to the data queue.
+
+        Returns:
+            True if the value was added to the data queue, False otherwise.
+
+        Raises:
+            StreamingError: If the data queue is full or disconnected.
+            AttributeError: If the data queue has been garbage collected.
+        """
+        if data_queue is None:
+            # The server holds only a weak reference to the data queue.
+            # If the data queue has been garbage collected, the weak reference
+            # will be None.
+            return False
+        try:
+            data_queue.put_nowait(value)
+        except errors.StreamingError:
+            logger.debug(
+                "Data queue %s has disconnected. Removing from list of queues.",
+                hex(id(data_queue)),
+            )
+            return False
+        except asyncio.QueueFull:
+            logger.warning(
+                "Data queue %s is full. No more data will be pushed to the queue.",
+                hex(id(data_queue)),
+            )
+            data_queue.disconnect()  # type: ignore[union-attr] # supposed to throw
+            return False
+        return True
+
+    def distribute_to_data_queues(self, value: AnnotatedValue) -> None:
+        """Add a value to all data queues.
+
+        Distribute to all data queues and remove the ones that are not
+        connected anymore.
+
+        Args:
+            value: The value to add to the data queue.
+        """
+        self._data_queues = [
+            data_queue
+            for data_queue in self._data_queues
+            if self._add_to_data_queue(data_queue(), value)
+        ]
+
+    def _distribute_to_data_queues(
+        self,
+        value: zhinst.comms.DynamicStructBase,
+    ) -> None:
+        """Add a value to all data queues.
+
+        The value is added to the queue non blocking, meaning that if the queue
+        is full, an error is raised.
+
+        Args:
+            value: The value to add to the data queue.
+
+        Raises:
+            capnp.KjException: If no data queues are registered any more and
+                the subscription should be removed.
+        """
+        try:
+            parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
+        except errors.LabOneCoreError as err:  # pragma: no cover
+            logger.exception(err.args[0])
+            raise
+        except ValueError as err:  # pragma: no cover
+            self._data_queues = [
+                data_queue().disconnect()  # type: ignore[union-attr] # supposed to throw
+                for data_queue in self._data_queues
+                if data_queue() is not None
+            ]
+            logger.error(  # noqa: TRY400
+                "Disconnecting subscription. Could not parse value.  Error: %s",
+                err.args[0],
+            )
+            raise
+        self.distribute_to_data_queues(parsed_value)
+
+        if not self._data_queues:
+            msg = "No data queues are registered anymore. Disconnecting subscription."
+            raise errors.StreamingError(msg)
+
+    async def capnp_callback(
+        self,
+        interface: int,  # noqa: ARG002
+        method_index: int,  # noqa: ARG002
+        call_input: zhinst.comms.DynamicStructBase,
+        fulfiller: zhinst.comms.Fulfiller,
     ) -> None:
         """Capnp Interface callback.
 
@@ -438,181 +522,17 @@ class StreamingHandle(ABC):
         event for the subscribed node is received.
 
         Args:
-            values: List of update events for the subscribed node.
+        interface: The interface of the capnp schema.
+        method_index: The method index of the capnp schema.
+        call_input: The input data of the capnp schema.
+        fulfiller: The fulfiller to fulfill the promise.
 
         Raises:
             capnp.KjException: If no data queues are registered any more and
                 the subscription should be removed.
         """
-        ...
-
-
-def streaming_handle_factory(
-    reflection_server: ReflectionServer,
-) -> type[StreamingHandle]:
-    """Factory for the StreamingHandle class.
-
-    The StreamingHandle class is a capnp server implementation. It is passed
-    to the server when a subscription is requested. Every update event to the
-    subscription will result in the server calling the sendValues method.
-
-    Since due to the dynamic reflection mechanism (loading capnp schema at
-    runtime) used, the StreamingHandle class can not be defined statically.
-
-    Args:
-        reflection_server: The reflection server that is used for the session.
-
-    Returns:
-        The StreamingHandle class, matching the schema of the reflection server.
-    """
-
-    class StreamingHandleImpl(
-        StreamingHandle,
-        reflection_server.StreamingHandle.Server,  # type: ignore[name-defined]
-    ):
-        """Streaming Handle server implementation.
-
-        Args:
-            data_queue: Weak reference to the data queue to which the values
-                will be added.
-        """
-
-        def __init__(
-            self,
-            *,
-            parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
-        ) -> None:
-            self._data_queues = []  # type: ignore[var-annotated]
-
-            if parser_callback is None:
-
-                def parser_callback(x: AnnotatedValue) -> AnnotatedValue:
-                    return x
-
-            self._parser_callback = parser_callback
-
-        def register_data_queue(
-            self,
-            data_queue: weakref.ReferenceType[QueueProtocol],
-        ) -> None:
-            """Register a new data queue.
-
-            Args:
-                data_queue: Weak reference to the data queue to which the values
-                    will be added.
-            """
-            self._data_queues.append(data_queue)
-
-        def _add_to_data_queue(
-            self,
-            data_queue: QueueProtocol | None,
-            value: AnnotatedValue,
-        ) -> bool:
-            """Add a value to the data queue.
-
-            The value is added to the queue non blocking, meaning that if the queue
-            is full, an error is raised.
-
-            Args:
-                data_queue: The data queue to which the value will be added.
-                value: The value to add to the data queue.
-
-            Returns:
-                True if the value was added to the data queue, False otherwise.
-
-            Raises:
-                StreamingError: If the data queue is full or disconnected.
-                AttributeError: If the data queue has been garbage collected.
-            """
-            if data_queue is None:
-                # The server holds only a weak reference to the data queue.
-                # If the data queue has been garbage collected, the weak reference
-                # will be None.
-                return False
-            try:
-                data_queue.put_nowait(value)
-            except errors.StreamingError:
-                logger.debug(
-                    "Data queue %s has disconnected. Removing from list of queues.",
-                    hex(id(data_queue)),
-                )
-                return False
-            except asyncio.QueueFull:
-                logger.warning(
-                    "Data queue %s is full. No more data will be pushed to the queue.",
-                    hex(id(data_queue)),
-                )
-                data_queue.disconnect()  # type: ignore[union-attr] # supposed to throw
-                return False
-            return True
-
-        def _distribute_to_data_queues(
-            self,
-            value: CapnpCapability,
-        ) -> None:
-            """Add a value to all data queues.
-
-            The value is added to the queue non blocking, meaning that if the queue
-            is full, an error is raised.
-
-            Args:
-                value: The value to add to the data queue.
-
-            Raises:
-                capnp.KjException: If no data queues are registered any more and
-                    the subscription should be removed.
-            """
-            try:
-                parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
-            except errors.LabOneCoreError as err:  # pragma: no cover
-                logger.exception(err.args[0])
-            except ValueError as err:  # pragma: no cover
-                self._data_queues = [
-                    data_queue().disconnect()  # type: ignore[union-attr] # supposed to throw
-                    for data_queue in self._data_queues
-                    if data_queue() is not None
-                ]
-                logger.error(  # noqa: TRY400
-                    "Disconnecting subscription. Could not parse value.  Error: %s",
-                    err.args[0],
-                )
-                raise
-
-            # distribute to all data queues and remove the ones that are not
-            # connected anymore.
-            self._data_queues = [
-                data_queue
-                for data_queue in self._data_queues
-                if self._add_to_data_queue(data_queue(), parsed_value)
-            ]
-            if not self._data_queues:
-                # TODO(tobiasa): The kernel expects a KjException of type # noqa: FIX002
-                # DISCONNECTED for a clean removal of the subscription. However,
-                # pycapnp does currently not support this.
-                # https://github.com/capnproto/pycapnp/issues/324
-                msg = "DISCONNECTED"
-                raise capnp.KjException(
-                    type=capnp.KjException.Type.DISCONNECTED,
-                    message=msg,
-                )
-
-        async def sendValues(  # noqa: N802 (function name is enforced through the schema)
-            self,
-            values: CapnpCapability,
-            **_,
-        ) -> None:
-            """Capnp Interface callback.
-
-            This function is called by the kernel (through RPC) when an update
-            event for the subscribed node is received.
-
-            Args:
-                values: List of update events for the subscribed node.
-
-            Raises:
-                capnp.KjException: If no data queues are registered any more and
-                    the subscription should be removed.
-            """
-            list(map(self._distribute_to_data_queues, values))
-
-    return StreamingHandleImpl
+        try:
+            list(map(self._distribute_to_data_queues, call_input.values))
+            fulfiller.fulfill()
+        except Exception as err:  # noqa: BLE001
+            fulfiller.reject(zhinst.comms.Fulfiller.DISCONNECTED, err.args[0])

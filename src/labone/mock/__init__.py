@@ -7,19 +7,14 @@ typical desired behavior. This way a custom implementation does not need to star
 from scratch.
 
 Example:
-    >>> mock_session = await spawn_hpk_mock(
-            AutomaticSessionFunctionality(paths_to_info)
-        )
-
+    >>> mock_session = await AutomaticLabOneServer.start_pipe(paths_to_info)
     >>> queue = await session.subscribe("/a/b/c")
     >>> print(await session.set(AnnotatedValue(path="/a/b/c", value=123, timestamp=0)))
     >>> print(await session.get("/a/b/t"))
 """
 
-from labone.mock.automatic_session_functionality import AutomaticSessionFunctionality
-from labone.mock.entry_point import spawn_hpk_mock
+from labone.mock.automatic_server import AutomaticLabOneServer
 
 __all__ = [
-    "spawn_hpk_mock",
-    "AutomaticSessionFunctionality",
+    "AutomaticLabOneServer",
 ]

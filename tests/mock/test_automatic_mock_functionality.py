@@ -1,4 +1,4 @@
-"""Unit Tests for the AutomaticSessionFunctionality."""
+"""Unit Tests for the AutomaticLabOneServer."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from labone.core.errors import LabOneCoreError
 if TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
 from labone.core.value import AnnotatedValue, Value
-from labone.mock import AutomaticSessionFunctionality
+from labone.mock import AutomaticLabOneServer
 
 
 async def get_functionality_with_state(state: dict[LabOneNodePath, Value]):
-    functionality = AutomaticSessionFunctionality({path: {} for path in state})
+    functionality = AutomaticLabOneServer({path: {} for path in state})
     for path, value in state.items():
         await functionality.set(AnnotatedValue(value=value, path=path))
     return functionality
@@ -24,18 +24,18 @@ async def get_functionality_with_state(state: dict[LabOneNodePath, Value]):
 
 @pytest.mark.asyncio()
 async def test_node_info_default_readable():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.get("/a/b")
 
 
 @pytest.mark.asyncio()
 async def test_node_info_default_writable():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.set(AnnotatedValue(path="/a/b", value=1))
 
 
 async def check_state_agrees_with(
-    functionality: AutomaticSessionFunctionality,
+    functionality: AutomaticLabOneServer,
     state: dict[LabOneNodePath, Value],
 ) -> bool:
     for path, value in state.items():
@@ -46,21 +46,21 @@ async def check_state_agrees_with(
 
 @pytest.mark.asyncio()
 async def test_remembers_state():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.set(AnnotatedValue(value=123, path="/a/b"))
     assert (await functionality.get("/a/b")).value == 123
 
 
 @pytest.mark.asyncio()
 async def test_relavtive_path():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.set(AnnotatedValue(value=123, path="b"))
     assert (await functionality.get("b")).value == 123
 
 
 @pytest.mark.asyncio()
 async def test_state_overwritable():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.set(AnnotatedValue(value=123, path="/a/b"))
     await functionality.set(AnnotatedValue(value=456, path="/a/b"))
     assert (await functionality.get("/a/b")).value == 456
@@ -68,7 +68,7 @@ async def test_state_overwritable():
 
 @pytest.mark.asyncio()
 async def test_seperate_state_per_path():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}, "/a/c": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}, "/a/c": {}})
     await functionality.set(AnnotatedValue(value=123, path="/a/b"))
     await functionality.set(AnnotatedValue(value=456, path="/a/c"))
     assert (await functionality.get("/a/b")).value == 123
@@ -77,21 +77,21 @@ async def test_seperate_state_per_path():
 
 @pytest.mark.asyncio()
 async def test_cannot_get_outside_of_tree_structure():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     with pytest.raises(Exception):  # noqa: B017
         await functionality.get("/a/c")
 
 
 @pytest.mark.asyncio()
 async def test_cannot_set_outside_of_tree_structure():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     with pytest.raises(Exception):  # noqa: B017
         await functionality.set(AnnotatedValue(value=123, path="/a/c"))
 
 
 @pytest.mark.asyncio()
 async def test_list_nodes_answered_by_tree_structure():
-    functionality = AutomaticSessionFunctionality(
+    functionality = AutomaticLabOneServer(
         {"/x": {}, "/x/y": {}, "/v/w/q/a": {}},
     )
     assert set(await functionality.list_nodes("*")) == {"/x", "/x/y", "/v/w/q/a"}
@@ -124,7 +124,7 @@ async def test_list_nodes_answered_by_tree_structure():
 )
 @pytest.mark.asyncio()
 async def test_list_nodes_info(path_to_info, path, expected):
-    functionality = AutomaticSessionFunctionality(path_to_info)
+    functionality = AutomaticLabOneServer(path_to_info)
     assert (await functionality.list_nodes_info(path)).keys() == expected.keys()
 
 
@@ -150,7 +150,7 @@ async def test_list_nodes_info(path_to_info, path, expected):
 )
 @pytest.mark.asyncio()
 async def test_consistency_list_nodes_vs_list_nodes_info(path_to_info, path):
-    functionality = AutomaticSessionFunctionality(path_to_info)
+    functionality = AutomaticLabOneServer(path_to_info)
 
     assert set((await functionality.list_nodes_info(path)).keys()) == set(
         await functionality.list_nodes(path),
@@ -234,14 +234,14 @@ async def test_set_with_expression(expression, value, expected_new_state):
 )
 @pytest.mark.asyncio()
 async def test_handling_of_multiple_data_types(value: Value):
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     await functionality.set(AnnotatedValue(value=value, path="/a/b"))
     assert (await functionality.get("/a/b")).value == value
 
 
 @pytest.mark.asyncio()
 async def test_handling_of_numpy_array():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     value = np.array([1, 2, 3])
     await functionality.set(AnnotatedValue(value=value, path="/a/b"))
     assert np.all((await functionality.get("/a/b")).value == value)
@@ -249,7 +249,7 @@ async def test_handling_of_numpy_array():
 
 @pytest.mark.asyncio()
 async def test_timestamps_are_increasing():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
 
     # calling set 10 times to ensure higher probability for wrong order,
     # if timestamps are not increasing
@@ -270,13 +270,13 @@ async def test_timestamps_are_increasing():
 
 @pytest.mark.asyncio()
 async def test_cannot_set_readonly_node():
-    functionality = AutomaticSessionFunctionality({"/a/b": {"Properties": "Read"}})
+    functionality = AutomaticLabOneServer({"/a/b": {"Properties": "Read"}})
     with pytest.raises(LabOneCoreError):
         await functionality.set(AnnotatedValue(value=1, path="/a/b"))
 
 
 @pytest.mark.asyncio()
 async def test_error_when_set_with_expression_no_matches():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
+    functionality = AutomaticLabOneServer({"/a/b": {}})
     with pytest.raises(LabOneCoreError):
         await functionality.set_with_expression(AnnotatedValue(value=1, path="/b/*"))

@@ -43,7 +43,7 @@ from labone.core.value import (
 )
 from labone.mock.errors import LabOneMockError
 from labone.node_info import NodeInfo
-from labone.server.session import SessionFunctionality, Subscription
+from labone.server.session import LabOneServerBase, Subscription
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath
@@ -59,7 +59,7 @@ class PathData:
     streaming_handles: list[Subscription]
 
 
-class AutomaticSessionFunctionality(SessionFunctionality):
+class AutomaticLabOneServer(LabOneServerBase):
     """Predefined behaviour for HPK mock.
 
     Args:
@@ -70,6 +70,7 @@ class AutomaticSessionFunctionality(SessionFunctionality):
         self,
         paths_to_info: dict[LabOneNodePath, NodeInfoType],
     ) -> None:
+        super().__init__()
         # storing state and tree structure, info and subscriptions
         # set all existing paths to 0.
         common_prefix_raw = (
@@ -281,8 +282,8 @@ class AutomaticSessionFunctionality(SessionFunctionality):
             raise LabOneCoreError(msg)
         return result
 
-    async def subscribe_logic(self, subscription: Subscription) -> None:
-        """Predefined behaviour for subscribe_logic.
+    async def subscribe(self, subscription: Subscription) -> None:
+        """Predefined behaviour for subscribe.
 
         Stores the subscription. Whenever an update event happens
         they are distributed to all registered handles,

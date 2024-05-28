@@ -22,7 +22,11 @@ from typing import Union
 import numpy as np
 
 from labone.core.errors import LabOneCoreError, SHFHeaderVersionNotSupportedError
-from labone.core.helper import CapnpCapability, VectorElementType, VectorValueType
+from labone.core.helper import VectorElementType, VectorValueType
+
+if t.TYPE_CHECKING:
+    from zhinst.comms import DynamicStructBase
+
 
 logger = logging.getLogger(__name__)
 
@@ -572,7 +576,7 @@ def _deserialize_shf_demodulator_vector(
     return SHFDemodSample(data_x, data_y), extra_header
 
 
-def get_header_length(vector_data: CapnpCapability) -> int:
+def get_header_length(vector_data: DynamicStructBase) -> int:
     """Get the length of the extra header.
 
     The 16 least significant bits of extra_header_info contain the length of
@@ -589,7 +593,7 @@ def get_header_length(vector_data: CapnpCapability) -> int:
 
 
 def parse_shf_vector_data_struct(
-    vector_data: CapnpCapability,
+    vector_data: DynamicStructBase,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse the SHF vector data struct.
 
@@ -640,10 +644,10 @@ def encode_shf_vector_data_struct(
     *,
     data: np.ndarray | SHFDemodSample,
     extra_header: ExtraHeader,
-) -> CapnpCapability:
+) -> dict[str, t.Any]:
     """Encode the SHF vector data struct.
 
-    Build a capnp struct (in form of a dictionary) from data and
+    Build a struct (in form of a dictionary) from data and
     extra header to send.
 
     Args:
@@ -651,7 +655,7 @@ def encode_shf_vector_data_struct(
         extra_header: The extra header.
 
     Returns:
-        The capnp struct to send.
+        The struct to send.
     """
     if isinstance(extra_header, ShfScopeVectorExtraHeader):
         if not isinstance(data, np.ndarray):

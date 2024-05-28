@@ -1,5 +1,9 @@
 # Labone Python API Changelog
 
+## Version 2.0.0 
+
+* Switch to the custom capnp backend `zhinst.comms`. This fixes the stability issues.
+
 ## Version 1.1.0 
 
 * Introduce `labone.server` which allows spawning capnp servers based on the 

@@ -5,7 +5,7 @@ It can be a device kernel that provides access to the device nodes but it
 can also be a kernel that provides additional functionality, e.g. the
 Data Server (ZI) kernel.
 
-Every Kernel provides the same capnp interface and can therefore be handled
+Every Kernel provides the same interface and can therefore be handled
 in the same way. The only difference is the set of nodes that are available
 on the kernel.
 
@@ -16,45 +16,43 @@ to the same kernel.
 
 from __future__ import annotations
 
-import typing as t
+from dataclasses import dataclass
 
-import capnp
+import zhinst.comms
+from typing_extensions import TypeAlias
 
-from labone.core.connection_layer import (
-    KernelInfo,
-    ServerInfo,
-    create_session_client_stream,
-)
-from labone.core.errors import LabOneCoreError, UnavailableError
-from labone.core.helper import (
-    ensure_capnp_event_loop,
-)
-from labone.core.reflection.server import ReflectionServer
+from labone.core import hpk_schema
+from labone.core.errors import async_translate_comms_error
+from labone.core.helper import ZIContext, get_default_context
 from labone.core.session import Session
 
-if t.TYPE_CHECKING:
-    from labone.core.errors import (  # noqa: F401
-        BadRequestError,
-        InternalError,
-    )
+KernelInfo: TypeAlias = zhinst.comms.DestinationParams
+
+
+@dataclass(frozen=True)
+class ServerInfo:
+    """Information about a server."""
+
+    host: str
+    port: int
 
 
 class KernelSession(Session):
     """Session to a LabOne kernel.
 
     Representation of a single session to a LabOne kernel. This class
-    encapsulates the capnp interaction and exposes a Python native API.
+    encapsulates the labone interaction and exposes a Python native API.
     All functions are exposed as they are implemented in the kernel
-    interface and are directly forwarded to the kernel through capnp.
+    interface and are directly forwarded to the kernel.
 
     Each function implements the required error handling both for the
-    capnp communication and the server errors. This means unless an Exception
+    socket communication and the server errors. This means unless an Exception
     is raised the call was successful.
 
     The KernelSession class is instantiated through the staticmethod
     `create()`.
     This is due to the fact that the instantiation is done asynchronously.
-    To call the constructor directly an already existing capnp io stream
+    To call the constructor directly an already existing connection
     must be provided.
 
     !!! note
@@ -63,7 +61,7 @@ class KernelSession(Session):
         `create` instead of the `__init__` method.
 
     ```python
-    kernel_info = ZIKernelInfo()
+    kernel_info = ZIContext.zi_connection()
     server_info = ServerInfo(host="localhost", port=8004)
     kernel_session = await KernelSession(
             kernel_info = kernel_info,
@@ -72,29 +70,29 @@ class KernelSession(Session):
     ```
 
     Args:
-        reflection_server: The reflection server that is used for the session.
+        core_session: The underlying zhinst.comms session.
+        context: The context in which the session is running.
         kernel_info: Information about the target kernel.
         server_info: Information about the target data server.
     """
 
     def __init__(
         self,
-        reflection_server: ReflectionServer,
-        kernel_info: KernelInfo,
+        core_session: zhinst.comms.DynamicClient,
+        *,
+        context: ZIContext,
         server_info: ServerInfo,
     ) -> None:
-        super().__init__(
-            reflection_server.session,  # type: ignore[attr-defined]
-            reflection_server=reflection_server,
-        )
-        self._kernel_info = kernel_info
+        super().__init__(core_session, context=context)
         self._server_info = server_info
 
     @staticmethod
+    @async_translate_comms_error
     async def create(
         *,
         kernel_info: KernelInfo,
         server_info: ServerInfo,
+        context: ZIContext | None = None,
     ) -> KernelSession:
         """Create a new session to a LabOne kernel.
 
@@ -102,15 +100,12 @@ class KernelSession(Session):
         is required, instead of a simple constructor (since a constructor can
         not be asynchronous).
 
-        !!! warning
-
-            The initial socket creation and setup (handshake, ...) is
-            currently not done asynchronously! The reason is that there is not
-            easy way of doing this with the current capnp implementation.
-
         Args:
             kernel_info: Information about the target kernel.
             server_info: Information about the target data server.
+            context: Context in which the session should run. If not provided
+                the default context will be used which is in most cases the
+                desired behavior.
 
         Returns:
             A new session to the specified kernel.
@@ -123,36 +118,19 @@ class KernelSession(Session):
                 error occurred.
             LabOneCoreError: If another error happens during the session creation.
         """
-        sock, kernel_info_extended, server_info_extended = create_session_client_stream(
-            kernel_info=kernel_info,
+        if context is None:
+            context = get_default_context()
+        core_session = await context.connect_labone(
+            server_info.host,
+            server_info.port,
+            kernel_info,
+            schema=hpk_schema.get_schema_loader(),
+        )
+        return KernelSession(
+            core_session,
+            context=context,
             server_info=server_info,
         )
-        await ensure_capnp_event_loop()
-        connection = await capnp.AsyncIoStream.create_connection(sock=sock)
-        try:
-            reflection_server = await ReflectionServer.create_from_connection(
-                connection,
-            )
-        except LabOneCoreError as e:
-            msg = str(
-                f"Unable to connect to the kernel at {kernel_info.name}"
-                f"{kernel_info.query} ({server_info.host}:"
-                f"{server_info.port}). (extended information: {e})",
-            )
-            raise UnavailableError(msg) from e
-
-        session = KernelSession(
-            reflection_server=reflection_server,
-            kernel_info=kernel_info_extended,
-            server_info=server_info_extended,
-        )
-        await session.ensure_compatibility()
-        return session
-
-    @property
-    def kernel_info(self) -> KernelInfo:
-        """Information about the kernel."""
-        return self._kernel_info
 
     @property
     def server_info(self) -> ServerInfo:

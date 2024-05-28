@@ -4,58 +4,38 @@ This module bypasses the circular dependency between the modules
 within the core.
 """
 
-import asyncio
+from __future__ import annotations
+
 import logging
 from enum import IntEnum
-from functools import partial
 
-import asyncio_atexit  # type: ignore [import]
-import capnp
 import numpy as np
+import zhinst.comms
 from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
 
 LabOneNodePath: TypeAlias = str
-CapnpCapability: TypeAlias = capnp.lib.capnp._DynamicCapabilityClient  # noqa: SLF001
-CapnpStructReader: TypeAlias = capnp.lib.capnp._DynamicStructReader  # noqa: SLF001
-CapnpStructBuilder: TypeAlias = capnp.lib.capnp._DynamicStructBuilder  # noqa: SLF001
 
 
-async def ensure_capnp_event_loop() -> None:
-    """Ensure that the capnp event loop is running.
+ZIContext: TypeAlias = zhinst.comms.CapnpContext
+_DEFAULT_CONTEXT: ZIContext | None = None
 
-    Pycapnp requires the capnp event loop to be running for every async
-    function call to the capnp library. This function ensures that the capnp
-    event loop is running. The event loop is intended to be managed through a
-    context manager. This function fakes the context by using asyncio_atexit
-    to close the context when the asyncio event loop is closed. This ensures
-    that the capnp event loop will be closed before the asyncio event loop.
+
+def get_default_context() -> ZIContext:
+    """Get the default context.
+
+    The default context is a global context that is used by default if no
+    context is provided. It is typically the desired behavior to have a single
+    context and there are only rare cases where multiple contexts are needed.
+
+    Returns:
+        The default context.
     """
-    # The kj event loop is attached to the current asyncio event loop.
-    # Pycapnp does this by adding an attribute _kj_loop to the asyncio
-    # event loop. This is done in the capnp.kj_loop() context manager.
-    # The context manager should only be entered once. To avoid entering
-    # the context manager multiple times we check if the attribute is
-    # already set.
-    if not hasattr(asyncio.get_running_loop(), "_kj_loop"):
-        loop = capnp.kj_loop()
-        logger.debug("kj event loop attached to asyncio event loop %s", id(loop))
-        await loop.__aenter__()
-        asyncio_atexit.register(partial(loop.__aexit__, None, None, None))
-
-
-def request_field_type_description(
-    request: capnp.lib.capnp._Request,
-    field: str,
-) -> str:
-    """Get given `capnp` request field type description.
-
-    Args:
-        request: Capnp request.
-        field: Field name of the request.
-    """
-    return request.schema.fields[field].proto.slot.type.which()
+    global _DEFAULT_CONTEXT  # noqa: PLW0603
+    if _DEFAULT_CONTEXT is None:
+        _DEFAULT_CONTEXT = zhinst.comms.CapnpContext()
+    return _DEFAULT_CONTEXT
 
 
 class VectorValueType(IntEnum):
@@ -76,11 +56,11 @@ class VectorValueType(IntEnum):
 
 
 class VectorElementType(IntEnum):
-    """Type of the elements in a vector supported by the capnp interface.
+    """Type of the elements in a vector supported by the labone interface.
 
     Since the vector data is transmitted as a byte array the type of the
     elements in the vector must be specified. This enum contains all supported
-    types by the capnp interface.
+    types by the labone interface.
     """
 
     UINT8 = 0
@@ -97,7 +77,7 @@ class VectorElementType(IntEnum):
     def from_numpy_type(
         cls,
         numpy_type: np.dtype,
-    ) -> "VectorElementType":
+    ) -> VectorElementType:
         """Construct a VectorElementType from a numpy type.
 
         Args:
