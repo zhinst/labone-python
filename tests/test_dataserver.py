@@ -7,13 +7,12 @@ from labone.core import (
 )
 from labone.dataserver import DataServer
 from labone.errors import LabOneError
-from labone.mock import AutomaticSessionFunctionality, spawn_hpk_mock
+from labone.mock import AutomaticLabOneServer
 
 
 @pytest.mark.asyncio()
 async def test_create_ok():
-    mock_server = AutomaticSessionFunctionality({})
-    session = await spawn_hpk_mock(mock_server)
+    session = await AutomaticLabOneServer({}).start_pipe()
     dataserver = await DataServer.create_from_session(
         session=session,
         host="host",
@@ -24,8 +23,7 @@ async def test_create_ok():
 
 @pytest.mark.asyncio()
 async def test_create_ok_new_session():
-    mock_server = AutomaticSessionFunctionality({})
-    session = await spawn_hpk_mock(mock_server)
+    session = await AutomaticLabOneServer({}).start_pipe()
     with patch.object(
         KernelSession,
         "create",
@@ -52,8 +50,7 @@ async def test_create_raises():
 )
 @pytest.mark.asyncio()
 async def test_check_firmware_compatibility(status_nr):
-    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
-    session = await spawn_hpk_mock(mock_server)
+    session = await AutomaticLabOneServer({"/zi/devices": {}}).start_pipe()
     dataserver = await DataServer.create_from_session(
         session=session,
         host="host",
@@ -66,8 +63,7 @@ async def test_check_firmware_compatibility(status_nr):
 
 @pytest.mark.asyncio()
 async def test_check_firmware_compatibility_single_instrument():
-    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
-    session = await spawn_hpk_mock(mock_server)
+    session = await AutomaticLabOneServer({"/zi/devices": {}}).start_pipe()
     dataserver = await DataServer.create_from_session(
         session=session,
         host="host",
@@ -103,8 +99,7 @@ async def test_check_firmware_compatibility_raises(id_and_codes, contained_in_er
     for id_, code in id_and_codes:
         val += '"' + id_ + '":{"STATUSFLAGS":' + str(code) + "},"
     val = val[:-1] + "}"
-    mock_server = AutomaticSessionFunctionality({"/zi/devices": {}})
-    session = await spawn_hpk_mock(mock_server)
+    session = await AutomaticLabOneServer({"/zi/devices": {}}).start_pipe()
     dataserver = await DataServer.create_from_session(
         session=session,
         host="host",

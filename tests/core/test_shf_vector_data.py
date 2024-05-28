@@ -3,6 +3,7 @@ import struct
 import numpy as np
 import pytest
 
+from labone.core.helper import VectorElementType
 from labone.core.shf_vector_data import (
     SHFDemodSample,
     ShfDemodulatorVectorExtraHeader,
@@ -46,6 +47,20 @@ def test_get_header_length(header_bytes, expected_length):
     )
 
 
+class VectorData:
+    def __init__(
+        self,
+        valueType,  # noqa: N803
+        extraHeaderInfo=0,  # noqa: N803
+        data=None,
+        vectorElementType=VectorElementType.UINT8,  # noqa: N803
+    ):
+        self.valueType = valueType
+        self.extraHeaderInfo = extraHeaderInfo
+        self.data = [] if data is None else data
+        self.vectorElementType = vectorElementType
+
+
 @pytest.mark.parametrize(
     "value_type",
     [
@@ -54,10 +69,8 @@ def test_get_header_length(header_bytes, expected_length):
         VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA,
     ],
 )
-def test_missing_extra_header(value_type, reflection_server):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = value_type.value
-    input_vector.extraHeaderInfo = 0
+def test_missing_extra_header(value_type):
+    input_vector = VectorData(valueType=value_type.value, extraHeaderInfo=0)
     result = parse_shf_vector_data_struct(input_vector)
     assert result[1] is None
 
@@ -66,9 +79,8 @@ def _construct_extra_header_value(header_length, major_version, minor_version):
     return int(header_length / 4) | major_version << 21 | minor_version << 16
 
 
-def test_unsupported_vector_type(reflection_server):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = 80
+def test_unsupported_vector_type():
+    input_vector = VectorData(valueType=80)
     with pytest.raises(ValueError):
         parse_shf_vector_data_struct(input_vector)
 
@@ -81,15 +93,18 @@ def test_unsupported_vector_type(reflection_server):
         VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA,
     ],
 )
-def test_invalid_header_version(value_type, reflection_server):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = value_type.value
-    input_vector.extraHeaderInfo = _construct_extra_header_value(
-        header_length=8,
-        major_version=0,
-        minor_version=0,
+def test_invalid_header_version(
+    value_type,
+):
+    input_vector = VectorData(
+        valueType=value_type.value,
+        extraHeaderInfo=_construct_extra_header_value(
+            header_length=8,
+            major_version=0,
+            minor_version=0,
+        ),
+        data=b"\x00" * 16,
     )
-    input_vector.data = b"\x00" * 16
     with pytest.raises(Exception):  # noqa: B017
         parse_shf_vector_data_struct(input_vector)
 
@@ -98,21 +113,21 @@ def test_invalid_header_version(value_type, reflection_server):
 @pytest.mark.parametrize("scaling", [x * 0.25 for x in range(5)])
 @pytest.mark.parametrize("header_version", [1, 2])
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
-def test_shf_scope_vector(  # noqa: PLR0913
+def test_shf_scope_vector(
     vector_length,
     scaling,
     header_version,
     x,
     y,
-    reflection_server,
 ):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = VectorValueType.SHF_SCOPE_VECTOR_DATA.value
     header_length = 64
-    input_vector.extraHeaderInfo = _construct_extra_header_value(
-        header_length=header_length,
-        major_version=0,
-        minor_version=header_version,
+    input_vector = VectorData(
+        valueType=VectorValueType.SHF_SCOPE_VECTOR_DATA.value,
+        extraHeaderInfo=_construct_extra_header_value(
+            header_length=header_length,
+            major_version=0,
+            minor_version=header_version,
+        ),
     )
     # Manually set the scaling Factor
     header = b"\x00" * 16 + struct.pack("d", scaling) + b"\x00"
@@ -164,15 +179,15 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
     header_version,
     x,
     y,
-    reflection_server,
 ):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = VectorValueType.SHF_DEMODULATOR_VECTOR_DATA.value
     header_length = 64
-    input_vector.extraHeaderInfo = _construct_extra_header_value(
-        header_length=header_length,
-        major_version=1,
-        minor_version=header_version,
+    input_vector = VectorData(
+        valueType=VectorValueType.SHF_DEMODULATOR_VECTOR_DATA.value,
+        extraHeaderInfo=_construct_extra_header_value(
+            header_length=header_length,
+            major_version=1,
+            minor_version=header_version,
+        ),
     )
     # Manually set the scaling Factor
     header = (
@@ -216,15 +231,16 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize("header_version", [1])
 @pytest.mark.parametrize("x", range(0, 30, 7))
-def test_shf_result_logger_vector(vector_length, header_version, x, reflection_server):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA.value
-    input_vector.vectorElementType = 2  # uint32
+def test_shf_result_logger_vector(vector_length, header_version, x):
     header_length = 64
-    input_vector.extraHeaderInfo = _construct_extra_header_value(
-        header_length=header_length,
-        major_version=0,
-        minor_version=header_version,
+    input_vector = VectorData(
+        valueType=VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA.value,
+        vectorElementType=2,
+        extraHeaderInfo=_construct_extra_header_value(
+            header_length=header_length,
+            major_version=0,
+            minor_version=header_version,
+        ),
     )
     header = b"\x00" * header_length
     data = struct.pack("I", x) * vector_length
@@ -253,12 +269,13 @@ def test_shf_result_logger_vector(vector_length, header_version, x, reflection_s
 
 @pytest.mark.parametrize("vector_length", range(0, 200, 32))
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743), (3785687, 1285732)])
-def test_shf_waveform_logger_vector(vector_length, x, y, reflection_server):
-    input_vector = reflection_server.VectorData.new_message()
-    input_vector.valueType = VectorValueType.SHF_GENERATOR_WAVEFORM_VECTOR_DATA.value
-    input_vector.vectorElementType = 2  # uint32
-    input_vector.extraHeaderInfo = 0
-    input_vector.data = (struct.pack("I", x) + struct.pack("I", y)) * vector_length
+def test_shf_waveform_logger_vector(vector_length, x, y):
+    input_vector = VectorData(
+        valueType=VectorValueType.SHF_GENERATOR_WAVEFORM_VECTOR_DATA.value,
+        vectorElementType=2,  # uint32
+        extraHeaderInfo=0,
+        data=(struct.pack("I", x) + struct.pack("I", y)) * vector_length,
+    )
     output_vector, extra_header = parse_shf_vector_data_struct(input_vector)
     const_scaling = 1 / 131071.0  # constant scaling factor based on the encoding bits
     assert np.array_equal(

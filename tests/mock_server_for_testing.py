@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import typing as t
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from labone.core.session import NodeInfo, Session
-from labone.mock.automatic_session_functionality import AutomaticSessionFunctionality
-from labone.mock.entry_point import spawn_hpk_mock
+from labone.mock import AutomaticLabOneServer
 from labone.nodetree.entry_point import construct_nodetree
 
 if t.TYPE_CHECKING:
@@ -25,8 +24,7 @@ async def get_mocked_node(
 
     Use when testing calls to the server.
     """
-    functionality = AutomaticSessionFunctionality(nodes_to_info)
-    session_mock = await spawn_hpk_mock(functionality)
+    session_mock = await AutomaticLabOneServer(nodes_to_info).start_pipe()
     return (
         await construct_nodetree(
             session_mock,
@@ -48,9 +46,9 @@ async def get_unittest_mocked_node(
     mock server.
     """
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = (
-        nodes_to_info  # required for construction
-    )
+    session_mock.list_nodes_info = AsyncMock(return_value=nodes_to_info)
+    session_mock.get_with_expression = AsyncMock()
+
     return (
         await construct_nodetree(session_mock, hide_kernel_prefix=hide_kernel_prefix)
     ).root

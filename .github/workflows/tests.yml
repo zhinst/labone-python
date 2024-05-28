@@ -13,8 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - name: py38
-          python-version: 3.8
         - name: py39
           python-version: 3.9
         - name: py310
@@ -22,6 +20,8 @@ jobs:
         - name: py311
           python-version: "3.11"
           coverage: true
+        - name: py312
+          python-version: "3.12"
     steps:
     - uses: actions/checkout@v2
     - name: Setup Python ${{ matrix.python-version }}

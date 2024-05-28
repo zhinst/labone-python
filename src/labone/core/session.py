@@ -1,11 +1,11 @@
-"""Module for a session to a Zurich Instruments Session Capability.
+"""Module for the Zurich Instruments Session Capability.
 
 The Session capability provides access to the basic interactions with nodes
 and or properties of a server. Its used in multiple places with the software
 stack of Zurich Instruments. For example the Data Server kernel for a device
 provides a Session capability to access the nodes of the device.
 
-Every Session capability provides the same capnp interface and can therefore be
+Every Session capability provides the same interface and can therefore be
 handled in the same way. The only difference is the set of nodes/properties that
 are available.
 
@@ -24,37 +24,26 @@ from contextlib import asynccontextmanager
 from enum import IntFlag
 from typing import Literal
 
-import capnp
 from packaging import version
 from typing_extensions import NotRequired, TypeAlias, TypedDict
 
-from labone.core import errors, result
-from labone.core.helper import (
-    CapnpCapability,
-    LabOneNodePath,
-    request_field_type_description,
-)
-from labone.core.result import unwrap
-from labone.core.subscription import DataQueue, QueueProtocol, streaming_handle_factory
-from labone.core.value import AnnotatedValue
+from labone.core import errors
+from labone.core.errors import async_translate_comms_error, translate_comms_error
+from labone.core.subscription import DataQueue, QueueProtocol, StreamingHandle
+from labone.core.value import AnnotatedValue, value_from_python_types
 
 if t.TYPE_CHECKING:
-    from labone.core.errors import (  # noqa: F401
-        BadRequestError,
-        InternalError,
-        LabOneCoreError,
-        NotFoundError,
-        OverwhelmedError,
-        UnavailableError,
-        UnimplementedError,
-    )
-    from labone.core.reflection.server import ReflectionServer
+    import zhinst.comms
 
+    from labone.core.helper import (
+        LabOneNodePath,
+        ZIContext,
+    )
 
 T = t.TypeVar("T")
 
 # Control node for transactions. This node is only available for UHF and MF devices.
-TRANSACTION_NODE_PATH = "/ctrl/transaction/state"
+_TRANSACTION_NODE_PATH = "/ctrl/transaction/state"
 
 NodeType: TypeAlias = Literal[
     "Integer (64 bit)",
@@ -156,66 +145,24 @@ class ListNodesFlags(IntFlag):
     EXCLUDE_VECTORS = 1 << 24
 
 
-async def _send_and_wait_request(
-    request: capnp.lib.capnp._Request,
-) -> capnp.lib.capnp._Response:
-    """Send a request and wait for the response.
-
-    The main purpose of this function is to take care of the error handling
-    for the capnp communication. If an error occurs a LabOneCoreError is
-    raised.
-
-    Args:
-        request: Capnp request.
-
-    Returns:
-        Successful response.
-
-    Raises:
-        LabOneCoreError: If sending the message or receiving the response failed.
-        UnavailableError: If the server has not implemented the requested
-            method.
-    """
-    try:
-        return await request.send()
-    # TODO(markush): Raise more specific error types.  # noqa: TD003, FIX002
-    except capnp.lib.capnp.KjException as error:
-        if (
-            "Method not implemented" in error.description
-            or "object has no attribute" in error.description
-        ):
-            msg = str(
-                "The requested method is not implemented by the server. "
-                "This most likely that the LabOne version is outdated. "
-                "Please update the LabOne software to the latest version.",
-            )
-            raise errors.UnavailableError(msg) from None
-        msg = error.description
-        raise errors.LabOneCoreError(msg) from None
-    except Exception as error:  # noqa: BLE001
-        msg = str(error)
-        raise errors.LabOneCoreError(msg) from None
-
-
 class Session:
     """Generic Capnp session client.
 
     Representation of a single Session capability. This class
-    encapsulates the capnp interaction an exposes a python native api.
+    encapsulates the labone interaction an exposes a python native api.
     All function are exposed as they are implemented in the interface
-    of the capnp server and are directly forwarded.
+    of the labone server and are directly forwarded.
 
     Each function implements the required error handling both for the
-    capnp communication and the server errors. This means unless an Exception
+    socket communication and the server errors. This means unless an Exception
     is raised the call was successful.
 
     The Session already requires an existing connection this is due to the
-    fact that the instantiation is done asynchronously. In addition the underlying
-    reflection server is required to be able to create the capnp messages.
+    fact that the instantiation is done asynchronously.
 
     Args:
-        capnp_session: Capnp session capability.
-        reflection_server: Reflection server instance.
+        session: Active labone session.
+        context: Context the session runs in.
     """
 
     # The minimum capability version that is required by the labone api.
@@ -225,40 +172,46 @@ class Session:
 
     def __init__(
         self,
-        capnp_session: CapnpCapability,
+        session: zhinst.comms.DynamicClient,
         *,
-        reflection_server: ReflectionServer,
+        context: ZIContext,
     ):
-        self._reflection_server = reflection_server
-        self._session = capnp_session
-        # The reflection server might has enabled the automatic unwrapping
-        # of the result. To allow both cases we check if the capnp_session
-        # is wrapped and use the underlying capnp session instead.
-        if hasattr(capnp_session, "capnp_capability"):
-            self._session = capnp_session.capnp_capability
-        # The client_id is required by most capnp messages to identify the client
+        self._context = context
+        self._session = session
+
+        # The client_id is required by most messages to identify the client
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
 
-    async def ensure_compatibility(self) -> None:
+    def close(self) -> None:
+        """Close the session.
+
+        Release the underlying network resources and close the session. Since
+        python does not follow the RAII pattern, it is not guaranteed that the
+        destructor is called. This may causes a session to stay open even if the
+        object is not used anymore.
+        If needed, the close method should be called explicitly.
+        """
+        self._session.close()
+
+    async def _ensure_compatibility(
+        self,
+        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+    ) -> None:
         """Ensure the compatibility with the connected server.
 
-        Ensures that all function call will work as expected and all required
-        features are implemented within the server.
+        Takes a future for a `getSessionVersion` call and checks if the server
+        version is compatible with the LabOne API. If the server version is not
+        supported, an UnavailableError is raised.
 
-        Info:
-            This function is already called within the create method and does
-            not need to be called again.
+        Args:
+            future: Future for a `getSessionVersion` call.
 
         Raises:
-            UnavailableError: If the kernel is not compatible.
+            UnavailableError: If the server version is not supported.
         """
-        server_version = version.Version(
-            (
-                await _send_and_wait_request(self._session.getSessionVersion_request())
-            ).version,
-        )
+        server_version = version.Version((await future).version)
         if server_version < Session.MIN_CAPABILITY_VERSION:
             msg = (
                 f"The data server version is not supported by the LabOne API. "
@@ -274,19 +227,64 @@ class Session:
             )
             raise errors.UnavailableError(msg)
 
-    async def list_nodes(
+    @translate_comms_error
+    def ensure_compatibility(self) -> t.Awaitable[None]:
+        """Ensure the compatibility with the connected server.
+
+        Ensures that all function call will work as expected and all required
+        features are implemented within the server.
+
+        Warning:
+            Only the compatibility with the server is checked. The compatibility
+            with the device is not checked.
+
+        Info:
+            This function is already called within the create method and does
+            not need to be called again.
+
+        Raises:
+            UnavailableError: If the kernel is not compatible.
+        """
+        future = self._session.getSessionVersion()
+        return self._ensure_compatibility(future)
+
+    async def _list_nodes_postprocessing(
+        self,
+        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+    ) -> list[LabOneNodePath]:
+        """Postprocessing for the list nodes function.
+
+        Convert the response from the server to a list of node paths.
+
+        Args:
+            future: Future for a list nodes call.
+
+        Returns:
+            List of node paths.
+        """
+        response = await future
+        return list(response.paths)
+
+    @translate_comms_error
+    def list_nodes(
         self,
         path: LabOneNodePath = "",
         *,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
-    ) -> list[LabOneNodePath]:
+    ) -> t.Awaitable[list[LabOneNodePath]]:
         """List the nodes found at a given path.
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             path: A string representing the path where the nodes are to be listed.
                 Value is case insensitive.
 
-                Supports asterix (*) wildcards, except in the place of node path forward
+                Supports * wildcards, except in the place of node path forward
                 slashes. (default="")
             flags: The flags for modifying the returned nodes.
 
@@ -332,39 +330,54 @@ class Session:
             ...     flags=ListNodesFlags.RECURSIVE | ListNodesFlags.EXCLUDE_VECTORS
             ... )
         """
-        request = self._session.listNodes_request()
-        try:
-            request.pathExpression = path
-        except Exception:  # noqa: BLE001
-            msg = "`path` must be a string."
-            raise TypeError(msg)  # noqa: TRY200, B904
-        try:
-            request.flags = int(flags)
-        except capnp.KjException:
-            field_type = request_field_type_description(request, "flags")
-            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
-            raise ValueError(
-                msg,
-            ) from None
-        except (TypeError, ValueError):
-            msg = "`flags` must be an integer."
-            raise TypeError(msg) from None
-        response = await _send_and_wait_request(request)
-        return list(response.paths)
+        future = self._session.listNodes(
+            pathExpression=path,
+            flags=int(flags),
+            client=self._client_id.bytes,
+        )
+        return self._list_nodes_postprocessing(future)
 
-    async def list_nodes_info(
+    async def _list_nodes_info_postprocessing(
+        self,
+        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+    ) -> dict[LabOneNodePath, NodeInfo]:
+        """Postprocessing for the list nodes info function.
+
+        Convert the response from the server to a json dict.
+
+        Args:
+            future: Future for a list nodes call.
+
+        Returns:
+            A python dictionary of the list nodes info response.
+        """
+        response = await future
+        try:
+            return json.loads(response.nodeProps)
+        except RuntimeError as e:
+            msg = f"Error while listing nodes info for {response.paths}."
+            raise errors.LabOneCoreError(msg) from e
+
+    @translate_comms_error
+    def list_nodes_info(
         self,
         path: LabOneNodePath = "",
         *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
-    ) -> dict[LabOneNodePath, NodeInfo]:
+    ) -> t.Awaitable[dict[LabOneNodePath, NodeInfo]]:
         """List the nodes and their information found at a given path.
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             path: A string representing the path where the nodes are to be listed.
                 Value is case insensitive.
 
-                Supports asterix (*) wildcards, except in the place of node path
+                Supports * wildcards, except in the place of node path
                 forward slashes. (default="")
 
             flags: The flags for modifying the returned nodes.
@@ -430,32 +443,78 @@ class Session:
                 }
             }
         """
-        request = self._session.listNodesJson_request()
-        try:
-            request.pathExpression = path
-        except Exception:  # noqa: BLE001
-            msg = "`path` must be a string."
-            raise TypeError(msg) from None
-        try:
-            request.flags = int(flags)
-        except capnp.KjException:
-            field_type = request_field_type_description(request, "flags")
-            msg = f"`flags` value is out-of-bounds, it must be of type {field_type}."
-            raise ValueError(
-                msg,
-            ) from None
-        except (TypeError, ValueError):
-            msg = "`flags` must be an integer."
-            raise TypeError(msg) from None
-        response = await _send_and_wait_request(request)
-        return json.loads(response.nodeProps)
+        future = self._session.listNodesJson(
+            pathExpression=path,
+            flags=int(flags),
+            client=self._client_id.bytes,
+        )
+        return self._list_nodes_info_postprocessing(future)
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
+    async def _single_value_postprocessing(
+        self,
+        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        path: LabOneNodePath,
+    ) -> AnnotatedValue:
+        """Postprocessing for the get/set with expression functions.
+
+        Convert a single value response from the server to an annotated value.
+
+        Args:
+            future: Future for a get/set call.
+            path: LabOne node path.
+
+        Returns:
+            Annotated value of the node.
+        """
+        response = await future
+        try:
+            return AnnotatedValue.from_capnp(response.result[0])
+        except IndexError as e:
+            msg = f"No value returned for path {path}."
+            raise errors.LabOneCoreError(msg) from e
+        except RuntimeError as e:
+            msg = f"Error while processing value from {path}. {e}"
+            raise errors.LabOneCoreError(msg) from e
+
+    async def _multi_value_postprocessing(
+        self,
+        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        path: LabOneNodePath,
+    ) -> list[AnnotatedValue]:
+        """Postprocessing for the get/set with expression functions.
+
+        Convert a multiple value response from the server to a list of
+        annotated values.
+
+        Args:
+            future: Future for a get/set call.
+            path: LabOne node path.
+
+        Returns:
+            List of annotated value of the node.
+        """
+        response = await future
+        try:
+            return [
+                AnnotatedValue.from_capnp(raw_result) for raw_result in response.result
+            ]
+        except RuntimeError as e:
+            msg = f"Error while setting {path}."
+            raise errors.LabOneCoreError(msg) from e
+
+    @translate_comms_error
+    def set(self, value: AnnotatedValue) -> t.Awaitable[AnnotatedValue]:
         """Set the value of a node.
 
         ```python
         await session.set(AnnotatedValue(path="/zi/debug/level", value=2)
         ```
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             value: Value to be set. The annotated value must contain a
@@ -476,22 +535,19 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        capnp_value = value.to_capnp(reflection=self._reflection_server)
-        request = self._session.setValue_request()
-        request.pathExpression = capnp_value.metadata.path
-        request.value = capnp_value.value
-        request.lookupMode = (
-            self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
+        future = self._session.setValue(
+            pathExpression=value.path,
+            value=value_from_python_types(value.value, path=value.path),
+            lookupMode="directLookup",
+            client=self._client_id.bytes,
         )
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
-        try:
-            return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
-        except IndexError as e:
-            msg = f"No acknowledgement returned while setting {value.path}."
-            raise errors.LabOneCoreError(msg) from e
+        return self._single_value_postprocessing(future, value.path)
 
-    async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
+    @translate_comms_error
+    def set_with_expression(
+        self,
+        value: AnnotatedValue,
+    ) -> t.Awaitable[list[AnnotatedValue]]:
         """Set the value of all nodes matching the path expression.
 
         A path expression is a labone node path. The difference to a normal
@@ -508,6 +564,12 @@ class Session:
             )
         print(ack_values[0])
         ```
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             value: Value to be set. The annotated value must contain a
@@ -527,22 +589,19 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        capnp_value = value.to_capnp(reflection=self._reflection_server)
-        request = self._session.setValue_request()
-        request.pathExpression = capnp_value.metadata.path
-        request.value = capnp_value.value
-        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
-        return [
-            AnnotatedValue.from_capnp(result.unwrap(raw_result))
-            for raw_result in response.result
-        ]
+        future = self._session.setValue(
+            pathExpression=value.path,
+            value=value_from_python_types(value.value, path=value.path),
+            lookupMode="withExpansion",
+            client=self._client_id.bytes,
+        )
+        return self._multi_value_postprocessing(future, value.path)
 
-    async def get(
+    @translate_comms_error
+    def get(
         self,
         path: LabOneNodePath,
-    ) -> AnnotatedValue:
+    ) -> t.Awaitable[AnnotatedValue]:
         """Get the value of a node.
 
          The node can either be passed as an absolute path, starting with a leading
@@ -554,6 +613,12 @@ class Session:
         ```python
         await session.get('/zi/devices/visible')
         ```
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             path: LabOne node path (relative or absolute).
@@ -572,23 +637,15 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        request = self._session.getValue_request()
-        try:
-            request.pathExpression = path
-        except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(request, "pathExpression")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
-        request.lookupMode = self._reflection_server.LookupMode.directLookup  # type: ignore[attr-defined]
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
-        try:
-            return AnnotatedValue.from_capnp(result.unwrap(response.result[0]))
-        except IndexError as e:
-            msg = f"No value returned for {path}."
-            raise errors.LabOneCoreError(msg) from e
+        future = self._session.getValue(
+            pathExpression=path,
+            lookupMode="directLookup",
+            client=self._client_id.bytes,
+        )
+        return self._single_value_postprocessing(future, path)
 
-    async def get_with_expression(
+    @translate_comms_error
+    def get_with_expression(
         self,
         path_expression: LabOneNodePath,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
@@ -596,7 +653,7 @@ class Session:
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
         | ListNodesFlags.GET_ONLY,
-    ) -> list[AnnotatedValue]:
+    ) -> t.Awaitable[list[AnnotatedValue]]:
         """Get the value of all nodes matching the path expression.
 
         A path expression is a labone node path. The difference to a normal
@@ -611,6 +668,12 @@ class Session:
         values = await session.get_with_expression("/zi/*/level")
         print(values[0])
         ```
+
+        Note:
+            The function is not async but returns an awaitable object.
+            This makes this function eagerly evaluated instead of the python
+            default lazy evaluation. This means that the request is sent to the
+            server immediately even if the result is not awaited.
 
         Args:
             path_expression: LabOne path expression.
@@ -630,21 +693,13 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        request = self._session.getValue_request()
-        try:
-            request.pathExpression = path_expression
-        except (AttributeError, TypeError, capnp.KjException) as error:
-            field_type = request_field_type_description(request, "pathExpression")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from error
-        request.lookupMode = self._reflection_server.LookupMode.withExpansion  # type: ignore[attr-defined]
-        request.flags = int(flags)
-        request.client = self._client_id.bytes
-        response = await _send_and_wait_request(request)
-        return [
-            AnnotatedValue.from_capnp(result.unwrap(raw_result))
-            for raw_result in response.result
-        ]
+        future = self._session.getValue(
+            pathExpression=path_expression,
+            lookupMode="withExpansion",
+            flags=int(flags),
+            client=self._client_id.bytes,
+        )
+        return self._multi_value_postprocessing(future, path_expression)
 
     @t.overload
     async def subscribe(
@@ -666,6 +721,7 @@ class Session:
         get_initial_value: bool = False,
     ) -> QueueProtocol: ...
 
+    @async_translate_comms_error
     async def subscribe(
         self,
         path: LabOneNodePath,
@@ -724,41 +780,32 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        streaming_handle = streaming_handle_factory(self._reflection_server)(
-            parser_callback=parser_callback,
-        )
-        subscription = self._reflection_server.Subscription(  # type: ignore[attr-defined]
-            streamingHandle=streaming_handle,
-            subscriberId=self._client_id.bytes,
-        )
-        try:
-            subscription.path = path
-        except (AttributeError, TypeError, capnp.KjException):
-            field_type = request_field_type_description(subscription, "path")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from None
-        request = self._session.subscribe_request()
-        request.subscription = subscription
+        streaming_handle = StreamingHandle(parser_callback=parser_callback)
 
+        subscription = {
+            "path": path,
+            "streamingHandle": self._context.register_callback(
+                streaming_handle.capnp_callback,
+            ),
+            "subscriberId": self._client_id.bytes,
+        }
         if get_initial_value:
-            response, initial_value = await asyncio.gather(
-                _send_and_wait_request(request),
+            _, initial_value = await asyncio.gather(
+                self._session.subscribe(subscription=subscription),
                 self.get(path),
             )
-            unwrap(response.result)  # Result(Void, Error)
             new_queue_type = queue_type or DataQueue
             queue = new_queue_type(
                 path=path,
-                register_function=streaming_handle.register_data_queue,
+                handle=streaming_handle,
             )
             queue.put_nowait(initial_value)
             return queue
-        response = await _send_and_wait_request(request)
-        unwrap(response.result)  # Result(Void, Error)
+        await self._session.subscribe(subscription=subscription)
         new_queue_type = queue_type or DataQueue
         return new_queue_type(
             path=path,
-            register_function=streaming_handle.register_data_queue,
+            handle=streaming_handle,
         )
 
     async def wait_for_state_change(
@@ -803,7 +850,7 @@ class Session:
         """
         if self._has_transaction_support is None:
             self._has_transaction_support = (
-                len(await self.get_with_expression(TRANSACTION_NODE_PATH)) == 1
+                len(await self.get_with_expression(_TRANSACTION_NODE_PATH)) == 1
             )
         return self._has_transaction_support
 
@@ -851,18 +898,23 @@ class Session:
         requests: list[t.Awaitable] = []
         if await self._supports_transaction():
             begin_request = self.set(
-                AnnotatedValue(path=TRANSACTION_NODE_PATH, value=1),
+                AnnotatedValue(path=_TRANSACTION_NODE_PATH, value=1),
             )
             yield requests
             requests = [begin_request, *requests]
             requests.append(
-                self.set(AnnotatedValue(path=TRANSACTION_NODE_PATH, value=0)),
+                self.set(AnnotatedValue(path=_TRANSACTION_NODE_PATH, value=0)),
             )
         else:
             yield requests
         await asyncio.gather(*requests)
 
     @property
-    def reflection_server(self) -> ReflectionServer:
-        """Get the reflection server instance."""
-        return self._reflection_server  # pragma: no cover
+    def context(self) -> ZIContext:
+        """Get the context instance."""
+        return self._context  # pragma: no cover
+
+    @property
+    def raw_session(self) -> zhinst.comms.DynamicClient:
+        """Get the underlying session."""
+        return self._session

@@ -94,7 +94,7 @@ class NodeEnum(IntEnum):
         return NodeEnumMeta, (
             self._value_,
             self.__class__.__name__,
-            {key: int(value) for key, value in self.__class__._member_map_.items()},  # type: ignore[call-overload] # noqa: SLF001
+            {key: int(value) for key, value in self.__class__._member_map_.items()},  # type: ignore[call-overload]
             self.__class__.__module__,
         )
 

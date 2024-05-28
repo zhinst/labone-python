@@ -55,40 +55,43 @@ FlatPathDict: TypeAlias = t.Dict[
 class Session(t.Protocol):
     """Interface for communication with a data-server."""
 
-    async def list_nodes(
+    def list_nodes(
         self,
         path: LabOneNodePath = "",
         *,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,
-    ) -> list[LabOneNodePath]:
+    ) -> t.Awaitable[list[LabOneNodePath]]:
         """List the nodes found at a given path."""
         ...
 
-    async def list_nodes_info(
+    def list_nodes_info(
         self,
         path: LabOneNodePath = "",
         *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,
-    ) -> dict[LabOneNodePath, NodeInfo]:
+    ) -> t.Awaitable[dict[LabOneNodePath, NodeInfo]]:
         """List the nodes and their information found at a given path."""
         ...
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
+    def set(self, value: AnnotatedValue) -> t.Awaitable[AnnotatedValue]:
         """Set the value of a node."""
         ...
 
-    async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
+    def set_with_expression(
+        self,
+        value: AnnotatedValue,
+    ) -> t.Awaitable[list[AnnotatedValue]]:
         """Set the value of all nodes matching the path expression."""
         ...
 
-    async def get(
+    def get(
         self,
         path: LabOneNodePath,
-    ) -> AnnotatedValue:
+    ) -> t.Awaitable[AnnotatedValue]:
         """Get the value of a node."""
         ...
 
-    async def get_with_expression(
+    def get_with_expression(
         self,
         path_expression: LabOneNodePath,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE
@@ -96,7 +99,7 @@ class Session(t.Protocol):
         | ListNodesFlags.LEAVES_ONLY
         | ListNodesFlags.EXCLUDE_STREAMING
         | ListNodesFlags.GET_ONLY,
-    ) -> list[AnnotatedValue]:
+    ) -> t.Awaitable[list[AnnotatedValue]]:
         """Get the value of all nodes matching the path expression."""
         ...
 

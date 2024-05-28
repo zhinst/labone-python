@@ -9,10 +9,11 @@ import typing as t
 
 from labone.core import (
     AnnotatedValue,
-    DeviceKernelInfo,
+    KernelInfo,
     KernelSession,
     ServerInfo,
     Session,
+    ZIContext,
 )
 from labone.errors import LabOneError
 from labone.nodetree import construct_nodetree
@@ -108,13 +109,14 @@ class Instrument(PartialNode):
         )
 
     @staticmethod
-    async def create(
+    async def create(  # noqa: PLR0913
         serial: str,
         *,
         host: str,
         port: int = 8004,
         interface: str = "",
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
+        context: ZIContext | None = None,
     ) -> Instrument:
         """Connect to a device.
 
@@ -132,6 +134,9 @@ class Instrument(PartialNode):
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
                 applicable.
+            context: Context in which the session should run. If not provided
+                the default context will be used which is in most cases the
+                desired behavior.
 
         Returns:
             The connected device.
@@ -146,8 +151,12 @@ class Instrument(PartialNode):
             LabOneError: If an error appeared in the connection to the device.
         """
         session = await KernelSession.create(
-            kernel_info=DeviceKernelInfo(device_id=serial, interface=interface),
+            kernel_info=KernelInfo.device_connection(
+                device_id=serial,
+                interface=interface,
+            ),
             server_info=ServerInfo(host=host, port=port),
+            context=context,
         )
         return await Instrument.create_from_session(
             serial,

@@ -19,6 +19,11 @@ The `labone` package provides a plain asynchronous Python API for [LabOne](https
 > Since `labone` is not intended for direct usage, we do not offer any support
 > or external documentation. Please contact [Zurich Instruments](mailto:info@zhinst.com) if you have any questions.
 
+## Internal Documentation
+
+The internal documentation can be found [here](http://qt-developer-manual-docs-ed588a9f2798190163c2ddd236b7c23ed753a0.pages.zhinst.com/labone_python/index.html).
+Due to the early stage there is not public documentation.
+
 ## Contributing
 
 See [Contributing](CONTRIBUTING.md)

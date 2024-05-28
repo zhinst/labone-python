@@ -2,7 +2,6 @@
 
 import asyncio
 
-import capnp
 import pytest
 
 from labone.core import errors
@@ -10,11 +9,9 @@ from labone.core.subscription import (
     CircularDataQueue,
     DataQueue,
     DistinctConsecutiveDataQueue,
-    streaming_handle_factory,
+    StreamingHandle,
 )
 from labone.core.value import AnnotatedValue
-
-from .resources import value_capnp
 
 
 class FakeSubscription:
@@ -27,19 +24,19 @@ class FakeSubscription:
 
 def test_data_queue_path():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert queue.path == "dummy"
 
 
 def test_data_queue_maxsize():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert queue.maxsize == 0
 
 
 def test_data_queue_maxsize_to_low():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.put_nowait("test")
     queue.put_nowait("test")
     queue.maxsize = 2
@@ -49,7 +46,7 @@ def test_data_queue_maxsize_to_low():
 
 def test_data_queue_maxsize_disconnected():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.disconnect()
     with pytest.raises(errors.StreamingError):
         queue.maxsize = 42
@@ -57,13 +54,13 @@ def test_data_queue_maxsize_disconnected():
 
 def test_data_queue_repr_idle():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert repr(queue) == "DataQueue(path='dummy', maxsize=0, qsize=0, connected=True)"
 
 
 def test_data_queue_repr():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.maxsize = 42
     queue.put_nowait("test")
     queue.put_nowait("test")
@@ -75,7 +72,7 @@ def test_data_queue_repr():
 
 def test_data_queue_disconnect():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert queue.connected
     queue.disconnect()
     assert not queue.connected
@@ -83,7 +80,7 @@ def test_data_queue_disconnect():
 
 def test_data_queue_fork():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert len(subscription.data_queues) == 1
     forked_queue = queue.fork()
     assert len(subscription.data_queues) == 2
@@ -93,7 +90,7 @@ def test_data_queue_fork():
 
 def test_data_queue_fork_disconnected():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.disconnect()
     with pytest.raises(errors.StreamingError):
         queue.fork()
@@ -101,7 +98,7 @@ def test_data_queue_fork_disconnected():
 
 def test_data_queue_put_nowait():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     assert queue.qsize() == 0
     queue.put_nowait("test")
     assert queue.qsize() == 1
@@ -111,7 +108,7 @@ def test_data_queue_put_nowait():
 
 def test_data_queue_put_nowait_disconnected():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.disconnect()
     with pytest.raises(errors.StreamingError):
         queue.put_nowait("test")
@@ -120,7 +117,7 @@ def test_data_queue_put_nowait_disconnected():
 @pytest.mark.asyncio()
 async def test_data_queue_get():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.put_nowait("test")
     assert await queue.get() == "test"
 
@@ -128,7 +125,7 @@ async def test_data_queue_get():
 @pytest.mark.asyncio()
 async def test_data_queue_get_timeout():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(queue.get(), 0.01)
 
@@ -136,7 +133,7 @@ async def test_data_queue_get_timeout():
 @pytest.mark.asyncio()
 async def test_data_queue_get_disconnected_ok():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.put_nowait("test")
     queue.disconnect()
     assert await queue.get() == "test"
@@ -145,7 +142,7 @@ async def test_data_queue_get_disconnected_ok():
 @pytest.mark.asyncio()
 async def test_data_queue_get_disconnected_empty():
     subscription = FakeSubscription()
-    queue = DataQueue(path="dummy", register_function=subscription.register_data_queue)
+    queue = DataQueue(path="dummy", handle=subscription)
     queue.disconnect()
     with pytest.raises(errors.EmptyDisconnectedDataQueueError):
         await queue.get()
@@ -156,7 +153,7 @@ async def test_circular_data_queue_put_enough_space():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     queue.maxsize = 2
     await asyncio.wait_for(queue.put("test"), timeout=0.01)
@@ -169,7 +166,7 @@ async def test_circular_data_queue_put_full():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     queue.maxsize = 2
     await asyncio.wait_for(queue.put("test1"), timeout=0.01)
@@ -185,7 +182,7 @@ async def test_circular_data_queue_put_no_wait_enough_space():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     queue.maxsize = 2
     queue.put_nowait("test")
@@ -198,7 +195,7 @@ async def test_circular_data_queue_put_no_wait_full():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     queue.maxsize = 2
     queue.put_nowait("test1")
@@ -213,7 +210,7 @@ def test_circular_data_queue_fork():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     assert len(subscription.data_queues) == 1
     forked_queue = queue.fork()
@@ -223,33 +220,27 @@ def test_circular_data_queue_fork():
     assert forked_queue.connected
 
 
-def test_streaming_handle_register(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    DataQueue(path="dummy", register_function=streaming_handle.register_data_queue)
+def test_streaming_handle_register():
+    streaming_handle = StreamingHandle()
+    DataQueue(path="dummy", handle=streaming_handle)
     assert len(streaming_handle._data_queues) == 1
 
 
 @pytest.mark.parametrize("num_values", range(0, 20, 4))
 @pytest.mark.parametrize("num_queues", [1, 2, 6])
 @pytest.mark.asyncio()
-async def test_streaming_handle_update_event(num_values, num_queues, reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
+async def test_streaming_handle_update_event(num_values, num_queues):
+    streaming_handle = StreamingHandle()
     queues = []
     for _ in range(num_queues):
         queue = DataQueue(
             path="dummy",
-            register_function=streaming_handle.register_data_queue,
+            handle=streaming_handle,
         )
         queues.append(queue)
-    values = []
     for i in range(num_values):
-        value = value_capnp.AnnotatedValue.new_message()
-        value.metadata.path = "dummy"
-        value.value.int64 = i
-        values.append(value)
-    await streaming_handle.sendValues(values)
+        value = AnnotatedValue(value=i, path="dummy", timestamp=0, extra_header=None)
+        streaming_handle.distribute_to_data_queues(value)
     for queue in queues:
         assert queue.qsize() == num_values
         for i in range(num_values):
@@ -261,54 +252,10 @@ async def test_streaming_handle_update_event(num_values, num_queues, reflection_
             )
 
 
-def test_streaming_handle_with_parser_callback(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle_class(
+def test_streaming_handle_with_parser_callback():
+    StreamingHandle(
         parser_callback=lambda a: AnnotatedValue(path=a.path, value=a.value * 2),
     )
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_empty(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    values.append(value)
-    with pytest.raises(capnp.KjException):
-        await streaming_handle.sendValues(values)
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_deleted(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    queue = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    del queue
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    values.append(value)
-    with pytest.raises(capnp.KjException):
-        await streaming_handle.sendValues(values)
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_disconnect(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    queue = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue.disconnect()
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    values.append(value)
-    with pytest.raises(capnp.KjException):
-        await streaming_handle.sendValues(values)
 
 
 @pytest.mark.asyncio()
@@ -316,7 +263,7 @@ async def test_distinct_data_queue_put_no_wait_new_value():
     subscription = FakeSubscription()
     queue = DistinctConsecutiveDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     value1 = AnnotatedValue(value=1, path="dummy")
     value2 = AnnotatedValue(value=2, path="dummy")
@@ -332,7 +279,7 @@ async def test_distinct_data_queue_put_no_wait_same_value():
     subscription = FakeSubscription()
     queue = DistinctConsecutiveDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     value = AnnotatedValue(value=1, path="dummy")
     queue.put_nowait(value)
@@ -345,7 +292,7 @@ def test_distinct_data_queue_fork():
     subscription = FakeSubscription()
     queue = DistinctConsecutiveDataQueue(
         path="dummy",
-        register_function=subscription.register_data_queue,
+        handle=subscription,
     )
     assert len(subscription.data_queues) == 1
     forked_queue = queue.fork()
@@ -353,91 +300,3 @@ def test_distinct_data_queue_fork():
     assert len(subscription.data_queues) == 2
     assert forked_queue.path == queue.path
     assert forked_queue.connected
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_partially_disconnected(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    queue_0 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_1 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_0.disconnect()
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    value.metadata.path = "dummy"
-    value.value.int64 = 1
-    values.append(value)
-    await streaming_handle.sendValues(values)
-    assert queue_0.qsize() == 0
-    assert queue_1.qsize() == 1
-    assert queue_1.get_nowait() == AnnotatedValue(
-        value=1,
-        path="dummy",
-        timestamp=0,
-        extra_header=None,
-    )
-    queue_1.disconnect()
-    with pytest.raises(capnp.KjException):
-        await streaming_handle.sendValues(values)
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_queue_full_single(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    queue_0 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_1 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_0.maxsize = 1
-    queue_0.put_nowait("dummy")
-    assert queue_0.qsize() == 1
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    value.metadata.path = "dummy"
-    value.value.int64 = 1
-    values.append(value)
-    await streaming_handle.sendValues(values)
-    assert queue_0.qsize() == 1
-    assert queue_1.qsize() == 1
-    assert queue_1.get_nowait() == AnnotatedValue(
-        value=1,
-        path="dummy",
-        timestamp=0,
-        extra_header=None,
-    )
-
-
-@pytest.mark.asyncio()
-async def test_streaming_handle_update_queue_full_multiple(reflection_server):
-    streaming_handle_class = streaming_handle_factory(reflection_server)
-    streaming_handle = streaming_handle_class()
-    queue_0 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_1 = DataQueue(
-        path="dummy",
-        register_function=streaming_handle.register_data_queue,
-    )
-    queue_0.maxsize = 1
-    queue_0.put_nowait("dummy")
-    queue_1.maxsize = 1
-    queue_1.put_nowait("dummy")
-    values = []
-    value = value_capnp.AnnotatedValue.new_message()
-    value.metadata.path = "dummy"
-    value.value.int64 = 1
-    values.append(value)
-    with pytest.raises(capnp.KjException):
-        await streaming_handle.sendValues(values)

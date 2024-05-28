@@ -4,7 +4,7 @@ Scope: session, capnp (without localhost, but within python),
 
 Subscription behavior can only be tested with a client, holding a queue and
 a mock server on the other side of capnp. Aiming to test the
-AutomaticSessionFunctionality,
+AutomaticLabOneServer,
 we still need to use a larger scope in order to test meaningful behavior.
 
 """
@@ -19,8 +19,7 @@ from labone.core.shf_vector_data import (
     ShfResultLoggerVectorExtraHeader,
     ShfScopeVectorExtraHeader,
 )
-from labone.mock import spawn_hpk_mock
-from labone.mock.automatic_session_functionality import AutomaticSessionFunctionality
+from labone.mock import AutomaticLabOneServer
 
 
 @pytest.mark.asyncio()
@@ -29,16 +28,13 @@ async def test_useable_via_entry_point():
     Tests that a session can be established and used.
     Only looks that no error is raised.
     """
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
-
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
     await session.set(AnnotatedValue(path="/a/b", value=7))
 
 
 @pytest.mark.asyncio()
 async def test_subscription():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
     await session.set(AnnotatedValue(path="/a/b", value=7))
@@ -48,8 +44,7 @@ async def test_subscription():
 
 @pytest.mark.asyncio()
 async def test_subscription_multiple_changes():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
     await session.set(AnnotatedValue(path="/a/b", value=7))
@@ -63,8 +58,7 @@ async def test_subscription_multiple_changes():
 
 @pytest.mark.asyncio()
 async def test_subscription_seperate_for_each_path():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}, "/a/c": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}, "/a/c": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
     queue2 = await session.subscribe("/a/c")
@@ -78,8 +72,7 @@ async def test_subscription_seperate_for_each_path():
 
 @pytest.mark.asyncio()
 async def test_subscription_updated_by_set_with_expression():
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
     await session.set_with_expression(AnnotatedValue(path="/a", value=7))
@@ -105,11 +98,10 @@ async def test_shf_scope_vector_handled_correctly_through_set_and_subscription()
         0,
     )
 
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
-    await functionality.set(
+    await session.mock_server.set(
         AnnotatedValue(
             path="/a/b",
             value=value.copy(),
@@ -139,11 +131,10 @@ async def test_shf_result_logger_vector_handled_correctly_in_set_and_subscribe()
         12,
     )
 
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
-    await functionality.set(
+    await session.mock_server.set(
         AnnotatedValue(
             path="/a/b",
             value=value.copy(),
@@ -177,11 +168,10 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
         scaling=4.0000000467443897e-07,
     )
 
-    functionality = AutomaticSessionFunctionality({"/a/b": {}})
-    session = await spawn_hpk_mock(functionality)
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 
     queue = await session.subscribe("/a/b")
-    await functionality.set(
+    await session.mock_server.set(
         AnnotatedValue(
             path="/a/b",
             value=SHFDemodSample(x=value.x.copy(), y=value.y.copy()),
@@ -196,7 +186,5 @@ async def test_shf_demodulator_vector_handled_correctly_through_set_and_subscrip
 
 @pytest.mark.asyncio()
 async def test_ensure_compatibility():
-    session = await spawn_hpk_mock(
-        AutomaticSessionFunctionality({}),
-    )
+    session = await AutomaticLabOneServer({}).start_pipe()
     await session.ensure_compatibility()

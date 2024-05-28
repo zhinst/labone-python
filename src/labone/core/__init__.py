@@ -1,13 +1,21 @@
 """Subpackage for the core functionality of the LabOne API.
 
-This subpackage manages the communication with the LabOne data server through
-capnp. It encapsulates the low level logic of the capnp protocol and provides
+This subpackage manages the communication with the LabOne data server.
+It encapsulates the low level logic of the underlying protocol and provides
 a python only interface to the rest of the API.
 """
 
-from labone.core.connection_layer import DeviceKernelInfo, ServerInfo, ZIKernelInfo
-from labone.core.kernel_session import KernelSession
-from labone.core.session import ListNodesFlags, ListNodesInfoFlags, Session
+from labone.core.helper import ZIContext
+from labone.core.kernel_session import (
+    KernelInfo,
+    KernelSession,
+    ServerInfo,
+)
+from labone.core.session import (
+    ListNodesFlags,
+    ListNodesInfoFlags,
+    Session,
+)
 from labone.core.subscription import (
     CircularDataQueue,
     DataQueue,
@@ -17,14 +25,14 @@ from labone.core.value import AnnotatedValue
 
 __all__ = [
     "AnnotatedValue",
+    "ListNodesFlags",
+    "ListNodesInfoFlags",
     "DataQueue",
     "CircularDataQueue",
     "DistinctConsecutiveDataQueue",
     "Session",
     "KernelSession",
-    "ListNodesFlags",
-    "ListNodesInfoFlags",
-    "ZIKernelInfo",
-    "DeviceKernelInfo",
     "ServerInfo",
+    "KernelInfo",
+    "ZIContext",
 ]

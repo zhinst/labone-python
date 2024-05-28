@@ -22,16 +22,15 @@ from contextlib import redirect_stdout
 
 import pytest
 
-from labone.core import AnnotatedValue, KernelSession, ServerInfo, ZIKernelInfo
+from labone.core import AnnotatedValue, KernelInfo, KernelSession, ServerInfo
 from labone.core.session import ListNodesFlags, Session
-from labone.mock import spawn_hpk_mock
-from labone.mock.automatic_session_functionality import AutomaticSessionFunctionality
-from labone.mock.entry_point import MockSession
+from labone.mock import AutomaticLabOneServer
+from labone.server.session import MockSession
 
 
 async def get_session():
     return await KernelSession.create(
-        kernel_info=ZIKernelInfo(),
+        kernel_info=KernelInfo.zi_connection(),
         server_info=ServerInfo(host="localhost", port=8004),
     )
 
@@ -41,8 +40,7 @@ async def get_mock_session() -> MockSession:
     session = await get_session()
     paths_to_info = await session.list_nodes_info("*")
 
-    functionality = AutomaticSessionFunctionality(paths_to_info)
-    return await spawn_hpk_mock(functionality)
+    return await AutomaticLabOneServer(paths_to_info).start_pipe()
 
 
 def same_prints_and_exceptions_for_real_and_mock(test_function):

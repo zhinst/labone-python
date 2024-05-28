@@ -12,15 +12,18 @@ import logging
 import typing as t
 from dataclasses import dataclass
 
-import capnp
 import numpy as np
+from typing_extensions import TypeAlias
 
-from labone.core.errors import SHFHeaderVersionNotSupportedError, error_from_capnp
+from labone.core.errors import (
+    LabOneCoreError,
+    SHFHeaderVersionNotSupportedError,
+    get_streaming_error,
+)
 from labone.core.helper import (
     LabOneNodePath,
     VectorElementType,
     VectorValueType,
-    request_field_type_description,
 )
 from labone.core.shf_vector_data import (
     ExtraHeader,
@@ -30,12 +33,13 @@ from labone.core.shf_vector_data import (
     preprocess_complex_shf_waveform_vector,
 )
 
-if t.TYPE_CHECKING:
-    from labone.core.errors import LabOneCoreError  # noqa: F401
-    from labone.core.helper import CapnpCapability
-    from labone.core.reflection.server import ReflectionServer
+if t.TYPE_CHECKING:  # pragma: no cover
+    import zhinst.comms
 
 logger = logging.getLogger(__name__)
+
+
+CapnpInput: TypeAlias = dict[str, t.Any]
 
 
 @dataclass
@@ -75,7 +79,7 @@ class AnnotatedValue:
         )
 
     @staticmethod
-    def from_capnp(raw: CapnpCapability) -> AnnotatedValue:
+    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> AnnotatedValue:
         """Convert a capnp AnnotatedValue to a python AnnotatedValue.
 
         Args:
@@ -87,43 +91,19 @@ class AnnotatedValue:
         Raises:
             ValueError: If the capnp value has an unknown type or can not be parsed.
         """
-        value, extra_header = _capnp_value_to_python_value(raw.value)
-        return AnnotatedValue(
-            value=value,
-            timestamp=raw.metadata.timestamp,
-            path=raw.metadata.path,
-            extra_header=extra_header,
-        )
-
-    def to_capnp(self, *, reflection: ReflectionServer) -> CapnpCapability:
-        """Convert a python AnnotatedValue to a capnp AnnotatedValue.
-
-        Warning:
-            This method is not the inversion of `from_capnp`. It is only
-            packs the relevant information that are parsed by the server
-            for a set request into a capnp message!
-
-        Returns:
-            The capnp message containing the relevant information for a set
-            request.
-
-        Raises:
-            TypeError: If the `path` attribute is not of type `str`.
-            LabOneCoreError: If the data type of the value to be set is not supported.
-        """
-        message = reflection.AnnotatedValue.new_message()  # type: ignore[attr-defined]
         try:
-            message.metadata.path = self.path
-        except (AttributeError, TypeError, capnp.KjException):
-            field_type = request_field_type_description(message.metadata, "path")
-            msg = f"`path` attribute must be of type {field_type}."
-            raise TypeError(msg) from None
-        message.value = _value_from_python_types(
-            self.value,
-            path=self.path,
-            reflection=reflection,
-        )
-        return message
+            try:
+                value, extra_header = _capnp_value_to_python_value(raw.value)
+            except AttributeError:
+                value, extra_header = None, None
+            return AnnotatedValue(
+                value=value,
+                timestamp=raw.metadata.timestamp,
+                path=raw.metadata.path,
+                extra_header=extra_header,
+            )
+        except RuntimeError as e:
+            raise LabOneCoreError(str(e)) from e
 
 
 @dataclass
@@ -149,7 +129,7 @@ class TriggerSample:
     sequence_index: int
 
     @staticmethod
-    def from_capnp(raw: CapnpCapability) -> TriggerSample:
+    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> TriggerSample:
         """Convert a capnp TriggerSample to a python TriggerSample.
 
         Args:
@@ -184,7 +164,7 @@ class CntSample:
     trigger: int
 
     @staticmethod
-    def from_capnp(raw: CapnpCapability) -> CntSample:
+    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> CntSample:
         """Convert a capnp CntSample to a python CntSample.
 
         Args:
@@ -210,12 +190,14 @@ Value = t.Union[
     SHFDemodSample,
     TriggerSample,
     CntSample,
+    list[TriggerSample],
+    list[CntSample],
     None,
 ]
 
 
 def _capnp_vector_to_value(
-    vector_data: CapnpCapability,
+    vector_data: zhinst.comms.DynamicStructBase,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse a capnp vector to a numpy array.
 
@@ -264,7 +246,7 @@ def _capnp_vector_to_value(
 
 
 def _capnp_value_to_python_value(
-    capnp_value: CapnpCapability,
+    capnp_value: zhinst.comms.DynamicStructBase,
 ) -> tuple[Value, ExtraHeader | None]:
     """Convert a capnp value to a python value.
 
@@ -278,26 +260,34 @@ def _capnp_value_to_python_value(
         ValueError: If the capnp value has an unknown type or can not be parsed.
         LabOneCoreError: If the capnp value is a streaming error.
     """
-    capnp_type = capnp_value.which()
-    if capnp_type == "int64":
+    if hasattr(capnp_value, "int64"):
         return capnp_value.int64, None
-    if capnp_type == "double":
+    if hasattr(capnp_value, "double"):
         return capnp_value.double, None
-    if capnp_type == "complex":
+    if hasattr(capnp_value, "complex"):
         return complex(capnp_value.complex.real, capnp_value.complex.imag), None
-    if capnp_type == "string":
+    if hasattr(capnp_value, "string"):
         return capnp_value.string, None
-    if capnp_type == "vectorData":
+    if hasattr(capnp_value, "vectorData"):
         return _capnp_vector_to_value(capnp_value.vectorData)
-    if capnp_type == "cntSample":
+    if hasattr(capnp_value, "cntSample"):
         return CntSample.from_capnp(capnp_value.cntSample), None
-    if capnp_type == "triggerSample":
+    if hasattr(capnp_value, "vectorCntSamples"):
+        return [
+            CntSample.from_capnp(sample) for sample in capnp_value.vectorCntSamples
+        ], None
+    if hasattr(capnp_value, "triggerSample"):
         return TriggerSample.from_capnp(capnp_value.triggerSample), None
-    if capnp_type == "none":
+    if hasattr(capnp_value, "vectorTriggerSamples"):
+        return [
+            TriggerSample.from_capnp(sample)
+            for sample in capnp_value.vectorTriggerSamples
+        ], None
+    if hasattr(capnp_value, "none"):
         return None, None
-    if capnp_type == "streamingError":
-        raise error_from_capnp(capnp_value.streamingError)
-    msg = f"Unknown capnp type: {capnp_type}"
+    if hasattr(capnp_value, "streamingError"):
+        raise get_streaming_error(capnp_value.streamingError)
+    msg = f"Unknown capnp type: {dir(capnp_value)}"
     raise ValueError(msg)
 
 
@@ -305,8 +295,7 @@ def _numpy_vector_to_capnp_vector(
     np_vector: np.ndarray,
     *,
     path: LabOneNodePath,
-    reflection: ReflectionServer,
-) -> capnp.lib.capnp._DynamicStructBuilder:
+) -> CapnpInput:
     """Convert a numpy vector to a capnp vector.
 
     Args:
@@ -320,30 +309,29 @@ def _numpy_vector_to_capnp_vector(
     LabOneCoreError: If the numpy type has no corresponding
         VectorElementType.
     """
+    request_value: dict[str, t.Any] = {}
+    request_value["extraHeaderInfo"] = 0
+    request_value["valueType"] = VectorValueType.VECTOR_DATA.value
     np_data = np_vector
     np_vector_type = np_vector.dtype
     if np.iscomplexobj(np_vector) and "waveforms" in path.lower():
         np_data, np_vector_type = preprocess_complex_shf_waveform_vector(np_vector)
-    data = np_data.tobytes()
+    request_value["data"] = np_data.tobytes()
     try:
-        capnp_vector_type = VectorElementType.from_numpy_type(np_vector_type).value
+        request_value["vectorElementType"] = VectorElementType.from_numpy_type(
+            np_vector_type,
+        ).value
     except ValueError as e:
         msg = f"Unsupported numpy type: {np_vector_type}"
         raise ValueError(msg) from e
-    return reflection.VectorData(  # type: ignore[attr-defined]
-        valueType=VectorValueType.VECTOR_DATA.value,
-        extraHeaderInfo=0,
-        vectorElementType=capnp_vector_type,
-        data=data,
-    )
+    return request_value
 
 
-def _value_from_python_types(
+def value_from_python_types(
     value: t.Any,  # noqa: ANN401
     *,
     path: LabOneNodePath,
-    reflection: ReflectionServer,
-) -> capnp.lib.capnp._DynamicStructBuilder:
+) -> CapnpInput:
     """Create `Value` builder from Python types.
 
     Args:
@@ -357,32 +345,28 @@ def _value_from_python_types(
     Raises:
         LabOneCoreError: If the data type of the value to be set is not supported.
     """
-    request_value = reflection.Value.new_message()  # type: ignore[attr-defined]
+    request_value: dict[str, t.Any] = {}
     if isinstance(value, bool):
-        request_value.int64 = int(value)
+        request_value["int64"] = int(value)
     elif np.issubdtype(type(value), np.integer):
-        request_value.int64 = value
+        request_value["int64"] = value
     elif np.issubdtype(type(value), np.floating):
-        request_value.double = value
+        request_value["double"] = value
     elif isinstance(value, complex):
-        request_value.complex = reflection.Complex(  # type: ignore[attr-defined]
-            real=value.real,
-            imag=value.imag,
-        )
+        request_value["complex"] = {"real": value.real, "imag": value.imag}
     elif isinstance(value, str):
-        request_value.string = value
+        request_value["string"] = value
     elif isinstance(value, bytes):
-        request_value.vectorData = reflection.VectorData(  # type: ignore[attr-defined]
-            valueType=VectorValueType.BYTE_ARRAY.value,
-            extraHeaderInfo=0,
-            vectorElementType=VectorElementType.UINT8.value,
-            data=value,
-        )
+        request_value["vectorData"] = {
+            "valueType": VectorValueType.BYTE_ARRAY.value,
+            "extraHeaderInfo": 0,
+            "vectorElementType": VectorElementType.UINT8.value,
+            "data": value,
+        }
     elif isinstance(value, np.ndarray):
-        request_value.vectorData = _numpy_vector_to_capnp_vector(
+        request_value["vectorData"] = _numpy_vector_to_capnp_vector(
             value,
             path=path,
-            reflection=reflection,
         )
     else:
         msg = f"The provided value has an invalid type: {type(value)}"
@@ -392,9 +376,7 @@ def _value_from_python_types(
     return request_value
 
 
-def value_from_python_types_dict(
-    annotated_value: AnnotatedValue,
-) -> capnp.lib.capnp._DynamicStructBuilder:
+def value_from_python_types_dict(annotated_value: AnnotatedValue) -> CapnpInput:
     """Create `Value` builder from Python types.
 
     Note:
@@ -414,14 +396,18 @@ def value_from_python_types_dict(
     Raises:
         LabOneCoreError: If the data type of the value to be set is not supported.
     """
-    if annotated_value.extra_header is not None and isinstance(
-        annotated_value.value,
-        (np.ndarray, SHFDemodSample),
+    if (
+        annotated_value.extra_header is not None
+        and isinstance(
+            annotated_value.value,
+            (np.ndarray),
+        )
+        or isinstance(annotated_value.value, SHFDemodSample)
     ):
         return {
             "vectorData": encode_shf_vector_data_struct(
                 data=annotated_value.value,
-                extra_header=annotated_value.extra_header,
+                extra_header=annotated_value.extra_header,  # type: ignore[union-attr, arg-type]
             ),
         }
 

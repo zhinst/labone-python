@@ -5,10 +5,9 @@ from __future__ import annotations
 import typing as t
 from asyncio import QueueEmpty
 
-from labone.errors import LabOneError
+import zhinst.comms
 
-if t.TYPE_CHECKING:
-    import capnp
+from labone.errors import LabOneError
 
 
 class LabOneCoreError(LabOneError):
@@ -63,6 +62,73 @@ class SHFHeaderVersionNotSupportedError(LabOneCoreError):
         super().__init__(msg, code=0, category="SHFHeaderVersionNotSupported")
 
 
+T = t.TypeVar("T")
+
+
+def translate_comms_error(
+    func: t.Callable[..., t.Awaitable[T]],
+) -> t.Callable[..., t.Awaitable[T]]:
+    """Translate zhinst.comms exceptions to labone exceptions.
+
+    A decorator to catch all exceptions from zhinst.comms and re-raise
+    them as LabOneCoreError exceptions.
+    """
+
+    def wrapper(*args, **kwargs) -> t.Awaitable[T]:
+        try:
+            return func(*args, **kwargs)
+        except zhinst.comms.errors.CancelledError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.NotFoundError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.OverwhelmedError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.BadRequestError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.UnimplementedError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.UnavailableError as e:
+            raise UnavailableError(str(e)) from e
+        except zhinst.comms.errors.TimeoutError as e:
+            raise LabOneTimeoutError(str(e)) from e
+        except zhinst.comms.errors.BaseError as e:
+            raise LabOneCoreError(str(e)) from e
+
+    return wrapper
+
+
+def async_translate_comms_error(
+    func: t.Callable[..., t.Awaitable[T]],
+) -> t.Callable[..., t.Awaitable[T]]:
+    """Translate zhinst.comms exceptions to labone exceptions.
+
+    A decorator to catch all exceptions from zhinst.comms and re-raise
+    them as LabOneCoreError exceptions.
+    """
+
+    async def wrapper(*args, **kwargs) -> T:
+        try:
+            return await func(*args, **kwargs)
+        except zhinst.comms.errors.CancelledError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.NotFoundError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.OverwhelmedError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.BadRequestError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.UnimplementedError as e:
+            raise LabOneCoreError(str(e)) from e
+        except zhinst.comms.errors.UnavailableError as e:
+            raise UnavailableError(str(e)) from e
+        except zhinst.comms.errors.TimeoutError as e:
+            raise LabOneTimeoutError(str(e)) from e
+        except zhinst.comms.errors.BaseError as e:
+            raise LabOneCoreError(str(e)) from e
+
+    return wrapper
+
+
 ##################################################################
 ## Streaming Errors                                             ##
 ##################################################################
@@ -88,11 +154,11 @@ _ZI_ERROR_MAP = {
 }
 
 
-def error_from_capnp(err: capnp.lib.capnp._DynamicStructReader) -> LabOneCoreError:
-    """Create labone error from a error.capnp::Error struct.
+def get_streaming_error(err: zhinst.comms.DynamicStructBase) -> LabOneCoreError:
+    """Create labone error from a labone error struct.
 
     Args:
-        err: The capnp error to be converted.
+        err: The streaming error to be converted.
 
     Returns:
         The corresponding error.

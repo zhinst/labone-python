@@ -7,10 +7,11 @@ import typing as t
 
 from labone.core import (
     AnnotatedValue,
+    KernelInfo,
     KernelSession,
     ServerInfo,
     Session,
-    ZIKernelInfo,
+    ZIContext,
 )
 from labone.errors import LabOneError
 from labone.nodetree import construct_nodetree
@@ -115,6 +116,7 @@ class DataServer(PartialNode):
         *,
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         hide_zi_prefix: bool = True,
+        context: ZIContext | None = None,
     ) -> DataServer:
         """Create a new Session to a LabOne Data Server.
 
@@ -128,6 +130,9 @@ class DataServer(PartialNode):
                 annotated value. This function is applied to all values coming from
                 the server. It is applied after the default enum parser, if
                 applicable.
+            context: Context in which the session should run. If not provided
+                the default context will be used which is in most cases the
+                desired behavior.
 
         Returns:
             The connected DataServer.
@@ -142,8 +147,9 @@ class DataServer(PartialNode):
             LabOneError: If an error appeared in the connection to the device.
         """
         session = await KernelSession.create(
-            kernel_info=ZIKernelInfo(),
+            kernel_info=KernelInfo.zi_connection(),
             server_info=ServerInfo(host=host, port=port),
+            context=context,
         )
 
         return await DataServer.create_from_session(

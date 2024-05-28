@@ -5,7 +5,7 @@ The calls are verified via mocking of the lower level interface.
 
 from __future__ import annotations
 
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
 
@@ -19,8 +19,8 @@ async def test_get_translates_to_session():
     value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
 
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.get.return_value = value
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.get = AsyncMock(return_value=value)
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     assert value == await node.a.b.c.d()
@@ -32,8 +32,8 @@ async def test_set_translates_to_session():
     value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
 
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.set.return_value = value
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.set = AsyncMock(return_value=value)
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     assert await node.a.b.c.d(42) == value
@@ -47,8 +47,8 @@ async def test_partial_get_translates_to_session():
     value = (AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),)
 
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.get_with_expression.return_value = value
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.get_with_expression = AsyncMock(return_value=value)
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node.a.b.c()
@@ -60,8 +60,8 @@ async def test_partial_set_translates_to_session():
     value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
 
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.set_with_expression.return_value = [value]
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.set_with_expression = AsyncMock(return_value=[value])
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node.a.b.c(32)
@@ -75,8 +75,8 @@ async def test_wildcard_get_translates_to_session():
     value = (AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),)
 
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.get_with_expression.return_value = value
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.get_with_expression = AsyncMock(return_value=value)
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node.a["*"].c.d()
@@ -86,10 +86,12 @@ async def test_wildcard_get_translates_to_session():
 @pytest.mark.asyncio()
 async def test_wildcard_set_translates_to_session():
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.set_with_expression.return_value = [
-        AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),
-    ]
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.set_with_expression = AsyncMock(
+        return_value=[
+            AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),
+        ],
+    )
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node.a["*"].c.d(35)
@@ -101,8 +103,8 @@ async def test_wildcard_set_translates_to_session():
 @pytest.mark.asyncio()
 async def test_partial_subscribe_translates_to_session():
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b/c/d": {}}
-    session_mock.subscribe.return_value = Mock()
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
+    session_mock.subscribe = AsyncMock(return_value=Mock())
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node.a.b.c.d.subscribe()
@@ -117,22 +119,23 @@ async def test_partial_subscribe_translates_to_session():
 @pytest.mark.asyncio()
 async def test_wait_for_state_change_translates_to_session():
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b": {}}
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
-    await node.a.b.wait_for_state_change(value=5, invert=True)
+    await node.a.b.c.d.wait_for_state_change(value=5, invert=True)
 
-    session_mock.wait_for_state_change.assert_called_once_with("/a/b", 5, invert=True)
+    session_mock.wait_for_state_change.assert_called_once_with(
+        "/a/b/c/d",
+        5,
+        invert=True,
+    )
 
 
 @pytest.mark.asyncio()
 async def test_wait_for_state_change_wildcard_translates_to_session():
     session_mock = Mock(spec=Session)
-    session_mock.list_nodes_info.return_value = {"/a/b": {}, "/a/c": {}}
-    session_mock.list_nodes.return_value = [
-        "/a/b",
-        "/a/c",
-    ]  # required for wildcard resolution
+    session_mock.list_nodes_info = AsyncMock(return_value={"/a/b": {}, "/a/c": {}})
+    session_mock.list_nodes = AsyncMock(return_value=["/a/b", "/a/c"])
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
 
     await node["*"].wait_for_state_change(value=5, invert=True)

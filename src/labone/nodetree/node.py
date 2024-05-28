@@ -14,8 +14,6 @@ import weakref
 from abc import ABC, abstractmethod
 from functools import cached_property
 
-from deprecation import deprecated
-
 from labone.core.subscription import DataQueue
 from labone.core.value import AnnotatedValue, Value
 from labone.node_info import NodeInfo
@@ -490,9 +488,11 @@ class MetaNode(ABC):
         return self._path_segments
 
     @property
-    @deprecated(details="use 'path_segments' instead.")
     def raw_tree(self) -> tuple[NormalizedPathSegment, ...]:
-        """The underlying segments of the path, this node corresponds to."""
+        """The underlying segments of the path, this node corresponds to.
+
+        Deprecated: use 'path_segments' instead.
+        """
         return self.path_segments
 
     @property
@@ -883,10 +883,10 @@ class Node(MetaNode, ABC):
             return self.is_child_node(item)
         return normalize_path_segment(item) in self._subtree_paths
 
-    async def __call__(
+    def __call__(
         self,
         value: Value | None = None,
-    ) -> AnnotatedValue | ResultNode:
+    ) -> t.Awaitable[AnnotatedValue | ResultNode]:
         """Call with or without a value for setting/getting the node.
 
         Args:
@@ -909,20 +909,20 @@ class Node(MetaNode, ABC):
                 mapped to one of the other errors.
         """
         if value is None:
-            return await self._get()
+            return self._get()
 
-        return await self._set(value)
+        return self._set(value)
 
     @abstractmethod
-    async def _get(
+    def _get(
         self,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> t.Awaitable[AnnotatedValue | ResultNode]: ...
 
     @abstractmethod
-    async def _set(
+    def _set(
         self,
         value: Value,
-    ) -> AnnotatedValue | ResultNode: ...
+    ) -> t.Awaitable[AnnotatedValue | ResultNode]: ...
 
     @classmethod
     def build(
@@ -1083,7 +1083,13 @@ class Node(MetaNode, ABC):
 class LeafNode(Node):
     """Node corresponding to a leaf in the path-structure."""
 
-    async def _get(self) -> AnnotatedValue:
+    async def _value_postprocessing(
+        self,
+        result: t.Awaitable[AnnotatedValue],
+    ) -> AnnotatedValue:
+        return self._tree_manager.parser(await result)
+
+    def _get(self) -> t.Awaitable[AnnotatedValue]:
         """Get the value of the node.
 
         Returns:
@@ -1098,14 +1104,12 @@ class LeafNode(Node):
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        return self._tree_manager.parser(
-            await self._tree_manager.session.get(self.path),
-        )
+        return self._value_postprocessing(self._tree_manager.session.get(self.path))
 
-    async def _set(
+    def _set(
         self,
         value: Value,
-    ) -> AnnotatedValue:
+    ) -> t.Awaitable[AnnotatedValue]:
         """Set the value of the node.
 
         Args:
@@ -1123,10 +1127,8 @@ class LeafNode(Node):
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
-        return self._tree_manager.parser(
-            await self._tree_manager.session.set(
-                AnnotatedValue(value=value, path=self.path),
-            ),
+        return self._value_postprocessing(
+            self._tree_manager.session.set(AnnotatedValue(value=value, path=self.path)),
         )
 
     def try_generate_subnode(
@@ -1242,9 +1244,9 @@ class LeafNode(Node):
 class WildcardOrPartialNode(Node, ABC):
     """Common functionality for wildcard and partial nodes."""
 
-    async def _get(
+    def _get(
         self,
-    ) -> ResultNode:
+    ) -> t.Awaitable[ResultNode]:
         """Get the value of the node.
 
         Raises:
@@ -1257,13 +1259,13 @@ class WildcardOrPartialNode(Node, ABC):
                 mapped to one of the other errors.
         """
         return self._package_response(
-            await self._tree_manager.session.get_with_expression(self.path),
+            self._tree_manager.session.get_with_expression(self.path),
         )
 
-    async def _set(
+    def _set(
         self,
         value: Value,
-    ) -> ResultNode:
+    ) -> t.Awaitable[ResultNode]:
         """Set the value of the node.
 
         Args:
@@ -1279,14 +1281,14 @@ class WildcardOrPartialNode(Node, ABC):
                 mapped to one of the other errors.
         """
         return self._package_response(
-            await self._tree_manager.session.set_with_expression(
+            self._tree_manager.session.set_with_expression(
                 AnnotatedValue(value=value, path=self.path),
             ),
         )
 
-    def _package_response(
+    async def _package_response(
         self,
-        raw_response: list[AnnotatedValue],
+        result: t.Awaitable[list[AnnotatedValue]],
     ) -> ResultNode:
         """Package server-response of wildcard or partial get-request.
 
@@ -1299,11 +1301,12 @@ class WildcardOrPartialNode(Node, ABC):
         will be available in the result node.
 
         Args:
-            raw_response: server-response to get (or set) request
+            result: server-response to get (or set) request
 
         Returns:
             Node-structure, representing the results.
         """
+        raw_response = await result
         timestamp = raw_response[0].timestamp if raw_response else None
         path_segments = (
             self.tree_manager.root.path_segments
