@@ -202,7 +202,7 @@ API_LEVEL = 6
 # 1.4.0 is the first version that supports the html interface.
 MIN_ORCHESTRATOR_CAPABILITY_VERSION = version.Version("1.4.0")
 # The latest known version of the orchestrator capability version.
-TESTED_ORCHESTRATOR_CAPABILITY_VERSION = version.Version("1.7.0")
+TESTED_ORCHESTRATOR_CAPABILITY_VERSION = version.Version("1.8.0")
 HELLO_MSG_FIXED_LENGTH = 256
 
 
