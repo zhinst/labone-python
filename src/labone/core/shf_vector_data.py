@@ -141,7 +141,7 @@ class ShfResultLoggerVectorExtraHeader:
             this encoding.
         """
         return struct.pack(
-            "qIIddIIIIIHHHqH",
+            "=qIIddIIIIIHHHqH",
             self.timestamp,
             self.job_id,
             self.repetition_id,
