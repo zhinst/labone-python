@@ -75,6 +75,7 @@ class ShfResultLoggerVectorExtraHeader:
         holdoff_errors_reslog: Number of hold-off errors in the result logger
         holdoff_errors_readout: Number of hold-off errors in the readout
         holdoff_errors_spectr: Number of hold-off errors in the spectrum
+        first_sample_timestamp: Timestamp of the first sample
     """
 
     timestamp: int
@@ -90,6 +91,7 @@ class ShfResultLoggerVectorExtraHeader:
     holdoff_errors_reslog: int
     holdoff_errors_readout: int
     holdoff_errors_spectr: int
+    first_sample_timestamp: int
 
     @staticmethod
     def from_binary(
@@ -126,6 +128,7 @@ class ShfResultLoggerVectorExtraHeader:
                 holdoff_errors_reslog=struct.unpack("H", binary[52:54])[0],
                 holdoff_errors_readout=struct.unpack("H", binary[54:56])[0],
                 holdoff_errors_spectr=struct.unpack("H", binary[56:58])[0],
+                first_sample_timestamp=struct.unpack("q", binary[58:66])[0],
             )
         raise SHFHeaderVersionNotSupportedError(version=version.as_tuple())
 
@@ -138,7 +141,7 @@ class ShfResultLoggerVectorExtraHeader:
             this encoding.
         """
         return struct.pack(
-            "qIIddIIIIIHHHH",
+            "qIIddIIIIIHHHqH",
             self.timestamp,
             self.job_id,
             self.repetition_id,
@@ -152,6 +155,7 @@ class ShfResultLoggerVectorExtraHeader:
             self.holdoff_errors_reslog,
             self.holdoff_errors_readout,
             self.holdoff_errors_spectr,
+            self.first_sample_timestamp,
             0,  # padding to make the number of bytes divisible by 4
             # this is necessary because the length of the header is encoded
             # in multiples of 4 bytes (32 bit words)
