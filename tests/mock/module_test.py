@@ -129,6 +129,7 @@ async def test_shf_result_logger_vector_handled_correctly_in_set_and_subscribe()
         10,
         11,
         12,
+        13,
     )
 
     session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()

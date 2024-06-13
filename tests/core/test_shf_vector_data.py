@@ -232,7 +232,7 @@ def test_shf_demodulator_vector(  # noqa: PLR0913
 @pytest.mark.parametrize("header_version", [1])
 @pytest.mark.parametrize("x", range(0, 30, 7))
 def test_shf_result_logger_vector(vector_length, header_version, x):
-    header_length = 64
+    header_length = 72
     input_vector = VectorData(
         valueType=VectorValueType.SHF_RESULT_LOGGER_VECTOR_DATA.value,
         vectorElementType=2,
@@ -317,6 +317,7 @@ def test_shf_waveform_logger_vector(vector_length, x, y):
             holdoff_errors_reslog=10,
             holdoff_errors_readout=11,
             holdoff_errors_spectr=12,
+            first_sample_timestamp=13,
         ),
         ShfDemodulatorVectorExtraHeader(
             timestamp=0,
@@ -385,6 +386,7 @@ class GetAttrAbleDict(dict):
                 holdoff_errors_reslog=10,
                 holdoff_errors_readout=11,
                 holdoff_errors_spectr=12,
+                first_sample_timestamp=13,
             ),
             np.array([50 + 100j, 100 + 150j], dtype=np.complex64),
         ),
@@ -490,7 +492,7 @@ def test_encoding_decoding_are_invers_shf_demod_sample(header, data):
             ),
         ),
         (
-            ShfResultLoggerVectorExtraHeader(0, 0, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            ShfResultLoggerVectorExtraHeader(0, 0, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
             SHFDemodSample(
                 np.array([6, 3], dtype=np.int64),
                 np.array([7, 2], dtype=np.int64),
