@@ -158,7 +158,7 @@ def split_path(path: LabOneNodePath) -> list[NormalizedPathSegment]:
         return []
     path_segments = path.split(PATH_SEPERATOR)
     first_item_index = 0
-    if path_segments[0] == "":  #
+    if path_segments[0] == "":
         # this happens if the path started with '/'
         # ignore leading '/'
         first_item_index = 1
