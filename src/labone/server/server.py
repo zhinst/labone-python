@@ -9,8 +9,9 @@ inserting allows for a abstract common reflection server.
 from __future__ import annotations
 
 import typing as t
-from asyncio import CancelledError, Future, get_running_loop
-from signal import SIGINT, SIGTERM
+from asyncio import Future, get_running_loop
+from functools import partial
+from signal import SIGINT, SIGTERM, Signals
 
 import zhinst.comms
 from typing_extensions import TypeAlias
@@ -136,18 +137,21 @@ class CapnpServer:
 
         self._run_forever_future = get_running_loop().create_future()
 
+        def signal_handler(signal: Signals, future: Future[None]) -> None:
+            loop.remove_signal_handler(signal)
+            future.cancel()
+
         loop = get_running_loop()
         for signal_enum in [SIGINT, SIGTERM]:
-            loop.add_signal_handler(signal_enum, self.close)
+            loop.add_signal_handler(
+                signal_enum,
+                partial(signal_handler, signal_enum, self._run_forever_future),
+            )
 
         try:
             await self._run_forever_future
-        except CancelledError:
-            try:
-                self.close()
-            finally:
-                raise
         finally:
+            self.close()
             self._run_forever_future = None
 
     async def start_pipe(

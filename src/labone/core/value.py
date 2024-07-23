@@ -96,10 +96,18 @@ class AnnotatedValue:
                 value, extra_header = _capnp_value_to_python_value(raw.value)
             except AttributeError:
                 value, extra_header = None, None
+            try:
+                timestamp = raw.metadata.timestamp
+            except AttributeError:
+                timestamp = None
+            try:
+                path = raw.metadata.path
+            except AttributeError:
+                path = ""
             return AnnotatedValue(
                 value=value,
-                timestamp=raw.metadata.timestamp,
-                path=raw.metadata.path,
+                timestamp=timestamp,
+                path=path,
                 extra_header=extra_header,
             )
         except RuntimeError as e:
