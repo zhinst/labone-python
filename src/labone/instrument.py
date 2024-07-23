@@ -109,7 +109,7 @@ class Instrument(PartialNode):
         )
 
     @staticmethod
-    async def create(  # noqa: PLR0913
+    async def create(
         serial: str,
         *,
         host: str,

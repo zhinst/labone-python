@@ -172,7 +172,7 @@ def test_shf_scope_vector(
     ],
 )
 @pytest.mark.parametrize(("x", "y"), [(0, 0), (1, 1), (32, 743)])
-def test_shf_demodulator_vector(  # noqa: PLR0913
+def test_shf_demodulator_vector(
     vector_length,
     scaling,
     timestamp_delta,

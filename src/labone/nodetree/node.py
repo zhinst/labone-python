@@ -534,7 +534,7 @@ class ResultNode(MetaNode):
             The time the results where created.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         tree_manager: NodeTreeManager,
         path_segments: tuple[NormalizedPathSegment, ...],

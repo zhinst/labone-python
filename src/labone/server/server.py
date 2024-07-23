@@ -9,10 +9,13 @@ inserting allows for a abstract common reflection server.
 from __future__ import annotations
 
 import typing as t
+from asyncio import CancelledError, Future, get_running_loop
+from signal import SIGINT, SIGTERM
 
 import zhinst.comms
 from typing_extensions import TypeAlias
 
+from labone.core.errors import LabOneCoreError
 from labone.core.helper import get_default_context
 
 CapnpResult: TypeAlias = dict[str, t.Any]
@@ -43,6 +46,8 @@ class CapnpServer:
     def __init__(self, schema: zhinst.comms.SchemaLoader):
         self._schema = schema
         self._registered_callbacks: dict[tuple[int, int], t.Callable] = {}
+        self._run_forever_future: Future[None] | None = None
+        self._capnp_server: zhinst.comms.DynamicServer | None = None
         self._load_callbacks()
 
     def _load_callbacks(self) -> None:
@@ -96,12 +101,54 @@ class CapnpServer:
             port: port to listen on.
             open_overwrite: Flag if the server should be reachable from outside.
         """
+        if self._capnp_server:
+            msg = f"server {self!r} is already running"
+            raise LabOneCoreError(msg)
         self._capnp_server = await context.listen(
             port=port,
             openOverride=open_overwrite,
             callback=self._capnp_callback,
             schema=self._schema,
         )
+
+    def close(self) -> None:
+        """Close the server."""
+        if self._capnp_server is None:
+            msg = f"server {self!r} is not running"
+            raise LabOneCoreError(msg)
+        self._capnp_server.close()
+
+    async def run_forever(self) -> None:
+        """Run the server forever.
+
+        Useful for running the server in the main thread.
+
+        This method is a coroutine that will block until the server until a
+        CancelledError is raised. After a CancelledError the server is shutdown
+        properly and the functions returns.
+        """
+        if self._run_forever_future is not None:
+            msg = f"server {self!r} is already being awaited on run_forever()"
+            raise LabOneCoreError(msg)
+        if self._capnp_server is None:
+            msg = f"server {self!r} is not running"
+            raise LabOneCoreError(msg)
+
+        self._run_forever_future = get_running_loop().create_future()
+
+        loop = get_running_loop()
+        for signal_enum in [SIGINT, SIGTERM]:
+            loop.add_signal_handler(signal_enum, self.close)
+
+        try:
+            await self._run_forever_future
+        except CancelledError:
+            try:
+                self.close()
+            finally:
+                raise
+        finally:
+            self._run_forever_future = None
 
     async def start_pipe(
         self,
