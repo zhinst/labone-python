@@ -123,6 +123,8 @@ ignore = [
   "PLR0911",
   # Missing return type annotation for special method
   "ANN204",
+  # Too many arguments in function definition
+  "PLR0913",
 ]
 
 [tool.ruff.lint.flake8-annotations]

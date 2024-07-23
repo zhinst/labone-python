@@ -73,7 +73,7 @@ def same_prints_and_exceptions_for_real_and_mock(test_function):
             exception_mock = e
         assert (exception is None) == (exception_mock is None)
         if exception is not None:
-            assert type(exception) == type(exception_mock)
+            assert type(exception) is type(exception_mock)
         assert string_output.getvalue() == string_output_mock.getvalue()
 
     return new_test_function
