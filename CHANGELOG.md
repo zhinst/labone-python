@@ -1,5 +1,9 @@
 # Labone Python API Changelog
 
+## Version 2.3.0
+* Pump version of `zhinst.comms` to 2.0.0
+* Deprecate `labone.server` since the logic has been moved to `zhinst.comms.server`
+
 ## Version 2.2.0
 * Adapt the server module to support closing a running server and run a server
   forever.

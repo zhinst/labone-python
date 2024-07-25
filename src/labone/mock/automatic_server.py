@@ -42,8 +42,8 @@ from labone.core.value import (
     Value,
 )
 from labone.mock.errors import LabOneMockError
+from labone.mock.session import LabOneServerBase, Subscription
 from labone.node_info import NodeInfo
-from labone.server.session import LabOneServerBase, Subscription
 
 if t.TYPE_CHECKING:
     from labone.core.helper import LabOneNodePath

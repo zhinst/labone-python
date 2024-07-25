@@ -17,7 +17,7 @@ import pytest
 
 from labone.core.session import ListNodesFlags
 from labone.core.value import AnnotatedValue
-from labone.server.session import LabOneServerBase
+from labone.mock.session import LabOneServerBase
 
 
 class MockLabOneServer(LabOneServerBase):

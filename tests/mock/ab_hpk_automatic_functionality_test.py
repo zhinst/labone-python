@@ -25,7 +25,7 @@ import pytest
 from labone.core import AnnotatedValue, KernelInfo, KernelSession, ServerInfo
 from labone.core.session import ListNodesFlags, Session
 from labone.mock import AutomaticLabOneServer
-from labone.server.session import MockSession
+from labone.mock.session import MockSession
 
 
 async def get_session():

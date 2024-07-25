@@ -4,8 +4,8 @@ This module contains the method definitions for the Capnp Server,
 including setting and getting values, listing nodes, and subscribing to
 nodes. This specific capnp server methods define the specific
 Hpk behavior.
-The logic of the capnp methods is deligated to the SessionFunctionality class,
-which offers a blueprint meant to be overriden by the user.
+The logic of the capnp methods is delegated to the SessionFunctionality class,
+which offers a blueprint meant to be overridden by the user.
 """
 
 from __future__ import annotations
@@ -14,22 +14,22 @@ import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from labone.core import ListNodesFlags, ListNodesInfoFlags
+from zhinst.comms.server import CapnpResult, CapnpServer, capnp_method
+
+from labone.core import ListNodesFlags, ListNodesInfoFlags, hpk_schema
 from labone.core.helper import get_default_context
-from labone.core.hpk_schema import get_schema_loader
 from labone.core.session import Session
 from labone.core.value import (
     AnnotatedValue,
     _capnp_value_to_python_value,
     value_from_python_types_dict,
 )
-from labone.server.server import CapnpResult, CapnpServer, capnp_method
 
 if TYPE_CHECKING:
     import zhinst.comms
-    from zhinst.comms import DynamicStructBase
+    from zhinst.comms import DynamicStruct
 
-
+HPK_SCHEMA_ID = 0xA621130A90860008
 SESSION_SCHEMA_ID = 0xB9D445582DA4A55C
 SERVER_ERROR = "SERVER_ERROR"
 
@@ -43,7 +43,7 @@ class Subscription:
     """Subscription abstraction class.
 
     This class hides the capnp specific subscription object and the logic to send
-    and AnnnotatedValue to the subscriber.
+    and AnnotatedValue to the subscriber.
 
     Args:
         path: Path to the node to subscribe to.
@@ -142,7 +142,7 @@ class LabOneServerBase(ABC, CapnpServer):
     capnp server logic and the user. The user can override the methods
     to define an individual server. The signature of the methods
     is mostly identical to the session-interface on the caller side.
-    Thereby it feels as if the session-interface is overritten directly,
+    Thereby it feels as if the session-interface is overwritten directly,
     hiding the capnp server logic from the user.
 
     Two possible ways to use this class arise:
@@ -156,7 +156,10 @@ class LabOneServerBase(ABC, CapnpServer):
     """
 
     def __init__(self):
-        CapnpServer.__init__(self, schema=get_schema_loader())
+        CapnpServer.__init__(
+            self,
+            schema=hpk_schema.get_schema_loader().get_interface_schema(HPK_SCHEMA_ID),
+        )
 
     @abstractmethod
     async def get(self, path: LabOneNodePath) -> AnnotatedValue:
@@ -184,7 +187,7 @@ class LabOneServerBase(ABC, CapnpServer):
 
         Args:
             path_expression: Path expression to get.
-            flags: Flags to control the behaviour of the get_with_expression method.
+            flags: Flags to control the behavior of the get_with_expression method.
 
         Returns:
             List of values, corresponding to nodes of the path expression.
@@ -230,7 +233,7 @@ class LabOneServerBase(ABC, CapnpServer):
         Args:
             path: Path to narrow down which nodes should be listed.
                 Omitting the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes method.
+            flags: Flags to control the behavior of the list_nodes method.
 
         Returns:
             List of nodes, corresponding to the path and flags.
@@ -249,7 +252,7 @@ class LabOneServerBase(ABC, CapnpServer):
         Args:
             path: Path to narrow down which nodes should be listed.
                 Omitting the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes_info method.
+            flags: Flags to control the behavior of the list_nodes_info method.
 
         Returns:
             Dictionary of paths to node info.
@@ -269,7 +272,7 @@ class LabOneServerBase(ABC, CapnpServer):
     @capnp_method(SESSION_SCHEMA_ID, 7)
     async def _get_session_version_interface(
         self,
-        _: DynamicStructBase,
+        _: DynamicStruct,
     ) -> CapnpResult:
         """Capnp server method to get session version.
 
@@ -281,7 +284,7 @@ class LabOneServerBase(ABC, CapnpServer):
     @capnp_method(SESSION_SCHEMA_ID, 0)
     async def _list_nodes_interface(
         self,
-        call_input: DynamicStructBase,
+        call_input: DynamicStruct,
     ) -> CapnpResult:
         """Capnp server method to list nodes.
 
@@ -301,7 +304,7 @@ class LabOneServerBase(ABC, CapnpServer):
     @capnp_method(SESSION_SCHEMA_ID, 5)
     async def _list_nodes_json_interface(
         self,
-        call_input: DynamicStructBase,
+        call_input: DynamicStruct,
     ) -> CapnpResult:
         """Capnp server method to list nodes json.
 
@@ -321,7 +324,7 @@ class LabOneServerBase(ABC, CapnpServer):
         }
 
     @capnp_method(SESSION_SCHEMA_ID, 10)
-    async def _get_value_interface(self, call_input: DynamicStructBase) -> CapnpResult:
+    async def _get_value_interface(self, call_input: DynamicStruct) -> CapnpResult:
         """Capnp server method to get values.
 
         Args:
@@ -357,7 +360,7 @@ class LabOneServerBase(ABC, CapnpServer):
         return {"result": result}
 
     @capnp_method(SESSION_SCHEMA_ID, 9)
-    async def _set_value_interface(self, call_input: DynamicStructBase) -> CapnpResult:
+    async def _set_value_interface(self, call_input: DynamicStruct) -> CapnpResult:
         """Capnp server method to set values.
 
         Args:
@@ -400,7 +403,7 @@ class LabOneServerBase(ABC, CapnpServer):
         return {"result": result}
 
     @capnp_method(SESSION_SCHEMA_ID, 3)
-    async def _subscribe_interface(self, call_input: DynamicStructBase) -> CapnpResult:
+    async def _subscribe_interface(self, call_input: DynamicStruct) -> CapnpResult:
         """Capnp server method to subscribe to nodes.
 
         Args:
