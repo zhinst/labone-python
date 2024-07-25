@@ -27,6 +27,7 @@ from labone.core.helper import ZIContext, get_default_context
 from labone.core.session import Session
 
 KernelInfo: TypeAlias = zhinst.comms.DestinationParams
+HPK_SCHEMA_ID = 0xA621130A90860008
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,7 @@ class KernelSession(Session):
             server_info.host,
             server_info.port,
             kernel_info,
-            schema=hpk_schema.get_schema_loader(),
+            schema=hpk_schema.get_schema_loader().get_interface_schema(HPK_SCHEMA_ID),
         )
         return KernelSession(
             core_session,

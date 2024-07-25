@@ -154,7 +154,7 @@ _ZI_ERROR_MAP = {
 }
 
 
-def get_streaming_error(err: zhinst.comms.DynamicStructBase) -> LabOneCoreError:
+def get_streaming_error(err: zhinst.comms.DynamicStruct) -> LabOneCoreError:
     """Create labone error from a labone error struct.
 
     Args:

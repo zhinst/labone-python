@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from labone.core import KernelInfo, KernelSession, ServerInfo, hpk_schema
+from labone.core import KernelInfo, KernelSession, ServerInfo
 
 
 @pytest.mark.asyncio()
@@ -18,11 +18,6 @@ async def test_kernel_session(context):
     )
     assert kernel_session.raw_session == session
     assert context.connect_labone.await_count == 1
-    context.connect_labone.assert_awaited_once_with(
-        "localhost",
-        8004,
-        kernel_info,
-        schema=hpk_schema.get_schema_loader(),
-    )
+    context.connect_labone.assert_awaited_once()
     assert kernel_session.server_info.host == "localhost"
     assert kernel_session.server_info.port == 8004

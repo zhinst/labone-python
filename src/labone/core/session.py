@@ -26,6 +26,7 @@ from typing import Literal
 
 from packaging import version
 from typing_extensions import NotRequired, TypeAlias, TypedDict
+from zhinst.comms import unwrap
 
 from labone.core import errors
 from labone.core.errors import async_translate_comms_error, translate_comms_error
@@ -197,7 +198,7 @@ class Session:
 
     async def _ensure_compatibility(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        future: t.Awaitable[zhinst.comms.DynamicStruct],
     ) -> None:
         """Ensure the compatibility with the connected server.
 
@@ -250,7 +251,7 @@ class Session:
 
     async def _list_nodes_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        future: t.Awaitable[zhinst.comms.DynamicStruct],
     ) -> list[LabOneNodePath]:
         """Postprocessing for the list nodes function.
 
@@ -339,7 +340,7 @@ class Session:
 
     async def _list_nodes_info_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        future: t.Awaitable[zhinst.comms.DynamicStruct],
     ) -> dict[LabOneNodePath, NodeInfo]:
         """Postprocessing for the list nodes info function.
 
@@ -452,7 +453,7 @@ class Session:
 
     async def _single_value_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        future: t.Awaitable[zhinst.comms.DynamicStruct],
         path: LabOneNodePath,
     ) -> AnnotatedValue:
         """Postprocessing for the get/set with expression functions.
@@ -466,9 +467,9 @@ class Session:
         Returns:
             Annotated value of the node.
         """
-        response = await future
+        response = (await future).result
         try:
-            return AnnotatedValue.from_capnp(response.result[0])
+            return AnnotatedValue.from_capnp(unwrap(response[0]))
         except IndexError as e:
             msg = f"No value returned for path {path}."
             raise errors.LabOneCoreError(msg) from e
@@ -478,7 +479,7 @@ class Session:
 
     async def _multi_value_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStructBase],
+        future: t.Awaitable[zhinst.comms.DynamicStruct],
         path: LabOneNodePath,
     ) -> list[AnnotatedValue]:
         """Postprocessing for the get/set with expression functions.
@@ -493,10 +494,10 @@ class Session:
         Returns:
             List of annotated value of the node.
         """
-        response = await future
+        response = (await future).result
         try:
             return [
-                AnnotatedValue.from_capnp(raw_result) for raw_result in response.result
+                AnnotatedValue.from_capnp(unwrap(raw_result)) for raw_result in response
             ]
         except RuntimeError as e:
             msg = f"Error while setting {path}."

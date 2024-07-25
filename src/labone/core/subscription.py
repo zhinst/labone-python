@@ -473,7 +473,7 @@ class StreamingHandle:
 
     def _distribute_to_data_queues(
         self,
-        value: zhinst.comms.DynamicStructBase,
+        value: zhinst.comms.DynamicStruct,
     ) -> None:
         """Add a value to all data queues.
 
@@ -513,7 +513,7 @@ class StreamingHandle:
         self,
         interface: int,  # noqa: ARG002
         method_index: int,  # noqa: ARG002
-        call_input: zhinst.comms.DynamicStructBase,
+        call_input: zhinst.comms.DynamicStruct,
         fulfiller: zhinst.comms.Fulfiller,
     ) -> None:
         """Capnp Interface callback.

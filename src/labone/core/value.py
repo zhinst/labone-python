@@ -79,7 +79,7 @@ class AnnotatedValue:
         )
 
     @staticmethod
-    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> AnnotatedValue:
+    def from_capnp(raw: zhinst.comms.DynamicStruct) -> AnnotatedValue:
         """Convert a capnp AnnotatedValue to a python AnnotatedValue.
 
         Args:
@@ -137,7 +137,7 @@ class TriggerSample:
     sequence_index: int
 
     @staticmethod
-    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> TriggerSample:
+    def from_capnp(raw: zhinst.comms.DynamicStruct) -> TriggerSample:
         """Convert a capnp TriggerSample to a python TriggerSample.
 
         Args:
@@ -172,7 +172,7 @@ class CntSample:
     trigger: int
 
     @staticmethod
-    def from_capnp(raw: zhinst.comms.DynamicStructBase) -> CntSample:
+    def from_capnp(raw: zhinst.comms.DynamicStruct) -> CntSample:
         """Convert a capnp CntSample to a python CntSample.
 
         Args:
@@ -205,7 +205,7 @@ Value = t.Union[
 
 
 def _capnp_vector_to_value(
-    vector_data: zhinst.comms.DynamicStructBase,
+    vector_data: zhinst.comms.DynamicStruct,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse a capnp vector to a numpy array.
 
@@ -254,7 +254,7 @@ def _capnp_vector_to_value(
 
 
 def _capnp_value_to_python_value(
-    capnp_value: zhinst.comms.DynamicStructBase,
+    capnp_value: zhinst.comms.DynamicStruct,
 ) -> tuple[Value, ExtraHeader | None]:
     """Convert a capnp value to a python value.
 

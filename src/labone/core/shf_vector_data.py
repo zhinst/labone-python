@@ -25,7 +25,7 @@ from labone.core.errors import LabOneCoreError, SHFHeaderVersionNotSupportedErro
 from labone.core.helper import VectorElementType, VectorValueType
 
 if t.TYPE_CHECKING:
-    from zhinst.comms import DynamicStructBase
+    from zhinst.comms import DynamicStruct
 
 
 logger = logging.getLogger(__name__)
@@ -580,7 +580,7 @@ def _deserialize_shf_demodulator_vector(
     return SHFDemodSample(data_x, data_y), extra_header
 
 
-def get_header_length(vector_data: DynamicStructBase) -> int:
+def get_header_length(vector_data: DynamicStruct) -> int:
     """Get the length of the extra header.
 
     The 16 least significant bits of extra_header_info contain the length of
@@ -597,7 +597,7 @@ def get_header_length(vector_data: DynamicStructBase) -> int:
 
 
 def parse_shf_vector_data_struct(
-    vector_data: DynamicStructBase,
+    vector_data: DynamicStruct,
 ) -> tuple[np.ndarray | SHFDemodSample, ExtraHeader | None]:
     """Parse the SHF vector data struct.
 
