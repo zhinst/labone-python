@@ -1,5 +1,12 @@
 # Labone Python API Changelog
 
+## Version 2.2.0
+* Adapt the server module to support closing a running server and run a server
+  forever.
+
+## Version 2.1.0
+* Pump version of `zhinst.comms` to 1.1.0
+
 ## Version 2.0.0 
 
 * Switch to the custom capnp backend `zhinst.comms`. This fixes the stability issues.
