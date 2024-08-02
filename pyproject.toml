@@ -26,8 +26,9 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "typing_extensions>=4.8.0",
   "numpy>=1.20",
+  "setuptools",
+  "typing_extensions>=4.8.0",
   "zhinst-comms~=2.0.0",
 ]
 
@@ -55,10 +56,10 @@ python = ["3.9", "3.10", "3.11", "3.12"]
 [tool.hatch.envs.test]
 dependencies = [
   "coverage[toml]>=6.5",
-  "pytest",
   "hypothesis",
-  "pytest-asyncio",
   "munch==4.0.0",
+  "pytest",
+  "pytest-asyncio",
 ]
 
 [tool.pytest.ini_options]
