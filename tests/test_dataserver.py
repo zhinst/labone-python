@@ -10,7 +10,7 @@ from labone.errors import LabOneError
 from labone.mock import AutomaticLabOneServer
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_create_ok():
     session = await AutomaticLabOneServer({}).start_pipe()
     dataserver = await DataServer.create_from_session(
@@ -21,7 +21,7 @@ async def test_create_ok():
     assert dataserver.kernel_session == session
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_create_ok_new_session():
     session = await AutomaticLabOneServer({}).start_pipe()
     with patch.object(
@@ -36,7 +36,7 @@ async def test_create_ok_new_session():
     assert create_mock.call_count == 1
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_create_raises():
     session = MagicMock()
     session.list_nodes_info = AsyncMock(side_effect=LabOneError())
@@ -48,7 +48,7 @@ async def test_create_raises():
     ("status_nr"),
     [0, 1 << 1, 1 << 2, 1 << 3, (1 << 2) + (1 << 3)],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_check_firmware_compatibility(status_nr):
     session = await AutomaticLabOneServer({"/zi/devices": {}}).start_pipe()
     dataserver = await DataServer.create_from_session(
@@ -61,7 +61,7 @@ async def test_check_firmware_compatibility(status_nr):
     await DataServer.check_firmware_compatibility(dataserver)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_check_firmware_compatibility_single_instrument():
     session = await AutomaticLabOneServer({"/zi/devices": {}}).start_pipe()
     dataserver = await DataServer.create_from_session(
@@ -93,7 +93,7 @@ async def test_check_firmware_compatibility_single_instrument():
         ),
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_check_firmware_compatibility_raises(id_and_codes, contained_in_error):
     val = "{"
     for id_, code in id_and_codes:

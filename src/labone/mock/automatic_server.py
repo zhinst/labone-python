@@ -226,7 +226,17 @@ class AutomaticLabOneServer(LabOneServerBase):
         """
         return [await self.get(p) for p in await self.list_nodes(path=path_expression)]
 
-    async def set(self, value: AnnotatedValue) -> AnnotatedValue:
+    @t.overload
+    async def set(self, value: AnnotatedValue) -> AnnotatedValue: ...
+
+    @t.overload
+    async def set(
+        self,
+        value: Value,
+        path: LabOneNodePath,
+    ) -> AnnotatedValue: ...
+
+    async def set(self, value: AnnotatedValue | Value, path="") -> AnnotatedValue:
         """Predefined behaviour for set.
 
         Updates the internal dictionary. A set command is considered
@@ -234,34 +244,57 @@ class AutomaticLabOneServer(LabOneServerBase):
 
         Args:
             value: Value to set.
+            path: LabOne node path. The path can be relative or absolute.
 
         Returns:
             Acknowledged value.
         """
-        value.path = self._sanitize_path(value.path)
-        if value.path not in self.memory:
-            msg = f"Path {value.path} not found in mock server. Cannot set it."
+        if isinstance(value, AnnotatedValue):
+            path = value.path
+            value = value.value
+        path = self._sanitize_path(path)
+        if path not in self.memory:
+            msg = f"Path {path} not found in mock server. Cannot set it."
             raise LabOneCoreError(msg)
-        self.memory[value.path].value = value.value
+        self.memory[path].value = value
 
-        if not self.memory[value.path].info.writable:
-            msg = f"Path {value.path} is not writeable."
+        if not self.memory[path].info.writable:
+            msg = f"Path {path} is not writeable."
             raise LabOneCoreError(msg)
 
-        response = value
-        response.timestamp = self.get_timestamp()
-
-        if self.memory[value.path].streaming_handles:
+        response = AnnotatedValue(
+            value=value,
+            path=path,
+            timestamp=self.get_timestamp(),
+        )
+        if self.memory[path].streaming_handles:
             # sending updated value to subscriptions
             await asyncio.gather(
                 *[
                     handle.send_value(response)
-                    for handle in self.memory[response.path].streaming_handles
+                    for handle in self.memory[path].streaming_handles
                 ],
             )
         return response
 
-    async def set_with_expression(self, value: AnnotatedValue) -> list[AnnotatedValue]:
+    @t.overload
+    async def set_with_expression(
+        self,
+        value: AnnotatedValue,
+    ) -> list[AnnotatedValue]: ...
+
+    @t.overload
+    async def set_with_expression(
+        self,
+        value: Value,
+        path: LabOneNodePath,
+    ) -> list[AnnotatedValue]: ...
+
+    async def set_with_expression(
+        self,
+        value: AnnotatedValue | Value,
+        path: LabOneNodePath | None = None,
+    ) -> list[AnnotatedValue]:
         """Predefined behaviour for set_with_expression.
 
         Finds all nodes associated with the path expression
@@ -269,16 +302,19 @@ class AutomaticLabOneServer(LabOneServerBase):
 
         Args:
             value: Value to set.
+            path:LabOne node path.
 
         Returns:
             List of acknowledged values, corresponding to nodes of the path expression.
         """
+        if isinstance(value, AnnotatedValue):
+            path = value.path
+            value = value.value
         result = [
-            await self.set(AnnotatedValue(value=value.value, path=p))
-            for p in await self.list_nodes(value.path)
+            await self.set(value=value, path=p) for p in await self.list_nodes(path)  # type: ignore[arg-type]
         ]
         if not result:
-            msg = f"No node found matching path '{value.path}'."
+            msg = f"No node found matching path '{path}'."
             raise LabOneCoreError(msg)
         return result
 

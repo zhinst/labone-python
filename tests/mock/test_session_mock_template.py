@@ -43,7 +43,7 @@ class MockLabOneServer(LabOneServerBase):
     ) -> dict[str, dict]: ...
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_set_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.set = AsyncMock()
@@ -64,7 +64,7 @@ async def test_set_propagates_to_functionality_and_back():
     assert response == AnnotatedValue(path="/mock/path", value=1, timestamp=2)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_get_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.get = AsyncMock()
@@ -85,7 +85,7 @@ async def test_get_propagates_to_functionality_and_back():
     assert response == AnnotatedValue(path="/mock/path", value=1, timestamp=2)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_get_with_expression_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.get_with_expression = AsyncMock()
@@ -108,7 +108,7 @@ async def test_get_with_expression_propagates_to_functionality_and_back():
     ]
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_set_with_expression_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.set_with_expression = AsyncMock()
@@ -133,7 +133,7 @@ async def test_set_with_expression_propagates_to_functionality_and_back():
     ]
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_subscribe_propagates_to_functionality():
     functionality = MockLabOneServer()
     functionality.subscribe = AsyncMock()
@@ -147,7 +147,7 @@ async def test_subscribe_propagates_to_functionality():
     functionality.subscribe.assert_called_once()
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_list_nodes_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.list_nodes = AsyncMock()
@@ -167,7 +167,7 @@ async def test_list_nodes_propagates_to_functionality_and_back():
     assert response == ["/a/b", "/a/c"]
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_list_nodes_info_propagates_to_functionality_and_back():
     functionality = MockLabOneServer()
     functionality.list_nodes_info = AsyncMock()
@@ -190,7 +190,7 @@ async def test_list_nodes_info_propagates_to_functionality_and_back():
     }
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_set_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.set = AsyncMock()
@@ -202,7 +202,7 @@ async def test_errors_in_set_functionality_are_transmitted_back():
         await session.set(AnnotatedValue(path="/a/b", value=7))
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_get_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.get = AsyncMock()
@@ -214,7 +214,7 @@ async def test_errors_in_get_functionality_are_transmitted_back():
         await session.get("/a/b")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_get_with_expression_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.get_with_expression = AsyncMock()
@@ -226,7 +226,7 @@ async def test_errors_in_get_with_expression_functionality_are_transmitted_back(
         await session.get_with_expression("/a/b")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_set_with_expression_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.set_with_expression = AsyncMock()
@@ -238,7 +238,7 @@ async def test_errors_in_set_with_expression_functionality_are_transmitted_back(
         await session.set_with_expression(AnnotatedValue(path="/a/b", value=7))
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_subscribe_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.subscribe = AsyncMock()
@@ -250,7 +250,7 @@ async def test_errors_in_subscribe_functionality_are_transmitted_back():
         await session.subscribe("/a/b")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_list_nodes_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.list_nodes = AsyncMock()
@@ -262,7 +262,7 @@ async def test_errors_in_list_nodes_functionality_are_transmitted_back():
         await session.list_nodes("/a/b")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_errors_in_list_nodes_info_functionality_are_transmitted_back():
     functionality = MockLabOneServer()
     functionality.list_nodes_info = AsyncMock()

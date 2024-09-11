@@ -54,14 +54,14 @@ class TestOnlyLeafNodesCanBeSubscribedTo:
     accidentely.
     """
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_subscribe_to_partial_node_raises(self):
         node = await get_unittest_mocked_node({"/a/b": {}})
 
         with UsefulErrorMessage(["partial", "cannot", "subscri", "leaf"]):
             await node.a.subscribe()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_subscribe_to_wildcard_node_raises(self):
         node = await get_unittest_mocked_node({"/a/b": {}})
 
@@ -78,14 +78,14 @@ class TestWildcardNodeDoesNotKnowTreeStructure:
     an error message is shown.
     """
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_wildcard_node_contains_raises(self):
         node = await get_unittest_mocked_node({"/a/b": {}})
 
         with UsefulErrorMessage(["wildcard", "cannot", "contain"]):
             "/a/b" in node["*"]  # noqa: B015
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_wildcard_node_iter_raises(self):
         node = await get_unittest_mocked_node({"/a/b": {}})
 
@@ -93,7 +93,7 @@ class TestWildcardNodeDoesNotKnowTreeStructure:
             for _ in node["*"]:
                 pass
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_wildcard_node_len_raises(self):
         node = await get_unittest_mocked_node({"/a/b": {}})
 
@@ -101,7 +101,7 @@ class TestWildcardNodeDoesNotKnowTreeStructure:
             len(node["*"])
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_calling_result_node_raises():
     """
     Result nodes are already call-results.
@@ -115,7 +115,7 @@ async def test_calling_result_node_raises():
         await result()
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_using_wildcards_in_result_node_raises():
     """
     Wildcards are useful for specifying which paths to get/set.
@@ -129,7 +129,7 @@ async def test_using_wildcards_in_result_node_raises():
         await result["*"]
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_wait_for_state_change_on_partial_node_raises():
     """
     Waiting for a change is done via providing a value.
@@ -143,7 +143,7 @@ async def test_wait_for_state_change_on_partial_node_raises():
         await node.a.wait_for_state_change(5)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_dir_shows_subpaths():
     """
     In order to make working on the nodetree easy, it is
@@ -156,7 +156,7 @@ async def test_dir_shows_subpaths():
     assert "c" in dir(node.a)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_dir_shows_subpaths_keywords_with_underscore():
     """
     Some path segments collide with python keywords.
@@ -177,7 +177,7 @@ class TestResultNodesNotGotPaths:
     not obtained, a useful error should be thrown
     """
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_result_nodes_not_got_paths_partial(self):
         node = await get_unittest_mocked_node({"/a/b": {}, "/a/c/d": {}})
         result = await node.a.c()
@@ -185,7 +185,7 @@ class TestResultNodesNotGotPaths:
         with UsefulErrorMessage(["not", "result", "captured"]):
             result.a.b  # noqa: B018
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_result_nodes_not_got_paths_wildcard(self):
         node = await get_unittest_mocked_node({"/a/b/c": {}, "/a/b/d": {}})
         result = await node.a["*"].c()  # pattern ends with c
@@ -203,7 +203,7 @@ class TestResultNodeSubindexingFiltersShownPaths:
     """
 
     @pytest.mark.parametrize("method", [repr, str])
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_partial_nodes(self, method):
         node = await get_mocked_node({"/a/b/c": {}, "/a/x/y": {}})
         result = await node.a()
@@ -212,7 +212,7 @@ class TestResultNodeSubindexingFiltersShownPaths:
         assert "/a/x/y" not in representation
 
     @pytest.mark.parametrize("method", [repr, str])
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_wildcard_nodes(self, method):
         node = await get_mocked_node({"/a/b/c": {}, "/a/x/c": {}})
         result = await node.a["*"].c()

@@ -14,9 +14,9 @@ from labone.core.value import AnnotatedValue
 from labone.nodetree.entry_point import construct_nodetree
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_get_translates_to_session():
-    value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
+    value = AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4)
 
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -27,9 +27,9 @@ async def test_get_translates_to_session():
     session_mock.get.assert_called_once_with("/a/b/c/d")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_set_translates_to_session():
-    value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
+    value = AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4)
 
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -38,13 +38,13 @@ async def test_set_translates_to_session():
 
     assert await node.a.b.c.d(42) == value
     session_mock.set.assert_called_once_with(
-        AnnotatedValue(path="/a/b/c/d", value=42, extra_header=ANY, timestamp=ANY),
+        AnnotatedValue(path="/a/b/c/d", value=42, timestamp=ANY),
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_partial_get_translates_to_session():
-    value = (AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),)
+    value = (AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4),)
 
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -55,9 +55,9 @@ async def test_partial_get_translates_to_session():
     session_mock.get_with_expression.assert_called_once_with("/a/b/c")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_partial_set_translates_to_session():
-    value = AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4)
+    value = AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4)
 
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -70,9 +70,9 @@ async def test_partial_set_translates_to_session():
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_wildcard_get_translates_to_session():
-    value = (AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),)
+    value = (AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4),)
 
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -83,13 +83,13 @@ async def test_wildcard_get_translates_to_session():
     session_mock.get_with_expression.assert_called_once_with("/a/*/c/d")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_wildcard_set_translates_to_session():
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
     session_mock.set_with_expression = AsyncMock(
         return_value=[
-            AnnotatedValue(path="/a/b/c/d", value=42, extra_header=3, timestamp=4),
+            AnnotatedValue(path="/a/b/c/d", value=42, timestamp=4),
         ],
     )
     node = (await construct_nodetree(session_mock, hide_kernel_prefix=False)).root
@@ -100,7 +100,7 @@ async def test_wildcard_set_translates_to_session():
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_partial_subscribe_translates_to_session():
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -116,7 +116,7 @@ async def test_partial_subscribe_translates_to_session():
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_wait_for_state_change_translates_to_session():
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b/c/d": {}})
@@ -131,7 +131,7 @@ async def test_wait_for_state_change_translates_to_session():
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_wait_for_state_change_wildcard_translates_to_session():
     session_mock = Mock(spec=Session)
     session_mock.list_nodes_info = AsyncMock(return_value={"/a/b": {}, "/a/c": {}})

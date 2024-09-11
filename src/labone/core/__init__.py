@@ -16,12 +16,13 @@ from labone.core.session import (
     ListNodesInfoFlags,
     Session,
 )
+from labone.core.shf_vector_data import ShfGeneratorWaveformVectorData
 from labone.core.subscription import (
     CircularDataQueue,
     DataQueue,
     DistinctConsecutiveDataQueue,
 )
-from labone.core.value import AnnotatedValue
+from labone.core.value import AnnotatedValue, Value
 
 __all__ = [
     "AnnotatedValue",
@@ -35,4 +36,6 @@ __all__ = [
     "ServerInfo",
     "KernelInfo",
     "ZIContext",
+    "Value",
+    "ShfGeneratorWaveformVectorData",
 ]

@@ -12,7 +12,7 @@ from labone.node_info import NodeInfo, OptionInfo
 from tests.mock_server_for_testing import get_unittest_mocked_node
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_node_info_accessable():
     node = await get_unittest_mocked_node(
         {
@@ -29,7 +29,7 @@ async def test_node_info_accessable():
     node.a.b.node_info  # noqa: B018 # no error
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_node_info_attribute_redirects_to_node_info():
     plain_info = {
         "Node": "/a/b",
@@ -53,7 +53,7 @@ async def test_node_info_attribute_redirects_to_node_info():
         ("unit", "V"),
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_node_info_attributes(attribute, expected):
     info = NodeInfo(
         {
@@ -92,7 +92,7 @@ async def test_node_info_attributes(attribute, expected):
         ),
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_options(plain_options, parsed_options):
     info = NodeInfo(
         {
@@ -117,7 +117,7 @@ async def test_options(plain_options, parsed_options):
         ("path", "/a/b"),
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_node_info_emergent_attributes(attribute, expected):
     info = NodeInfo(
         {
@@ -142,7 +142,7 @@ async def test_node_info_emergent_attributes(attribute, expected):
         ("path", "/a/b"),
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_node_info_emergent_attributes_case2(attribute, expected):
     info = NodeInfo(
         {
@@ -156,31 +156,31 @@ async def test_node_info_emergent_attributes_case2(attribute, expected):
     assert getattr(info, attribute) == expected
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_empty_node_info_representable():
     info = NodeInfo({})
     repr(info)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_empty_node_info_stringifyable():
     info = NodeInfo({})
     str(info)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_partial_infos_partially_useable():
     info = NodeInfo({"Type": "ZIVectorData"})
     assert info.type == "ZIVectorData"  # no error
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_incomplete_info_raises():
     with pytest.raises(KeyError):
         NodeInfo({}).type  # noqa: B018
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_default_info_readable_writeable():
     info = NodeInfo(NodeInfo.plain_default_info(path="/a/b"))
     assert info.readable is True
