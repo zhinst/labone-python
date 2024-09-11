@@ -114,7 +114,7 @@ def test_data_queue_put_nowait_disconnected():
         queue.put_nowait("test")
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_data_queue_get():
     subscription = FakeSubscription()
     queue = DataQueue(path="dummy", handle=subscription)
@@ -122,7 +122,7 @@ async def test_data_queue_get():
     assert await queue.get() == "test"
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_data_queue_get_timeout():
     subscription = FakeSubscription()
     queue = DataQueue(path="dummy", handle=subscription)
@@ -130,7 +130,7 @@ async def test_data_queue_get_timeout():
         await asyncio.wait_for(queue.get(), 0.01)
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_data_queue_get_disconnected_ok():
     subscription = FakeSubscription()
     queue = DataQueue(path="dummy", handle=subscription)
@@ -139,7 +139,7 @@ async def test_data_queue_get_disconnected_ok():
     assert await queue.get() == "test"
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_data_queue_get_disconnected_empty():
     subscription = FakeSubscription()
     queue = DataQueue(path="dummy", handle=subscription)
@@ -148,7 +148,7 @@ async def test_data_queue_get_disconnected_empty():
         await queue.get()
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_circular_data_queue_put_enough_space():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
@@ -161,7 +161,7 @@ async def test_circular_data_queue_put_enough_space():
     assert queue.get_nowait() == "test"
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_circular_data_queue_put_full():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
@@ -177,7 +177,7 @@ async def test_circular_data_queue_put_full():
     assert queue.get_nowait() == "test3"
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_circular_data_queue_put_no_wait_enough_space():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
@@ -190,7 +190,7 @@ async def test_circular_data_queue_put_no_wait_enough_space():
     assert queue.get_nowait() == "test"
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_circular_data_queue_put_no_wait_full():
     subscription = FakeSubscription()
     queue = CircularDataQueue(
@@ -228,7 +228,7 @@ def test_streaming_handle_register():
 
 @pytest.mark.parametrize("num_values", range(0, 20, 4))
 @pytest.mark.parametrize("num_queues", [1, 2, 6])
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_streaming_handle_update_event(num_values, num_queues):
     streaming_handle = StreamingHandle()
     queues = []
@@ -239,7 +239,7 @@ async def test_streaming_handle_update_event(num_values, num_queues):
         )
         queues.append(queue)
     for i in range(num_values):
-        value = AnnotatedValue(value=i, path="dummy", timestamp=0, extra_header=None)
+        value = AnnotatedValue(value=i, path="dummy", timestamp=0)
         streaming_handle.distribute_to_data_queues(value)
     for queue in queues:
         assert queue.qsize() == num_values
@@ -248,7 +248,6 @@ async def test_streaming_handle_update_event(num_values, num_queues):
                 value=i,
                 path="dummy",
                 timestamp=0,
-                extra_header=None,
             )
 
 
@@ -258,7 +257,7 @@ def test_streaming_handle_with_parser_callback():
     )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_distinct_data_queue_put_no_wait_new_value():
     subscription = FakeSubscription()
     queue = DistinctConsecutiveDataQueue(
@@ -274,7 +273,7 @@ async def test_distinct_data_queue_put_no_wait_new_value():
     assert queue.get_nowait() == value2
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_distinct_data_queue_put_no_wait_same_value():
     subscription = FakeSubscription()
     queue = DistinctConsecutiveDataQueue(

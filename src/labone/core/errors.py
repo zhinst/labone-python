@@ -7,6 +7,7 @@ from asyncio import QueueEmpty
 
 import zhinst.comms
 
+from labone.core import hpk_schema
 from labone.errors import LabOneError
 
 
@@ -143,27 +144,28 @@ class EmptyDisconnectedDataQueueError(StreamingError, QueueEmpty):
 
 
 _ZI_ERROR_MAP = {
-    1: CancelledError,
-    3: NotFoundError,
-    4: OverwhelmedError,
-    5: BadRequestError,
-    6: UnimplementedError,
-    7: InternalError,
-    8: UnavailableError,
-    9: LabOneTimeoutError,
+    hpk_schema.ErrorKind.cancelled: CancelledError,
+    hpk_schema.ErrorKind.unknown: LabOneCoreError,
+    hpk_schema.ErrorKind.notFound: NotFoundError,
+    hpk_schema.ErrorKind.overwhelmed: OverwhelmedError,
+    hpk_schema.ErrorKind.badRequest: BadRequestError,
+    hpk_schema.ErrorKind.unimplemented: UnimplementedError,
+    hpk_schema.ErrorKind.internal: InternalError,
+    hpk_schema.ErrorKind.unavailable: UnavailableError,
+    hpk_schema.ErrorKind.timeout: LabOneTimeoutError,
 }
 
 
-def get_streaming_error(err: zhinst.comms.DynamicStruct) -> LabOneCoreError:
-    """Create labone error from a labone error struct.
+def raise_streaming_error(err: hpk_schema.Error) -> None:
+    """Raise labone error from a labone error struct.
 
     Args:
         err: The streaming error to be converted.
 
-    Returns:
-        The corresponding error.
+    Raises:
+        The converted error.
     """
-    return _ZI_ERROR_MAP.get(err.kind, LabOneCoreError)(
+    raise _ZI_ERROR_MAP.get(err.kind, LabOneCoreError)(  # type: ignore[call-overload]
         err.message,
         code=err.code,
         category=err.category,

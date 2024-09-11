@@ -79,7 +79,7 @@ def same_prints_and_exceptions_for_real_and_mock(test_function):
     return new_test_function
 
 
-@pytest.mark.mock_compatibility()
+@pytest.mark.mock_compatibility
 @pytest.mark.parametrize(
     "path",
     [
@@ -98,7 +98,7 @@ def same_prints_and_exceptions_for_real_and_mock(test_function):
         "/a/b",  # test invalid node
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_list_nodes_compatible(path):
     async def procedure(session):
         nodes = await session.list_nodes(
@@ -112,7 +112,7 @@ async def test_list_nodes_compatible(path):
     await same_prints_and_exceptions_for_real_and_mock(procedure)()
 
 
-@pytest.mark.mock_compatibility()
+@pytest.mark.mock_compatibility
 @pytest.mark.parametrize(
     "path",
     [
@@ -131,7 +131,7 @@ async def test_list_nodes_compatible(path):
         "/a/b",  # test invalid node
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_list_nodes_info_compatible(path):
     async def procedure(session):
         nodes = await session.list_nodes_info(
@@ -145,8 +145,8 @@ async def test_list_nodes_info_compatible(path):
     await same_prints_and_exceptions_for_real_and_mock(procedure)()
 
 
-@pytest.mark.mock_compatibility()
-@pytest.mark.asyncio()
+@pytest.mark.mock_compatibility
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -164,8 +164,8 @@ async def test_get_compatible(path):
     await same_prints_and_exceptions_for_real_and_mock(procedure)()
 
 
-@pytest.mark.mock_compatibility()
-@pytest.mark.asyncio()
+@pytest.mark.mock_compatibility
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -184,7 +184,7 @@ async def test_state_keeping_compatible(path, value):
     await same_prints_and_exceptions_for_real_and_mock(procedure)()
 
 
-@pytest.mark.mock_compatibility()
+@pytest.mark.mock_compatibility
 @pytest.mark.parametrize(
     "expression",
     [
@@ -202,7 +202,7 @@ async def test_state_keeping_compatible(path, value):
         "/zi/debug/level/*/*",
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_get_with_expression_compatible(expression):
     async def procedure(session):
         result = await session.get_with_expression(expression)
@@ -211,7 +211,7 @@ async def test_get_with_expression_compatible(expression):
     await same_prints_and_exceptions_for_real_and_mock(procedure)()
 
 
-@pytest.mark.mock_compatibility()
+@pytest.mark.mock_compatibility
 @pytest.mark.parametrize(
     "expression",
     [
@@ -229,7 +229,7 @@ async def test_get_with_expression_compatible(expression):
         "/zi/debug/level/*/*",
     ],
 )
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_set_with_expression_compatible(expression):
     @same_prints_and_exceptions_for_real_and_mock
     async def procedure(session: Session):

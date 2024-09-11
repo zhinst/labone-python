@@ -29,7 +29,7 @@ dependencies = [
   "numpy>=1.20",
   "packaging",
   "typing_extensions>=4.8.0",
-  "zhinst-comms~=2.1",
+  "zhinst-comms~=3.0",
 ]
 
 [project.urls]
@@ -54,13 +54,7 @@ packages = ["src/labone"]
 python = ["3.9", "3.10", "3.11", "3.12"]
 
 [tool.hatch.envs.test]
-dependencies = [
-  "coverage[toml]>=6.5",
-  "hypothesis",
-  "munch==4.0.0",
-  "pytest",
-  "pytest-asyncio",
-]
+dependencies = ["coverage[toml]>=6.5", "hypothesis", "pytest", "pytest-asyncio"]
 
 [tool.pytest.ini_options]
 markers = [
@@ -85,11 +79,11 @@ python = ["3.9", "3.10", "3.11", "3.12"]
 
 [tool.hatch.envs.lint]
 dependencies = [
-  "black>=23.1.0",
-  "mypy>=1.0.0",
-  "ruff>=0.4.0",
+  "black>=24.8.0",
+  "mypy>=1.11.2",
+  "ruff>=0.6.4",
   "numpy>=1.20",
-  "zhinst-comms~=2.1",
+  "zhinst-comms~=3.0",
 ]
 
 [tool.hatch.envs.lint.scripts]
@@ -171,12 +165,3 @@ exclude_lines = [
   "if t.TYPE_CHECKING:",
   "\\.\\.\\.",
 ]
-
-# [[tool.mypy.overrides]]
-# module = "zhinst.*"
-# ignore_missing_imports = true
-# follow_imports = "skip"
-
-# [[tool.mypy.overrides]]
-# module = "deprecation"
-# ignore_missing_imports = true

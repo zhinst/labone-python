@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import zhinst.comms
+from packaging import version
 from typing_extensions import TypeAlias
 
 from labone.core import hpk_schema
@@ -83,8 +84,13 @@ class KernelSession(Session):
         *,
         context: ZIContext,
         server_info: ServerInfo,
+        capability_version: version.Version,
     ) -> None:
-        super().__init__(core_session, context=context)
+        super().__init__(
+            core_session,
+            context=context,
+            capability_version=capability_version,
+        )
         self._server_info = server_info
 
     @staticmethod
@@ -127,10 +133,14 @@ class KernelSession(Session):
             kernel_info,
             schema=hpk_schema.get_schema_loader().get_interface_schema(HPK_SCHEMA_ID),
         )
+        compatibility_version = version.Version(
+            (await core_session.getSessionVersion()).version,
+        )
         return KernelSession(
             core_session,
             context=context,
             server_info=server_info,
+            capability_version=compatibility_version,
         )
 
     @property

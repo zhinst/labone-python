@@ -28,10 +28,10 @@ from packaging import version
 from typing_extensions import NotRequired, TypeAlias, TypedDict
 from zhinst.comms import unwrap
 
-from labone.core import errors
+from labone.core import errors, hpk_schema
 from labone.core.errors import async_translate_comms_error, translate_comms_error
 from labone.core.subscription import DataQueue, QueueProtocol, StreamingHandle
-from labone.core.value import AnnotatedValue, value_from_python_types
+from labone.core.value import AnnotatedValue, Value, value_from_python_types
 
 if t.TYPE_CHECKING:
     import zhinst.comms
@@ -168,14 +168,15 @@ class Session:
 
     # The minimum capability version that is required by the labone api.
     MIN_CAPABILITY_VERSION = version.Version("1.7.0")
-    # The latest known version of the capability version.
-    TESTED_CAPABILITY_VERSION = version.Version("1.12.1")
+    # The capability version hardcoded in the hpk schema.
+    CAPABILITY_VERSION = version.Version("1.15.0")
 
     def __init__(
         self,
         session: zhinst.comms.DynamicClient,
         *,
         context: ZIContext,
+        capability_version: version.Version,
     ):
         self._context = context
         self._session = session
@@ -184,6 +185,7 @@ class Session:
         # on the server side. It is unique per session.
         self._client_id = uuid.uuid4()
         self._has_transaction_support: bool | None = None
+        self._capability_version = capability_version
 
     def close(self) -> None:
         """Close the session.
@@ -196,40 +198,7 @@ class Session:
         """
         self._session.close()
 
-    async def _ensure_compatibility(
-        self,
-        future: t.Awaitable[zhinst.comms.DynamicStruct],
-    ) -> None:
-        """Ensure the compatibility with the connected server.
-
-        Takes a future for a `getSessionVersion` call and checks if the server
-        version is compatible with the LabOne API. If the server version is not
-        supported, an UnavailableError is raised.
-
-        Args:
-            future: Future for a `getSessionVersion` call.
-
-        Raises:
-            UnavailableError: If the server version is not supported.
-        """
-        server_version = version.Version((await future).version)
-        if server_version < Session.MIN_CAPABILITY_VERSION:
-            msg = (
-                f"The data server version is not supported by the LabOne API. "
-                "Please update the LabOne software to the latest version. "
-                f"({server_version}<{Session.MIN_CAPABILITY_VERSION})"
-            )
-            raise errors.UnavailableError(msg)
-        if server_version.major > Session.TESTED_CAPABILITY_VERSION.major:
-            msg = (
-                "The data server version is incompatible with this LabOne API "
-                "version. Please install the latest python package and retry. "
-                f"({server_version}> {Session.TESTED_CAPABILITY_VERSION})"
-            )
-            raise errors.UnavailableError(msg)
-
-    @translate_comms_error
-    def ensure_compatibility(self) -> t.Awaitable[None]:
+    def ensure_compatibility(self) -> None:
         """Ensure the compatibility with the connected server.
 
         Ensures that all function call will work as expected and all required
@@ -246,12 +215,24 @@ class Session:
         Raises:
             UnavailableError: If the kernel is not compatible.
         """
-        future = self._session.getSessionVersion()
-        return self._ensure_compatibility(future)
+        if self._capability_version < Session.MIN_CAPABILITY_VERSION:
+            msg = (
+                f"The data server version is not supported by the LabOne API. "
+                "Please update the LabOne software to the latest version. "
+                f"({self._capability_version}<{Session.MIN_CAPABILITY_VERSION})"
+            )
+            raise errors.UnavailableError(msg)
+        if self._capability_version.major > Session.CAPABILITY_VERSION.major:
+            msg = (
+                "The data server version is incompatible with this LabOne API "
+                "version. Please install the latest python package and retry. "
+                f"({self._capability_version}> {Session.CAPABILITY_VERSION})"
+            )
+            raise errors.UnavailableError(msg)
 
     async def _list_nodes_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStruct],
+        future: t.Awaitable[hpk_schema.SessionListNodesResults],
     ) -> list[LabOneNodePath]:
         """Postprocessing for the list nodes function.
 
@@ -336,11 +317,11 @@ class Session:
             flags=int(flags),
             client=self._client_id.bytes,
         )
-        return self._list_nodes_postprocessing(future)
+        return self._list_nodes_postprocessing(future)  # type: ignore[arg-type]
 
     async def _list_nodes_info_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStruct],
+        future: t.Awaitable[hpk_schema.SessionListNodesJsonResults],
     ) -> dict[LabOneNodePath, NodeInfo]:
         """Postprocessing for the list nodes info function.
 
@@ -356,7 +337,7 @@ class Session:
         try:
             return json.loads(response.nodeProps)
         except RuntimeError as e:
-            msg = f"Error while listing nodes info for {response.paths}."
+            msg = "Error while listing nodes info."
             raise errors.LabOneCoreError(msg) from e
 
     @translate_comms_error
@@ -449,11 +430,13 @@ class Session:
             flags=int(flags),
             client=self._client_id.bytes,
         )
-        return self._list_nodes_info_postprocessing(future)
+        return self._list_nodes_info_postprocessing(future)  # type: ignore[arg-type]
 
     async def _single_value_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStruct],
+        future: t.Awaitable[
+            hpk_schema.SessionSetValueResults | hpk_schema.SessionGetValueResults
+        ],
         path: LabOneNodePath,
     ) -> AnnotatedValue:
         """Postprocessing for the get/set with expression functions.
@@ -469,7 +452,9 @@ class Session:
         """
         response = (await future).result
         try:
-            return AnnotatedValue.from_capnp(unwrap(response[0]))
+            return AnnotatedValue.from_capnp(
+                t.cast(hpk_schema.AnnotatedValue, unwrap(response[0])),
+            )
         except IndexError as e:
             msg = f"No value returned for path {path}."
             raise errors.LabOneCoreError(msg) from e
@@ -479,7 +464,9 @@ class Session:
 
     async def _multi_value_postprocessing(
         self,
-        future: t.Awaitable[zhinst.comms.DynamicStruct],
+        future: t.Awaitable[
+            hpk_schema.SessionSetValueResults | hpk_schema.SessionGetValueResults
+        ],
         path: LabOneNodePath,
     ) -> list[AnnotatedValue]:
         """Postprocessing for the get/set with expression functions.
@@ -497,14 +484,31 @@ class Session:
         response = (await future).result
         try:
             return [
-                AnnotatedValue.from_capnp(unwrap(raw_result)) for raw_result in response
+                AnnotatedValue.from_capnp(
+                    t.cast(hpk_schema.AnnotatedValue, unwrap(raw_result)),
+                )
+                for raw_result in response
             ]
         except RuntimeError as e:
             msg = f"Error while setting {path}."
             raise errors.LabOneCoreError(msg) from e
 
+    @t.overload
+    def set(self, value: AnnotatedValue) -> t.Awaitable[AnnotatedValue]: ...
+
+    @t.overload
+    def set(
+        self,
+        value: Value,
+        path: LabOneNodePath,
+    ) -> t.Awaitable[AnnotatedValue]: ...
+
     @translate_comms_error
-    def set(self, value: AnnotatedValue) -> t.Awaitable[AnnotatedValue]:
+    def set(
+        self,
+        value: AnnotatedValue | Value,
+        path: LabOneNodePath | None = None,
+    ) -> t.Awaitable[AnnotatedValue]:
         """Set the value of a node.
 
         ```python
@@ -518,9 +522,8 @@ class Session:
             server immediately even if the result is not awaited.
 
         Args:
-            value: Value to be set. The annotated value must contain a
-                LabOne node path and a value. (The path can be relative or
-                absolute.)
+            value: Value to be set.
+            path: LabOne node path. The path can be relative or absolute.
 
         Returns:
             Acknowledged value from the device.
@@ -536,18 +539,46 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
+        if isinstance(value, AnnotatedValue):
+            future = self._session.setValue(
+                pathExpression=value.path,
+                value=value_from_python_types(
+                    value.value,
+                    capability_version=self._capability_version,
+                ),
+                lookupMode="directLookup",
+                client=self._client_id.bytes,
+            )
+            return self._single_value_postprocessing(future, value.path)  # type: ignore[arg-type]
         future = self._session.setValue(
-            pathExpression=value.path,
-            value=value_from_python_types(value.value, path=value.path),
+            pathExpression=path,
+            value=value_from_python_types(
+                value,
+                capability_version=self._capability_version,
+            ),
             lookupMode="directLookup",
             client=self._client_id.bytes,
         )
-        return self._single_value_postprocessing(future, value.path)
+        return self._single_value_postprocessing(future, path)  # type: ignore[arg-type]
+
+    @t.overload
+    def set_with_expression(
+        self,
+        value: AnnotatedValue,
+    ) -> t.Awaitable[list[AnnotatedValue]]: ...
+
+    @t.overload
+    def set_with_expression(
+        self,
+        value: Value,
+        path: LabOneNodePath,
+    ) -> t.Awaitable[list[AnnotatedValue]]: ...
 
     @translate_comms_error
     def set_with_expression(
         self,
-        value: AnnotatedValue,
+        value: AnnotatedValue | Value,
+        path: LabOneNodePath | None = None,
     ) -> t.Awaitable[list[AnnotatedValue]]:
         """Set the value of all nodes matching the path expression.
 
@@ -573,8 +604,8 @@ class Session:
             server immediately even if the result is not awaited.
 
         Args:
-            value: Value to be set. The annotated value must contain a
-                LabOne path expression and a value.
+            value: Value to be set.
+            path: LabOne node path.
 
         Returns:
             Acknowledged value from the device.
@@ -590,13 +621,27 @@ class Session:
             LabOneCoreError: If something else went wrong that can not be
                 mapped to one of the other errors.
         """
+        if isinstance(value, AnnotatedValue):
+            future = self._session.setValue(
+                pathExpression=value.path,
+                value=value_from_python_types(
+                    value.value,
+                    capability_version=self._capability_version,
+                ),
+                lookupMode="withExpansion",
+                client=self._client_id.bytes,
+            )
+            return self._multi_value_postprocessing(future, value.path)  # type: ignore[arg-type]
         future = self._session.setValue(
-            pathExpression=value.path,
-            value=value_from_python_types(value.value, path=value.path),
+            pathExpression=path,
+            value=value_from_python_types(
+                value,
+                capability_version=self._capability_version,
+            ),
             lookupMode="withExpansion",
             client=self._client_id.bytes,
         )
-        return self._multi_value_postprocessing(future, value.path)
+        return self._multi_value_postprocessing(future, path)  # type: ignore[arg-type]
 
     @translate_comms_error
     def get(
@@ -643,7 +688,7 @@ class Session:
             lookupMode="directLookup",
             client=self._client_id.bytes,
         )
-        return self._single_value_postprocessing(future, path)
+        return self._single_value_postprocessing(future, path)  # type: ignore[arg-type]
 
     @translate_comms_error
     def get_with_expression(
@@ -700,7 +745,7 @@ class Session:
             flags=int(flags),
             client=self._client_id.bytes,
         )
-        return self._multi_value_postprocessing(future, path_expression)
+        return self._multi_value_postprocessing(future, path_expression)  # type: ignore[arg-type]
 
     @t.overload
     async def subscribe(
@@ -919,3 +964,8 @@ class Session:
     def raw_session(self) -> zhinst.comms.DynamicClient:
         """Get the underlying session."""
         return self._session
+
+    @property
+    def client_id(self) -> uuid.UUID:
+        """Get the underlying session."""
+        return self._client_id

@@ -1,5 +1,21 @@
 # Labone Python API Changelog
 
+
+## Version 3.0.0
+
+* Enable server side parsing of the shf vectors. This is a breaking change since
+the structure of the shf vector structs are now unified with the capnp schema.
+* Replace the following `labone.core.Value` types with their capnp equivalent:
+  `ShfDemodulatorVectorData`,`ShfResultLoggerVectorData`,`ShfScopeVectorData`,
+  `ShfPidVectorData`,`CntSample`,`TriggerSample`
+* Move the `extra_header` from the annotated value into the value field. This only affects 
+shf vectors
+* Adapt the `session.set` and `session.set_with_expression` functions to take either
+an `AnnotatedValue` or `Value` and a path. This prevents unnecessary copies.
+* Add support for `zhinst.comms` 3.0
+* Update the `hpk_schema` to the latest version. This included stubs for all structs
+defined in the capnp schema.
+
 ## Version 2.3.2
 * Pump version of `zhinst.comms` to 2.1
 

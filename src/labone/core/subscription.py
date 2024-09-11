@@ -26,7 +26,7 @@ import weakref
 
 import zhinst.comms
 
-from labone.core import errors
+from labone.core import errors, hpk_schema
 from labone.core.value import AnnotatedValue
 
 if t.TYPE_CHECKING:
@@ -454,7 +454,8 @@ class StreamingHandle:
             )
             data_queue.disconnect()  # type: ignore[union-attr] # supposed to throw
             return False
-        return True
+        else:
+            return True
 
     def distribute_to_data_queues(self, value: AnnotatedValue) -> None:
         """Add a value to all data queues.
@@ -473,7 +474,7 @@ class StreamingHandle:
 
     def _distribute_to_data_queues(
         self,
-        value: zhinst.comms.DynamicStruct,
+        value: hpk_schema.AnnotatedValue,
     ) -> None:
         """Add a value to all data queues.
 
@@ -490,8 +491,11 @@ class StreamingHandle:
         try:
             parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
         except errors.LabOneCoreError as err:  # pragma: no cover
+            # A streaming Error was received.
+            # Followup Commit: This needs to be distributed to all data queues. But the
+            # error should not be raised here since this would disconnect the
+            # subscription.
             logger.exception(err.args[0])
-            raise
         except ValueError as err:  # pragma: no cover
             self._data_queues = [
                 data_queue().disconnect()  # type: ignore[union-attr] # supposed to throw
@@ -513,7 +517,7 @@ class StreamingHandle:
         self,
         interface: int,  # noqa: ARG002
         method_index: int,  # noqa: ARG002
-        call_input: zhinst.comms.DynamicStruct,
+        call_input: hpk_schema.StreamingHandleSendValuesParams,
         fulfiller: zhinst.comms.Fulfiller,
     ) -> None:
         """Capnp Interface callback.

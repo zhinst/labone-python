@@ -156,7 +156,7 @@ def get_default_enum_parser(
                 annotated_value.path,
             )
             return annotated_value  # pragma: no cover
-        if enum is not None:
+        if enum is not None and annotated_value.value is not None:
             try:
                 annotated_value.value = enum(annotated_value.value)
             except ValueError:  # pragma: no cover

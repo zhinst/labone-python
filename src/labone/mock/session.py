@@ -22,12 +22,11 @@ from labone.core.session import Session
 from labone.core.value import (
     AnnotatedValue,
     _capnp_value_to_python_value,
-    value_from_python_types_dict,
+    value_from_python_types,
 )
 
 if TYPE_CHECKING:
     import zhinst.comms
-    from zhinst.comms import DynamicStruct
 
 HPK_SCHEMA_ID = 0xA621130A90860008
 SESSION_SCHEMA_ID = 0xB9D445582DA4A55C
@@ -55,7 +54,7 @@ class Subscription:
         self,
         path: LabOneNodePath,
         streaming_handle: zhinst.comms.DynamicClient,
-        subscriber_id: int,
+        subscriber_id: bytes,
     ):
         self._path = path
         self._streaming_handle = streaming_handle
@@ -70,7 +69,10 @@ class Subscription:
         await self._streaming_handle.sendValues(
             values=[
                 {
-                    "value": value_from_python_types_dict(value),
+                    "value": value_from_python_types(
+                        value.value,
+                        capability_version=Session.CAPABILITY_VERSION,
+                    ),
                     "metadata": {
                         "path": value.path,
                         "timestamp": value.timestamp,
@@ -107,7 +109,11 @@ class MockSession(Session):
         *,
         context: zhinst.comms.CapnpContext,
     ):
-        super().__init__(client, context=context)
+        super().__init__(
+            client,
+            context=context,
+            capability_version=Session.CAPABILITY_VERSION,
+        )
         self._mock_server = server
 
     @property
@@ -272,19 +278,19 @@ class LabOneServerBase(ABC, CapnpServer):
     @capnp_method(SESSION_SCHEMA_ID, 7)
     async def _get_session_version_interface(
         self,
-        _: DynamicStruct,
+        _: hpk_schema.SessionGetSessionVersionParams,
     ) -> CapnpResult:
         """Capnp server method to get session version.
 
         Returns:
             Capnp result.
         """
-        return {"version": str(Session.TESTED_CAPABILITY_VERSION)}
+        return {"version": str(Session.CAPABILITY_VERSION)}
 
     @capnp_method(SESSION_SCHEMA_ID, 0)
     async def _list_nodes_interface(
         self,
-        call_input: DynamicStruct,
+        call_input: hpk_schema.SessionListNodesParams,
     ) -> CapnpResult:
         """Capnp server method to list nodes.
 
@@ -304,7 +310,7 @@ class LabOneServerBase(ABC, CapnpServer):
     @capnp_method(SESSION_SCHEMA_ID, 5)
     async def _list_nodes_json_interface(
         self,
-        call_input: DynamicStruct,
+        call_input: hpk_schema.SessionListNodesJsonParams,
     ) -> CapnpResult:
         """Capnp server method to list nodes json.
 
@@ -324,7 +330,10 @@ class LabOneServerBase(ABC, CapnpServer):
         }
 
     @capnp_method(SESSION_SCHEMA_ID, 10)
-    async def _get_value_interface(self, call_input: DynamicStruct) -> CapnpResult:
+    async def _get_value_interface(
+        self,
+        call_input: hpk_schema.SessionGetValueParams,
+    ) -> CapnpResult:
         """Capnp server method to get values.
 
         Args:
@@ -348,7 +357,10 @@ class LabOneServerBase(ABC, CapnpServer):
         result = [
             {
                 "ok": {
-                    "value": value_from_python_types_dict(response),
+                    "value": value_from_python_types(
+                        response.value,
+                        capability_version=Session.CAPABILITY_VERSION,
+                    ),
                     "metadata": {
                         "path": response.path,
                         "timestamp": response.timestamp,
@@ -360,7 +372,10 @@ class LabOneServerBase(ABC, CapnpServer):
         return {"result": result}
 
     @capnp_method(SESSION_SCHEMA_ID, 9)
-    async def _set_value_interface(self, call_input: DynamicStruct) -> CapnpResult:
+    async def _set_value_interface(
+        self,
+        call_input: hpk_schema.SessionSetValueParams,
+    ) -> CapnpResult:
         """Capnp server method to set values.
 
         Args:
@@ -369,11 +384,9 @@ class LabOneServerBase(ABC, CapnpServer):
         Returns:
             Capnp result.
         """
-        value, extra_header = _capnp_value_to_python_value(call_input.value)
         annotated_value = AnnotatedValue(
-            value=value,
+            value=_capnp_value_to_python_value(call_input.value),
             path=call_input.pathExpression,
-            extra_header=extra_header,
         )
 
         try:
@@ -391,7 +404,10 @@ class LabOneServerBase(ABC, CapnpServer):
         result = [
             {
                 "ok": {
-                    "value": value_from_python_types_dict(response),
+                    "value": value_from_python_types(
+                        response.value,
+                        capability_version=Session.CAPABILITY_VERSION,
+                    ),
                     "metadata": {
                         "path": response.path,
                         "timestamp": response.timestamp,
@@ -403,7 +419,10 @@ class LabOneServerBase(ABC, CapnpServer):
         return {"result": result}
 
     @capnp_method(SESSION_SCHEMA_ID, 3)
-    async def _subscribe_interface(self, call_input: DynamicStruct) -> CapnpResult:
+    async def _subscribe_interface(
+        self,
+        call_input: hpk_schema.SessionSubscribeParams,
+    ) -> CapnpResult:
         """Capnp server method to subscribe to nodes.
 
         Args:
