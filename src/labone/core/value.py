@@ -56,8 +56,6 @@ class AnnotatedValue:
         path: Absolute node path.
         timestamp: Timestamp at which the device sent the value.
             (Only relevant for received values.)
-        extra_header: For some types of vector nodes, additional information
-            regarding the data. None otherwise.
     """
 
     value: Value

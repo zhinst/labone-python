@@ -236,7 +236,11 @@ class AutomaticLabOneServer(LabOneServerBase):
         path: LabOneNodePath,
     ) -> AnnotatedValue: ...
 
-    async def set(self, value: AnnotatedValue | Value, path="") -> AnnotatedValue:
+    async def set(
+        self,
+        value: AnnotatedValue | Value,
+        path: str = "",
+    ) -> AnnotatedValue:
         """Predefined behaviour for set.
 
         Updates the internal dictionary. A set command is considered

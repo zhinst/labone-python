@@ -74,8 +74,8 @@ class KernelSession(Session):
     Args:
         core_session: The underlying zhinst.comms session.
         context: The context in which the session is running.
-        kernel_info: Information about the target kernel.
         server_info: Information about the target data server.
+        capability_version: The capability version the server reported.
     """
 
     def __init__(

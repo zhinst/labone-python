@@ -163,7 +163,7 @@ def raise_streaming_error(err: hpk_schema.Error) -> None:
         err: The streaming error to be converted.
 
     Raises:
-        The converted error.
+        LabOneCoreError: The converted error.
     """
     raise _ZI_ERROR_MAP.get(err.kind, LabOneCoreError)(  # type: ignore[call-overload]
         err.message,
