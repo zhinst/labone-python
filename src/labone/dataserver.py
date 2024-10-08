@@ -117,6 +117,7 @@ class DataServer(PartialNode):
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         hide_zi_prefix: bool = True,
         context: ZIContext | None = None,
+        timeout: int = 5000,
     ) -> DataServer:
         """Create a new Session to a LabOne Data Server.
 
@@ -133,6 +134,7 @@ class DataServer(PartialNode):
             context: Context in which the session should run. If not provided
                 the default context will be used which is in most cases the
                 desired behavior.
+            timeout: Timeout in milliseconds for the connection setup.
 
         Returns:
             The connected DataServer.
@@ -150,6 +152,7 @@ class DataServer(PartialNode):
             kernel_info=KernelInfo.zi_connection(),
             server_info=ServerInfo(host=host, port=port),
             context=context,
+            timeout=timeout,
         )
 
         return await DataServer.create_from_session(

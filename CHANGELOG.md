@@ -1,5 +1,8 @@
 # Labone Python API Changelog
 
+## Version 3.1.0
+* Expose timeout from underlying package when creating a new connection. 
+  This allows specifying custom timeouts, e.g. when dealing with slow networks
 
 ## Version 3.0.0
 

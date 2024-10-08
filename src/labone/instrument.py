@@ -117,6 +117,7 @@ class Instrument(PartialNode):
         interface: str = "",
         custom_parser: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         context: ZIContext | None = None,
+        timeout: int = 5000,
     ) -> Instrument:
         """Connect to a device.
 
@@ -137,6 +138,7 @@ class Instrument(PartialNode):
             context: Context in which the session should run. If not provided
                 the default context will be used which is in most cases the
                 desired behavior.
+            timeout: Timeout in milliseconds for the connection setup.
 
         Returns:
             The connected device.
@@ -157,6 +159,7 @@ class Instrument(PartialNode):
             ),
             server_info=ServerInfo(host=host, port=port),
             context=context,
+            timeout=timeout,
         )
         return await Instrument.create_from_session(
             serial,

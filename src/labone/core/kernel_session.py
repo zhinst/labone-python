@@ -100,6 +100,7 @@ class KernelSession(Session):
         kernel_info: KernelInfo,
         server_info: ServerInfo,
         context: ZIContext | None = None,
+        timeout: int = 5000,
     ) -> KernelSession:
         """Create a new session to a LabOne kernel.
 
@@ -113,6 +114,7 @@ class KernelSession(Session):
             context: Context in which the session should run. If not provided
                 the default context will be used which is in most cases the
                 desired behavior.
+            timeout: Timeout in milliseconds for the connection setup.
 
         Returns:
             A new session to the specified kernel.
@@ -132,6 +134,7 @@ class KernelSession(Session):
             server_info.port,
             kernel_info,
             schema=hpk_schema.get_schema_loader().get_interface_schema(HPK_SCHEMA_ID),
+            timeout=timeout,
         )
         compatibility_version = version.Version(
             (await core_session.getSessionVersion()).version,
