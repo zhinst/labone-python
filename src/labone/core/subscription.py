@@ -302,7 +302,7 @@ class CircularDataQueue(DataQueue):
         Returns:
             A new data queue to the same underlying subscription.
         """
-        return DataQueue.fork(
+        return DataQueue.fork(  # type: ignore[return-value]
             self,
             queue_type=queue_type if queue_type is not None else CircularDataQueue,
         )
@@ -371,7 +371,7 @@ class DistinctConsecutiveDataQueue(DataQueue):
         Returns:
             A new data queue to the same underlying subscription.
         """
-        return DataQueue.fork(
+        return DataQueue.fork(  # type: ignore[return-value]
             self,
             queue_type=(
                 queue_type if queue_type is not None else DistinctConsecutiveDataQueue

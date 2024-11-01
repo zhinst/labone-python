@@ -25,7 +25,7 @@ WILDCARD = "*"
 T = t.TypeVar("T")
 
 
-TreeProp = t.Dict[LabOneNodePath, T]
+TreeProp = dict[LabOneNodePath, T]
 
 
 class NestedDict(t.Protocol[T]):  # type: ignore[misc]
@@ -46,9 +46,9 @@ class NestedDict(t.Protocol[T]):  # type: ignore[misc]
         """..."""
 
 
-FlatPathDict: TypeAlias = t.Dict[
+FlatPathDict: TypeAlias = dict[
     NormalizedPathSegment,
-    t.List[t.List[NormalizedPathSegment]],
+    list[list[NormalizedPathSegment]],
 ]
 
 
