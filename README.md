@@ -21,7 +21,7 @@ The `labone` package provides a plain asynchronous Python API for [LabOne](https
 
 ## Internal Documentation
 
-The internal documentation can be found [here](http://qt-developer-manual-docs-ed588a9f2798190163c2ddd236b7c23ed753a0.pages.zhinst.com/labone_python/index.html).
+The internal documentation can be found [here](http://docs.pages.zhinst.com/internal-documentation-hub/async_labone/index.html).
 Due to the early stage there is not public documentation.
 
 ## Contributing
