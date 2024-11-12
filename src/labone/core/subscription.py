@@ -496,6 +496,7 @@ class StreamingHandle:
             # error should not be raised here since this would disconnect the
             # subscription.
             logger.exception(err.args[0])
+            return
         except ValueError as err:  # pragma: no cover
             self._data_queues = [
                 data_queue().disconnect()  # type: ignore[union-attr] # supposed to throw
@@ -539,4 +540,4 @@ class StreamingHandle:
             list(map(self._distribute_to_data_queues, call_input.values))
             fulfiller.fulfill()
         except Exception as err:  # noqa: BLE001
-            fulfiller.reject(zhinst.comms.Fulfiller.DISCONNECTED, err.args[0])
+            fulfiller.reject(zhinst.comms.Fulfiller.FAILED, err.args[0])
