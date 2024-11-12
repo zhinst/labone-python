@@ -1,10 +1,12 @@
 """Tests for the `labone.core.subscription` module."""
 
 import asyncio
+import logging
+from unittest.mock import MagicMock
 
 import pytest
 
-from labone.core import errors
+from labone.core import errors, hpk_schema
 from labone.core.subscription import (
     CircularDataQueue,
     DataQueue,
@@ -255,6 +257,86 @@ def test_streaming_handle_with_parser_callback():
     StreamingHandle(
         parser_callback=lambda a: AnnotatedValue(path=a.path, value=a.value * 2),
     )
+
+
+@pytest.mark.asyncio
+async def test_capnp_callback(caplog):
+    streaming_handle = StreamingHandle()
+    queue = DataQueue(
+        path="dummy",
+        handle=streaming_handle,
+    )
+    call_param = hpk_schema.StreamingHandleSendValuesParams()
+    values = call_param.init_values(2)
+
+    values[0].init_metadata(timestamp=0, path="dummy")
+    values[0].init_value(int64=42)
+
+    values[1].init_metadata(timestamp=1, path="dummy")
+    values[1].init_value(double=22.0)
+
+    fulfiller = MagicMock()
+    with caplog.at_level(logging.ERROR):
+        await streaming_handle.capnp_callback(0, 0, call_param, fulfiller)
+    assert "" in caplog.text
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == AnnotatedValue(value=42, path="dummy", timestamp=0)
+    assert queue.get_nowait() == AnnotatedValue(value=22.0, path="dummy", timestamp=1)
+    fulfiller.fulfill.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_streaming_error(caplog):
+    streaming_handle = StreamingHandle()
+    queue = DataQueue(
+        path="dummy",
+        handle=streaming_handle,
+    )
+    call_param = hpk_schema.StreamingHandleSendValuesParams()
+    values = call_param.init_values(1)
+    values[0].init_metadata(timestamp=0, path="dummy")
+    values[0].init_value().init_streamingError(
+        code=1,
+        message="test error",
+        category="unknown",
+    )
+    fulfiller = MagicMock()
+    with caplog.at_level(logging.ERROR):
+        await streaming_handle.capnp_callback(0, 0, call_param, fulfiller)
+    assert "test error" in caplog.text
+    assert queue.qsize() == 0
+    fulfiller.fulfill.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_streaming_error_with_value(caplog):
+    streaming_handle = StreamingHandle()
+    queue = DataQueue(
+        path="dummy",
+        handle=streaming_handle,
+    )
+    call_param = hpk_schema.StreamingHandleSendValuesParams()
+    values = call_param.init_values(2)
+
+    # Fist value is a streaming error
+    values[0].init_metadata(timestamp=0, path="dummy")
+    values[0].init_value().init_streamingError(
+        code=1,
+        message="test error",
+        category="unknown",
+    )
+
+    # Second value is a normal value
+    values[1].init_metadata(timestamp=0, path="dummy")
+    values[1].init_value(int64=42)
+
+    fulfiller = MagicMock()
+    with caplog.at_level(logging.ERROR):
+        await streaming_handle.capnp_callback(0, 0, call_param, fulfiller)
+    assert "test error" in caplog.text
+    assert queue.qsize() == 1
+    assert queue.get_nowait() == AnnotatedValue(value=42, path="dummy", timestamp=0)
+    fulfiller.fulfill.assert_called_once()
 
 
 @pytest.mark.asyncio

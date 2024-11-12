@@ -1,7 +1,11 @@
 # Labone Python API Changelog
 
-## Version 3.1.1
+## Version 3.1.2
+* Fix bug which caused streaming errors to cancel the subscriptions
+* Raise severity of errors during subscriptions to `FAILED` to cause a data server
+  log entry.
 
+## Version 3.1.1
 * Add support for Python 3.13
 
 ## Version 3.1.0
