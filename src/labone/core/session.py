@@ -755,6 +755,7 @@ class Session:
         queue_type: None = None,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
+        **kwargs,
     ) -> DataQueue: ...
 
     @t.overload
@@ -765,6 +766,7 @@ class Session:
         queue_type: type[QueueProtocol],
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
+        **kwargs,
     ) -> QueueProtocol: ...
 
     @async_translate_comms_error
@@ -775,6 +777,7 @@ class Session:
         queue_type: type[QueueProtocol] | None = None,
         parser_callback: t.Callable[[AnnotatedValue], AnnotatedValue] | None = None,
         get_initial_value: bool = False,
+        **kwargs,
     ) -> QueueProtocol | DataQueue:
         """Register a new subscription to a node.
 
@@ -810,6 +813,8 @@ class Session:
                 the default DataQueue class is used. (default=None)
             get_initial_value: If True, the initial value of the node is
                 is placed in the queue. (default=False)
+            kwargs: extra keyword arguments which are passed to the data-server
+                to further configure the subscription.
 
         Returns:
             An instance of the DataQueue class. This async queue will receive
@@ -834,6 +839,18 @@ class Session:
                 streaming_handle.capnp_callback,
             ),
             "subscriberId": self._client_id.bytes,
+            "kwargs": {
+                "entries": [
+                    {
+                        "key": k,
+                        "value": value_from_python_types(
+                            v,
+                            capability_version=self._capability_version,
+                        ),
+                    }
+                    for k, v in kwargs.items()
+                ],
+            },
         }
         if get_initial_value:
             _, initial_value = await asyncio.gather(

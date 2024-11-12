@@ -1,5 +1,10 @@
 # Labone Python API Changelog
 
+## Version 3.2.0
+* `subscribe` accepts keyword arguments, which are forwarded to the data-server.
+  This allows to configure the subscription to the data-server.
+  Note that as of LabOne 24.10, no node supports yet subscription configuration.
+
 ## Version 3.1.2
 * Fix bug which caused streaming errors to cancel the subscriptions
 * Raise severity of errors during subscriptions to `FAILED` to cause a data server
