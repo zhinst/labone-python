@@ -4,6 +4,8 @@
 * `subscribe` accepts keyword arguments, which are forwarded to the data-server.
   This allows to configure the subscription to the data-server.
   Note that as of LabOne 24.10, no node supports yet subscription configuration.
+* Fix error message in data server log if a subscription is cancelled gracefully.
+* Adapt mock data server to hand unsubscribe events correctly.
 
 ## Version 3.1.2
 * Fix bug which caused streaming errors to cancel the subscriptions
