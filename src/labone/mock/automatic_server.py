@@ -1,13 +1,13 @@
-"""Partially predifined behaviour for HPK mock.
+"""Partially predefined behavior for HPK mock.
 
 This class provides basic Hpk mock functionality by taking over some usually
 desired tasks. With that in place, the user may inherit from this class
 in order to further specify behavior, without having to start from scratch.
-Even if some of the predefined behaviour is not desired, the implementation
+Even if some of the predefined behavior is not desired, the implementation
 can give some reference on how an individual mock server can be implemented.
 
 
-Already predefined behaviour:
+Already predefined behavior:
 
     * Simulating state for get/set:
         A dictionary is used to store the state of the mock server.
@@ -22,7 +22,7 @@ Already predefined behaviour:
         The subscriptions are stored and on every change, the new value is passed
         into the queues.
     * Adding chronological timestamps to responses:
-        The server answers need timestamps to the responsis in any case.
+        The server answers need timestamps to the responses in any case.
         By using the monotonic clock, the timestamps are added automatically.
 
 """
@@ -95,7 +95,7 @@ class AutomaticLabOneServer(LabOneServerBase):
                 self._common_prefix = None
 
     def get_timestamp(self) -> int:
-        """Create a realisitc timestamp.
+        """Create a realistic timestamp.
 
         Call this function to obtain a timestamp for some response.
         As a internal clock is used, subsequent calls will return
@@ -107,15 +107,15 @@ class AutomaticLabOneServer(LabOneServerBase):
         return time.monotonic_ns()
 
     def _sanitize_path(self, path: LabOneNodePath) -> LabOneNodePath:
-        """Sanatize the path.
+        """Sanitize the path.
 
         Removes trailing slashes and replaces empty path with root path.
 
         Args:
-            path: Path to sanatize.
+            path: Path to sanitize.
 
         Returns:
-            Sanatized path.
+            Sanitized path.
         """
         if self._common_prefix and not path.startswith("/"):
             return f"{self._common_prefix}/{path}"
@@ -127,19 +127,19 @@ class AutomaticLabOneServer(LabOneServerBase):
         *,
         flags: ListNodesInfoFlags | int = ListNodesInfoFlags.ALL,  # noqa: ARG002
     ) -> dict[LabOneNodePath, NodeInfoType]:
-        """Predefined behaviour for list_nodes_info.
+        """Predefined behavior for list_nodes_info.
 
         Uses knowledge of the tree structure to answer.
 
         Warning:
             Flags will be ignored in this implementation. (TODO)
-            For now, the behaviour is equivalent to
+            For now, the behavior is equivalent to
             ListNodesFlags.RECURSIVE | ListNodesFlags.ABSOLUTE
 
         Args:
             path: Path to narrow down which nodes should be listed. Omitting
                 the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes_info method.
+            flags: Flags to control the behavior of the list_nodes_info method.
 
         Returns:
             Dictionary of paths to node info.
@@ -154,19 +154,19 @@ class AutomaticLabOneServer(LabOneServerBase):
         *,
         flags: ListNodesFlags | int = ListNodesFlags.ABSOLUTE,  # noqa: ARG002
     ) -> list[LabOneNodePath]:
-        """Predefined behaviour for list_nodes.
+        """Predefined behavior for list_nodes.
 
         Uses knowledge of the tree structure to answer.
 
         Warning:
             Flags will be ignored in this implementation. (TODO)
-            For now, the behaviour is equivalent to
+            For now, the behavior is equivalent to
             ListNodesFlags.RECURSIVE | ListNodesFlags.ABSOLUTE
 
         Args:
             path: Path to narrow down which nodes should be listed. Omitting
                 the path will list all nodes by default.
-            flags: Flags to control the behaviour of the list_nodes method.
+            flags: Flags to control the behavior of the list_nodes method.
 
         Returns:
             List of paths.
@@ -183,7 +183,7 @@ class AutomaticLabOneServer(LabOneServerBase):
         ]
 
     async def get(self, path: LabOneNodePath) -> AnnotatedValue:
-        """Predefined behaviour for get.
+        """Predefined behavior for get.
 
         Look up the path in the internal dictionary.
 
@@ -212,19 +212,43 @@ class AutomaticLabOneServer(LabOneServerBase):
         | ListNodesFlags.EXCLUDE_STREAMING
         | ListNodesFlags.GET_ONLY,
     ) -> list[AnnotatedValue]:
-        """Predefined behaviour for get_with_expression.
+        """Predefined behavior for get_with_expression.
 
         Find all nodes associated with the path expression
         and call get for each of them.
 
         Args:
             path_expression: Path expression to get.
-            flags: Flags to control the behaviour of the get_with_expression method.
+            flags: Flags to control the behavior of the get_with_expression method.
 
         Returns:
             List of values, corresponding to nodes of the path expression.
         """
         return [await self.get(p) for p in await self.list_nodes(path=path_expression)]
+
+    async def _update_subscriptions(self, value: AnnotatedValue) -> None:
+        """Update all subscriptions with the new value.
+
+        Args:
+            value: New value.
+        """
+        if self.memory[value.path].streaming_handles:
+            # sending updated value to subscriptions
+            result = await asyncio.gather(
+                *[
+                    handle.send_value(value)
+                    for handle in self.memory[value.path].streaming_handles
+                ],
+            )
+            # Remove all disconnected subscriptions
+            self.memory[value.path].streaming_handles = [
+                handle
+                for handle, success in zip(
+                    self.memory[value.path].streaming_handles,
+                    result,
+                )
+                if success
+            ]
 
     @t.overload
     async def set(self, value: AnnotatedValue) -> AnnotatedValue: ...
@@ -241,7 +265,7 @@ class AutomaticLabOneServer(LabOneServerBase):
         value: AnnotatedValue | Value,
         path: str = "",
     ) -> AnnotatedValue:
-        """Predefined behaviour for set.
+        """Predefined behavior for set.
 
         Updates the internal dictionary. A set command is considered
         as an update and will be distributed to all registered subscription handlers.
@@ -271,14 +295,7 @@ class AutomaticLabOneServer(LabOneServerBase):
             path=path,
             timestamp=self.get_timestamp(),
         )
-        if self.memory[path].streaming_handles:
-            # sending updated value to subscriptions
-            await asyncio.gather(
-                *[
-                    handle.send_value(response)
-                    for handle in self.memory[path].streaming_handles
-                ],
-            )
+        await self._update_subscriptions(value=response)
         return response
 
     @t.overload
@@ -299,7 +316,7 @@ class AutomaticLabOneServer(LabOneServerBase):
         value: AnnotatedValue | Value,
         path: LabOneNodePath | None = None,
     ) -> list[AnnotatedValue]:
-        """Predefined behaviour for set_with_expression.
+        """Predefined behavior for set_with_expression.
 
         Finds all nodes associated with the path expression
         and call set for each of them.
@@ -323,7 +340,7 @@ class AutomaticLabOneServer(LabOneServerBase):
         return result
 
     async def subscribe(self, subscription: Subscription) -> None:
-        """Predefined behaviour for subscribe.
+        """Predefined behavior for subscribe.
 
         Stores the subscription. Whenever an update event happens
         they are distributed to all registered handles,

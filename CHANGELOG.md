@@ -1,5 +1,9 @@
 # Labone Python API Changelog
 
+## Version 3.2.1
+* Fix error message in data server log if a subscription is cancelled gracefully.
+* Adapt mock data server to hand unsubscribe events correctly.
+
 ## Version 3.2.0
 * `subscribe` accepts keyword arguments, which are forwarded to the data-server.
   This allows to configure the subscription to the data-server.

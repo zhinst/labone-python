@@ -14,6 +14,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import zhinst.comms
 from zhinst.comms.server import CapnpResult, CapnpServer, capnp_method
 
 from labone.core import ListNodesFlags, ListNodesInfoFlags, hpk_schema
@@ -24,9 +25,6 @@ from labone.core.value import (
     _capnp_value_to_python_value,
     value_from_python_types,
 )
-
-if TYPE_CHECKING:
-    import zhinst.comms
 
 HPK_SCHEMA_ID = 0xA621130A90860008
 SESSION_SCHEMA_ID = 0xB9D445582DA4A55C
@@ -60,26 +58,33 @@ class Subscription:
         self._streaming_handle = streaming_handle
         self.subscriber_id = subscriber_id
 
-    async def send_value(self, value: AnnotatedValue) -> None:
+    async def send_value(self, value: AnnotatedValue) -> bool:
         """Send value to the subscriber.
 
         Args:
             value: Value to send.
+
+        Returns:
+            Flag indicating if the subscription is active
         """
-        await self._streaming_handle.sendValues(
-            values=[
-                {
-                    "value": value_from_python_types(
-                        value.value,
-                        capability_version=Session.CAPABILITY_VERSION,
-                    ),
-                    "metadata": {
-                        "path": value.path,
-                        "timestamp": value.timestamp,
+        try:
+            await self._streaming_handle.sendValues(
+                values=[
+                    {
+                        "value": value_from_python_types(
+                            value.value,
+                            capability_version=Session.CAPABILITY_VERSION,
+                        ),
+                        "metadata": {
+                            "path": value.path,
+                            "timestamp": value.timestamp,
+                        },
                     },
-                },
-            ],
-        )
+                ],
+            )
+        except zhinst.comms.errors.DisconnectError:
+            return False
+        return True
 
     @property
     def path(self) -> LabOneNodePath:

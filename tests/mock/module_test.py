@@ -42,6 +42,16 @@ async def test_subscription():
 
 
 @pytest.mark.asyncio
+async def test_unsubscribe():
+    session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
+
+    queue = await session.subscribe("/a/b")
+    queue.disconnect()
+    await session.set(path="/a/b", value=7)
+    assert queue.empty()
+
+
+@pytest.mark.asyncio
 async def test_subscription_multiple_changes():
     session = await AutomaticLabOneServer({"/a/b": {}}).start_pipe()
 

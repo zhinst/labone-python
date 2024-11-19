@@ -485,8 +485,7 @@ class StreamingHandle:
             value: The value to add to the data queue.
 
         Raises:
-            capnp.KjException: If no data queues are registered any more and
-                the subscription should be removed.
+            ValueError: If the value could not be parsed.
         """
         try:
             parsed_value = self._parser_callback(AnnotatedValue.from_capnp(value))
@@ -510,10 +509,6 @@ class StreamingHandle:
             raise
         self.distribute_to_data_queues(parsed_value)
 
-        if not self._data_queues:
-            msg = "No data queues are registered anymore. Disconnecting subscription."
-            raise errors.StreamingError(msg)
-
     async def capnp_callback(
         self,
         interface: int,  # noqa: ARG002
@@ -531,13 +526,13 @@ class StreamingHandle:
         method_index: The method index of the capnp schema.
         call_input: The input data of the capnp schema.
         fulfiller: The fulfiller to fulfill the promise.
-
-        Raises:
-            capnp.KjException: If no data queues are registered any more and
-                the subscription should be removed.
         """
         try:
             list(map(self._distribute_to_data_queues, call_input.values))
+            if len(self._data_queues) == 0:
+                msg = "No queues registered anymore"
+                fulfiller.reject(zhinst.comms.Fulfiller.DISCONNECTED, msg)
+                return
             fulfiller.fulfill()
         except Exception as err:  # noqa: BLE001
             fulfiller.reject(zhinst.comms.Fulfiller.FAILED, err.args[0])
