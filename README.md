@@ -19,6 +19,15 @@ The `labone` package provides a plain asynchronous Python API for [LabOne](https
 > Since `labone` is not intended for direct usage, we do not offer any support
 > or external documentation. Please contact [Zurich Instruments](mailto:info@zhinst.com) if you have any questions.
 
+## LabOne compatibility
+The `labone` package is broadly compatible with any LabOne version greater or equal than 23.06. When used with older versions of LabOne, some features may not be available or only partially working.
+
+| `labone` version | Minimum LabOne version | Best with LabOne |
+| ---------------- | ---------------------- | ---------------- |
+| up to 2.3        | 23.06                  | 23.06 or later   |
+| up to 3.1.2      | 23.06                  | 24.10 or later   |
+| from 3.2.0       | 23.06                  | 25.01 or later   |
+
 ## Internal Documentation
 
 The internal documentation can be found [here](http://docs.pages.zhinst.com/internal-documentation-hub/async_labone/index.html).
