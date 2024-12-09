@@ -6,8 +6,8 @@ from labone.dataserver import DataServer
 from labone.instrument import Instrument
 
 __all__ = [
-    "__version__",
-    "Instrument",
     "DataServer",
+    "Instrument",
     "ListNodesFlags",
+    "__version__",
 ]

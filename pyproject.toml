@@ -103,12 +103,8 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-  # Type annotation for self
-  "ANN101",
   # Missing docstring in `__init__`
   "D107",
-  # Missing type annotation for `cls` in classmethod
-  "ANN102",
   # Missing docstring in magic method
   "D105",
   # Missing type annotation for `*args`

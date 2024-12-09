@@ -8,7 +8,7 @@ from zhinst.comms.server import CapnpServer
 
 from labone.mock.session import LabOneServerBase, MockSession, Subscription
 
-__all__ = ["CapnpServer", "LabOneServerBase", "Subscription", "MockSession"]
+__all__ = ["CapnpServer", "LabOneServerBase", "MockSession", "Subscription"]
 
 import warnings
 
