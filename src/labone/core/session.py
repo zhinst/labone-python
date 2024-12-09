@@ -853,23 +853,28 @@ class Session:
             },
         }
         if get_initial_value:
-            _, initial_value = await asyncio.gather(
-                self._session.subscribe(subscription=subscription),
-                self.get(path),
-            )
             new_queue_type = queue_type or DataQueue
             queue = new_queue_type(
                 path=path,
                 handle=streaming_handle,
             )
-            queue.put_nowait(initial_value)
+            _, initial_value = await asyncio.gather(
+                self._session.subscribe(subscription=subscription),
+                self.get(path),
+            )
+            # If the queue already has received a update event we do not
+            # need to put the initial value in the queue. As it may break the
+            # order.
+            if queue.empty():
+                queue.put_nowait(initial_value)
             return queue
-        await self._session.subscribe(subscription=subscription)
         new_queue_type = queue_type or DataQueue
-        return new_queue_type(
+        queue = new_queue_type(
             path=path,
             handle=streaming_handle,
         )
+        await self._session.subscribe(subscription=subscription)
+        return queue
 
     async def wait_for_state_change(
         self,
