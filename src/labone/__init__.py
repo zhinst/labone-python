@@ -1,13 +1,11 @@
-"""Official package for the Zurich Instruments LabOne software."""
+"""Deprecated package for the Zurich Instruments LabOne software.
 
-from labone._version import __version__  # type: ignore[import]
-from labone.core import ListNodesFlags
-from labone.dataserver import DataServer
-from labone.instrument import Instrument
+The `labone` package has been removed for the time being.
+Please refer to [zhinst-toolkit](https://pypi.org/project/zhinst-toolkit/)
+for the latest LabOne Python API.
+"""
 
-__all__ = [
-    "DataServer",
-    "Instrument",
-    "ListNodesFlags",
-    "__version__",
-]
+msg = """The `labone` package has been removed for the time being.
+Please refer to [zhinst-toolkit](https://pypi.org/project/zhinst-toolkit/)
+for the latest LabOne Python API."""
+raise ImportError(msg)

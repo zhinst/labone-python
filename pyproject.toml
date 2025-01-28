@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "labone"
 dynamic = ["version"]
-description = "Python API for Zurich Instruments LabOne software."
+description = "Zurich Instruments."
 readme = "README.md"
 license = { text = "Apache 2.0" }
 requires-python = ">=3.9"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["zhinst"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 7 - Inactive",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
@@ -26,17 +26,11 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering",
 ]
-dependencies = [
-  "numpy>=1.20",
-  "packaging",
-  "typing_extensions>=4.8.0",
-  "zhinst-comms~=3.0",
-]
+dependencies = []
 
 [project.urls]
 homepage = "https://zhinst.com"
-repository = "https://github.com/zhinst/labone-python"
-changelog = "https://github.com/zhinst/labone-python/blob/main/CHANGELOG.md"
+repository = "https://github.com/zhinst/toolkit"
 
 
 [tool.hatch.version]
@@ -83,8 +77,6 @@ dependencies = [
   "black>=24.8.0",
   "mypy>=1.11.2",
   "ruff>=0.6.4",
-  "numpy>=1.20",
-  "zhinst-comms~=3.0",
 ]
 
 [tool.hatch.envs.lint.scripts]
